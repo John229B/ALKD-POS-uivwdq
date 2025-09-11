@@ -1,52 +1,67 @@
-import React, { useState } from 'react';
-import { Text, View, Image, TouchableOpacity } from 'react-native';
-import { commonStyles, colors } from '../styles/commonStyles';
+
+import React, { useEffect, useState } from 'react';
+import { View, Text } from 'react-native';
+import { Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import SimpleBottomSheet from '../components/BottomSheet';
+import { commonStyles, colors } from '../styles/commonStyles';
+import { getCurrentUser, initializeDefaultData } from '../utils/storage';
+import { User } from '../types';
 
+export default function IndexScreen() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(null);
 
-export default function MainScreen() {
-  const [isBottomSheetVisible, setIsBottomSheetVisible] = useState(false);
+  useEffect(() => {
+    initializeApp();
+  }, []);
 
-  const handleOpenBottomSheet = () => {
-    setIsBottomSheetVisible(true);
+  const initializeApp = async () => {
+    try {
+      console.log('Initializing ALKD-POS app...');
+      
+      // Initialize default data
+      await initializeDefaultData();
+      
+      // Check if user is logged in
+      const currentUser = await getCurrentUser();
+      setUser(currentUser);
+      
+      console.log('App initialization completed');
+    } catch (error) {
+      console.error('Error initializing app:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  return (
-      <SafeAreaView style={commonStyles.container}>
-        <View style={commonStyles.content}>
-          <Image
-            source={require('../assets/images/final_quest_240x240.png')}
-            style={{ width: 180, height: 180 }}
-            resizeMode="contain"
-          />
-          <Text style={commonStyles.title}>This is a placeholder app.</Text>
-          <Text style={commonStyles.text}>Your app will be displayed here when it's ready.</Text>
-
-          <TouchableOpacity
-            style={{
-              backgroundColor: colors.primary,
-              paddingHorizontal: 24,
-              paddingVertical: 12,
-              borderRadius: 8,
-              marginTop: 30,
-            }}
-            onPress={handleOpenBottomSheet}
-          >
-            <Text style={{
-              color: colors.text,
-              fontSize: 16,
-              fontWeight: '600',
-            }}>
-              Open Bottom Sheet
-            </Text>
-          </TouchableOpacity>
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[commonStyles.container, commonStyles.center]}>
+        <View style={{
+          width: 80,
+          height: 80,
+          backgroundColor: colors.primary,
+          borderRadius: 40,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 20,
+        }}>
+          <Text style={{ fontSize: 24, fontWeight: 'bold', color: colors.secondary }}>
+            POS
+          </Text>
         </View>
-
-        <SimpleBottomSheet
-          isVisible={isBottomSheetVisible}
-          onClose={() => setIsBottomSheetVisible(false)}
-        />
+        <Text style={[commonStyles.title, { textAlign: 'center' }]}>ALKD-POS</Text>
+        <Text style={[commonStyles.textLight, { textAlign: 'center' }]}>
+          Chargement...
+        </Text>
       </SafeAreaView>
-  );
+    );
+  }
+
+  // Redirect based on authentication status
+  if (user) {
+    return <Redirect href="/(tabs)/dashboard" />;
+  } else {
+    return <Redirect href="/(auth)/login" />;
+  }
 }

@@ -75,8 +75,22 @@ export default function ReportsScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  // Memoize date range calculation
-  const dateRange = useMemo(() => {
+  // Memoize report data calculation with only essential dependencies
+  const reportData = useMemo((): ReportData | null => {
+    console.log('Calculating report data for period:', selectedPeriod);
+    
+    // Return null if still loading or no data
+    if (isLoading) {
+      console.log('Still loading data...');
+      return null;
+    }
+
+    if (!sales || !products) {
+      console.log('Missing required data - sales:', !!sales, 'products:', !!products);
+      return null;
+    }
+
+    // Calculate date range directly in the useMemo to avoid circular dependency
     const now = new Date();
     let startDate: Date;
 
@@ -97,25 +111,7 @@ export default function ReportsScreen() {
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
 
-    return { startDate, endDate: now };
-  }, [selectedPeriod]);
-
-  // Memoize report data calculation with proper dependencies
-  const reportData = useMemo((): ReportData | null => {
-    console.log('Calculating report data for period:', selectedPeriod);
-    
-    // Return null if still loading or no data
-    if (isLoading) {
-      console.log('Still loading data...');
-      return null;
-    }
-
-    if (!sales || !products) {
-      console.log('Missing required data - sales:', !!sales, 'products:', !!products);
-      return null;
-    }
-
-    const { startDate, endDate } = dateRange;
+    const endDate = now;
     
     // Filter sales by period
     const filteredSales = sales.filter(sale => {
@@ -217,7 +213,7 @@ export default function ReportsScreen() {
 
     console.log('Report data calculated:', data);
     return data;
-  }, [sales, products, customers, dateRange, isLoading]); // Fixed dependencies
+  }, [sales, products, customers, selectedPeriod, isLoading]); // Removed dateRange dependency
 
   // Memoize currency formatting function
   const formatCurrency = useCallback((amount: number | undefined | null): string => {

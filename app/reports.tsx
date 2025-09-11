@@ -31,6 +31,7 @@ export default function ReportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Memoize the loadData function to prevent unnecessary re-renders
   const loadData = useCallback(async () => {
     console.log('Loading reports data...');
     try {
@@ -42,21 +43,31 @@ export default function ReportsScreen() {
         getSettings(),
       ]);
 
-      setSales(salesData);
-      setProducts(productsData);
-      setCustomers(customersData);
+      setSales(salesData || []);
+      setProducts(productsData || []);
+      setCustomers(customersData || []);
       setSettings(settingsData);
+      
       console.log('Reports data loaded:', {
-        sales: salesData.length,
-        products: productsData.length,
-        customers: customersData.length,
+        sales: salesData?.length || 0,
+        products: productsData?.length || 0,
+        customers: customersData?.length || 0,
       });
     } catch (error) {
       console.error('Error loading reports data:', error);
+      // Set empty arrays on error to prevent undefined issues
+      setSales([]);
+      setProducts([]);
+      setCustomers([]);
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  // Load data only once on mount
+  useEffect(() => {
+    loadData();
+  }, []); // Empty dependency array - only run once
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -64,7 +75,8 @@ export default function ReportsScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  const getDateRange = useMemo(() => {
+  // Memoize date range calculation
+  const dateRange = useMemo(() => {
     const now = new Date();
     let startDate: Date;
 
@@ -88,30 +100,38 @@ export default function ReportsScreen() {
     return { startDate, endDate: now };
   }, [selectedPeriod]);
 
+  // Memoize report data calculation with proper dependencies
   const reportData = useMemo((): ReportData | null => {
     console.log('Calculating report data for period:', selectedPeriod);
     
-    if (isLoading || !sales.length || !products.length) {
-      console.log('Data not ready yet - isLoading:', isLoading, 'sales:', sales.length, 'products:', products.length);
+    // Return null if still loading or no data
+    if (isLoading) {
+      console.log('Still loading data...');
       return null;
     }
 
-    const { startDate, endDate } = getDateRange;
+    if (!sales || !products) {
+      console.log('Missing required data - sales:', !!sales, 'products:', !!products);
+      return null;
+    }
+
+    const { startDate, endDate } = dateRange;
     
-    // Filtrer les ventes par période
+    // Filter sales by period
     const filteredSales = sales.filter(sale => {
+      if (!sale.date) return false;
       const saleDate = new Date(sale.date);
       return saleDate >= startDate && saleDate <= endDate;
     });
 
     console.log('Filtered sales:', filteredSales.length);
 
-    // Calculer les revenus totaux
+    // Calculate total revenue
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.total || 0), 0);
     const totalSales = filteredSales.length;
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
 
-    // Calculer les produits les plus vendus
+    // Calculate top products
     const productSales: { [key: string]: { quantity: number; revenue: number } } = {};
     
     filteredSales.forEach(sale => {
@@ -135,7 +155,7 @@ export default function ReportsScreen() {
       .sort((a, b) => b!.revenue - a!.revenue)
       .slice(0, 5) as Array<{ product: Product; quantity: number; revenue: number }>;
 
-    // Calculer les méthodes de paiement
+    // Calculate payment methods
     const paymentMethodStats: { [key: string]: { count: number; amount: number } } = {};
     
     filteredSales.forEach(sale => {
@@ -152,7 +172,7 @@ export default function ReportsScreen() {
       ...stats,
     }));
 
-    // Calculer les revenus quotidiens (pour les 7 derniers jours)
+    // Calculate daily revenue (last 7 days)
     const dailyRevenue: Array<{ date: string; revenue: number; sales: number }> = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -169,17 +189,18 @@ export default function ReportsScreen() {
       });
     }
 
-    // Statistiques clients
-    const newCustomersThisPeriod = customers.filter(customer => {
+    // Customer statistics
+    const safeCustomers = customers || [];
+    const newCustomersThisPeriod = safeCustomers.filter(customer => {
       if (!customer.createdAt) return false;
       const customerDate = new Date(customer.createdAt);
       return customerDate >= startDate && customerDate <= endDate;
     });
 
-    const creditAmount = customers.reduce((sum, customer) => sum + (customer.creditBalance || 0), 0);
+    const creditAmount = safeCustomers.reduce((sum, customer) => sum + (customer.creditBalance || 0), 0);
 
     const customerStats = {
-      totalCustomers: customers.length,
+      totalCustomers: safeCustomers.length,
       newCustomers: newCustomersThisPeriod.length,
       creditAmount,
     };
@@ -196,8 +217,9 @@ export default function ReportsScreen() {
 
     console.log('Report data calculated:', data);
     return data;
-  }, [sales, products, customers, selectedPeriod, getDateRange, isLoading]);
+  }, [sales, products, customers, dateRange, isLoading]); // Fixed dependencies
 
+  // Memoize currency formatting function
   const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
       amount = 0;
@@ -207,6 +229,7 @@ export default function ReportsScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   }, [settings?.currency]);
 
+  // Memoize label functions
   const getPaymentMethodLabel = useCallback((method: string): string => {
     const labels = {
       cash: 'Espèces',
@@ -226,11 +249,7 @@ export default function ReportsScreen() {
     return labels[period as keyof typeof labels] || period;
   }, []);
 
-  // Load data on mount
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
+  // Show loading state
   if (isLoading || !reportData) {
     return (
       <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>

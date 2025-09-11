@@ -1,20 +1,21 @@
+
 {
   "expo": {
-    "name": "Natively",
-    "slug": "Natively",
-    "version": "1.0.0",
+    "name": "ALKD-POS",
+    "slug": "alkd-pos",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/natively-dark.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/natively-dark.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#FFC107"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.Natively",
+      "bundleIdentifier": "com.alkd.pos",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -22,10 +23,11 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/natively-dark.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#FFC107"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.Natively"
+      "package": "com.alkd.pos",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/final_quest_240x240.png",
@@ -36,7 +38,7 @@
       "expo-router",
       "expo-web-browser"
     ],
-    "scheme": "natively",
+    "scheme": "alkd-pos",
     "experiments": {
       "typedRoutes": true
     },

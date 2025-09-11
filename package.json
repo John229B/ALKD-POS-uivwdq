@@ -1,6 +1,7 @@
+
 {
-  "name": "Natively",
-  "version": "1.0.0",
+  "name": "ALKD-POS",
+  "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
     "dev": "EXPO_NO_TELEMETRY=1 expo start --tunnel",

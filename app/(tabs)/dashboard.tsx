@@ -19,11 +19,11 @@ interface DashboardStats {
   totalCustomers: number;
   lowStockProducts: number;
   creditAmount: number;
-  topProducts: Array<{
+  topProducts: {
     name: string;
     quantity: number;
     revenue: number;
-  }>;
+  }[];
   recentSales: Sale[];
 }
 

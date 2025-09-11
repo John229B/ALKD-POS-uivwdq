@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -71,7 +72,7 @@ const SimpleBottomSheet: React.FC<SimpleBottomSheetProps> = ({
         }),
       ]).start();
     }
-  }, [isVisible, translateY, backdropOpacity]);
+  }, [isVisible, translateY, backdropOpacity, gestureTranslateY]);
 
   const handleBackdropPress = () => {
     onClose?.();

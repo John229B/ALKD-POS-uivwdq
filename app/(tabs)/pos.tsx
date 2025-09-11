@@ -153,7 +153,7 @@ export default function POSScreen() {
       }
       return item;
     }));
-  }, []);
+  }, [removeFromCart]);
 
   const updateCartItemDiscount = useCallback((productId: string, discount: number) => {
     setCart(prevCart => prevCart.map(item => {
@@ -183,7 +183,7 @@ export default function POSScreen() {
         { text: 'Vider', style: 'destructive', onPress: clearCartWithoutConfirmation }
       ]
     );
-  }, []);
+  }, [clearCartWithoutConfirmation]);
 
   const clearCartWithoutConfirmation = useCallback(() => {
     console.log('POS: Clearing cart');

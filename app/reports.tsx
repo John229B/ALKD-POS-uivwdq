@@ -40,31 +40,31 @@ interface ReportData {
   totalRevenue: number;
   totalSales: number;
   averageOrderValue: number;
-  topProducts: Array<{
+  topProducts: {
     product: Product;
     quantity: number;
     revenue: number;
-  }>;
-  paymentMethodBreakdown: Array<{
+  }[];
+  paymentMethodBreakdown: {
     method: string;
     amount: number;
     count: number;
-  }>;
+  }[];
   creditAnalysis: {
     totalCredit: number;
     partiallyPaid: number;
     fullyPaid: number;
   };
-  dailyTrends: Array<{
+  dailyTrends: {
     date: string;
     revenue: number;
     sales: number;
-  }>;
-  categoryPerformance: Array<{
+  }[];
+  categoryPerformance: {
     category: string;
     revenue: number;
     quantity: number;
-  }>;
+  }[];
 }
 
 export default function ReportsScreen() {
@@ -341,7 +341,7 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       `;
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
-      const fileUri = FileSystem.documentDirectory + fileName;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, reportContent);
       

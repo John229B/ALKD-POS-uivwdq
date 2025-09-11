@@ -95,11 +95,11 @@ export interface DashboardStats {
   totalCustomers: number;
   lowStockProducts: number;
   creditAmount: number;
-  topProducts: Array<{
+  topProducts: {
     product: Product;
     quantity: number;
     revenue: number;
-  }>;
+  }[];
 }
 
 export interface AppSettings {

@@ -31,7 +31,7 @@ export default function ReportsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Memoize the loadData function to prevent unnecessary re-renders
+  // Load data function - stable reference with useCallback
   const loadData = useCallback(async () => {
     console.log('Loading reports data...');
     try {
@@ -62,35 +62,67 @@ export default function ReportsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, []); // Empty dependency array - function is stable
 
-  // Load data only once on mount
+  // Load data only once on mount - with loadData in dependency array
   useEffect(() => {
     loadData();
-  }, []); // Empty dependency array - only run once
+  }, [loadData]);
 
+  // Refresh function - stable reference
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   }, [loadData]);
 
-  // Memoize report data calculation with only essential dependencies
+  // Currency formatting function - stable reference
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      amount = 0;
+    }
+    const currency = settings?.currency || 'XOF';
+    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
+    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
+  }, [settings?.currency]);
+
+  // Label functions - stable references
+  const getPaymentMethodLabel = useCallback((method: string): string => {
+    const labels = {
+      cash: 'Espèces',
+      mobile: 'Mobile Money',
+      credit: 'À crédit',
+    };
+    return labels[method as keyof typeof labels] || method;
+  }, []);
+
+  const getPeriodLabel = useCallback((period: string): string => {
+    const labels = {
+      today: 'Aujourd\'hui',
+      week: 'Cette semaine',
+      month: 'Ce mois',
+      year: 'Cette année',
+    };
+    return labels[period as keyof typeof labels] || period;
+  }, []);
+
+  // Calculate report data - only recalculate when essential data changes
   const reportData = useMemo((): ReportData | null => {
     console.log('Calculating report data for period:', selectedPeriod);
     
-    // Return null if still loading or no data
+    // Return null if still loading
     if (isLoading) {
       console.log('Still loading data...');
       return null;
     }
 
-    if (!sales || !products) {
-      console.log('Missing required data - sales:', !!sales, 'products:', !!products);
+    // Ensure we have the required data
+    if (!Array.isArray(sales) || !Array.isArray(products)) {
+      console.log('Missing required data - sales:', Array.isArray(sales), 'products:', Array.isArray(products));
       return null;
     }
 
-    // Calculate date range directly in the useMemo to avoid circular dependency
+    // Calculate date range
     const now = new Date();
     let startDate: Date;
 
@@ -186,7 +218,7 @@ export default function ReportsScreen() {
     }
 
     // Customer statistics
-    const safeCustomers = customers || [];
+    const safeCustomers = Array.isArray(customers) ? customers : [];
     const newCustomersThisPeriod = safeCustomers.filter(customer => {
       if (!customer.createdAt) return false;
       const customerDate = new Date(customer.createdAt);
@@ -211,42 +243,12 @@ export default function ReportsScreen() {
       customerStats,
     };
 
-    console.log('Report data calculated:', data);
+    console.log('Report data calculated successfully');
     return data;
-  }, [sales, products, customers, selectedPeriod, isLoading]); // Removed dateRange dependency
-
-  // Memoize currency formatting function
-  const formatCurrency = useCallback((amount: number | undefined | null): string => {
-    if (amount === undefined || amount === null || isNaN(amount)) {
-      amount = 0;
-    }
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  }, [settings?.currency]);
-
-  // Memoize label functions
-  const getPaymentMethodLabel = useCallback((method: string): string => {
-    const labels = {
-      cash: 'Espèces',
-      mobile: 'Mobile Money',
-      credit: 'À crédit',
-    };
-    return labels[method as keyof typeof labels] || method;
-  }, []);
-
-  const getPeriodLabel = useCallback((period: string): string => {
-    const labels = {
-      today: 'Aujourd\'hui',
-      week: 'Cette semaine',
-      month: 'Ce mois',
-      year: 'Cette année',
-    };
-    return labels[period as keyof typeof labels] || period;
-  }, []);
+  }, [sales, products, customers, selectedPeriod, isLoading]); // Only essential dependencies
 
   // Show loading state
-  if (isLoading || !reportData) {
+  if (isLoading) {
     return (
       <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
@@ -260,6 +262,29 @@ export default function ReportsScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Chargement des données...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show no data state
+  if (!reportData) {
+    return (
+      <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Icon name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Rapports</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Aucune donnée disponible</Text>
+          <TouchableOpacity style={buttonStyles.primary} onPress={loadData}>
+            <Text style={buttonStyles.primaryText}>Actualiser</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -460,6 +485,7 @@ const styles = {
     flex: 1,
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
+    gap: spacing.md,
   },
   loadingText: {
     fontSize: fontSizes.md,

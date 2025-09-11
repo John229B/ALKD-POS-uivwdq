@@ -33,6 +33,14 @@ const menuItems: MenuItem[] = [
     color: colors.warning,
   },
   {
+    id: 'reports',
+    title: 'Rapports',
+    description: 'Analyses et statistiques avancées',
+    icon: 'bar-chart',
+    route: '/reports',
+    color: colors.success,
+  },
+  {
     id: 'settings',
     title: 'Paramètres',
     description: 'Configuration de l\'application',
@@ -60,6 +68,8 @@ export default function MoreScreen() {
       // Fallback pour les routes qui n'existent pas encore
       if (item.id === 'licenses') {
         router.push('/licenses');
+      } else if (item.id === 'reports') {
+        router.push('/reports');
       }
     }
   };
@@ -108,16 +118,12 @@ export default function MoreScreen() {
         <View style={styles.futureSection}>
           <Text style={styles.futureSectionTitle}>Fonctionnalités à venir</Text>
           <View style={styles.futureItem}>
-            <Icon name="bar-chart" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Rapports et analyses</Text>
-          </View>
-          <View style={styles.futureItem}>
             <Icon name="cloud-upload" size={24} color={colors.textLight} />
             <Text style={styles.futureItemText}>Synchronisation cloud</Text>
           </View>
           <View style={styles.futureItem}>
             <Icon name="analytics" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Analyses avancées</Text>
+            <Text style={styles.futureItemText}>Analyses prédictives</Text>
           </View>
           <View style={styles.futureItem}>
             <Icon name="notifications" size={24} color={colors.textLight} />

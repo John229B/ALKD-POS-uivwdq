@@ -27,7 +27,6 @@ export default function ReportsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'year'>('today');
   const [refreshing, setRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,7 +64,7 @@ export default function ReportsScreen() {
     setRefreshing(false);
   }, [loadData]);
 
-  const getDateRange = useCallback(() => {
+  const getDateRange = useMemo(() => {
     const now = new Date();
     let startDate: Date;
 
@@ -89,15 +88,15 @@ export default function ReportsScreen() {
     return { startDate, endDate: now };
   }, [selectedPeriod]);
 
-  const calculateReportData = useCallback(() => {
+  const reportData = useMemo((): ReportData | null => {
     console.log('Calculating report data for period:', selectedPeriod);
     
-    if (!sales.length || !products.length) {
-      console.log('No sales or products data available yet');
-      return;
+    if (isLoading || !sales.length || !products.length) {
+      console.log('Data not ready yet - isLoading:', isLoading, 'sales:', sales.length, 'products:', products.length);
+      return null;
     }
 
-    const { startDate, endDate } = getDateRange();
+    const { startDate, endDate } = getDateRange;
     
     // Filtrer les ventes par période
     const filteredSales = sales.filter(sale => {
@@ -196,8 +195,8 @@ export default function ReportsScreen() {
     };
 
     console.log('Report data calculated:', data);
-    setReportData(data);
-  }, [sales, products, customers, selectedPeriod, getDateRange]);
+    return data;
+  }, [sales, products, customers, selectedPeriod, getDateRange, isLoading]);
 
   const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
@@ -231,13 +230,6 @@ export default function ReportsScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // Calculate report data when dependencies change
-  useEffect(() => {
-    if (!isLoading && sales.length >= 0 && products.length >= 0) {
-      calculateReportData();
-    }
-  }, [calculateReportData, isLoading]);
 
   if (isLoading || !reportData) {
     return (

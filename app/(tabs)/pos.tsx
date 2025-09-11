@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import uuid from 'react-native-uuid';
-import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice } from '../../utils/storage';
+import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers } from '../../utils/storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
@@ -19,9 +19,17 @@ export default function POSScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
+  
+  // Customer form states
+  const [customerForm, setCustomerForm] = useState({
+    name: '',
+    phone: '',
+    address: '',
+  });
 
   useEffect(() => {
     loadData();
@@ -163,6 +171,46 @@ export default function POSScreen() {
     return { subtotal, tax, total };
   };
 
+  const resetCustomerForm = () => {
+    setCustomerForm({
+      name: '',
+      phone: '',
+      address: '',
+    });
+  };
+
+  const saveCustomer = async () => {
+    if (!customerForm.name.trim()) {
+      Alert.alert('Erreur', 'Le nom du client est requis');
+      return;
+    }
+
+    try {
+      const newCustomer: Customer = {
+        id: uuid.v4() as string,
+        name: customerForm.name.trim(),
+        phone: customerForm.phone.trim(),
+        address: customerForm.address.trim(),
+        creditBalance: 0,
+        totalPurchases: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const updatedCustomers = [...customers, newCustomer];
+      await storeCustomers(updatedCustomers);
+      setCustomers(updatedCustomers);
+      setSelectedCustomer(newCustomer);
+      setShowCustomerModal(false);
+      resetCustomerForm();
+
+      Alert.alert('Succès', 'Client ajouté avec succès');
+    } catch (error) {
+      console.error('Error saving customer:', error);
+      Alert.alert('Erreur', 'Erreur lors de l\'ajout du client');
+    }
+  };
+
   const processSale = async () => {
     if (cart.length === 0) {
       Alert.alert('Erreur', 'Le panier est vide');
@@ -171,6 +219,19 @@ export default function POSScreen() {
 
     if (!user) {
       Alert.alert('Erreur', 'Utilisateur non connecté');
+      return;
+    }
+
+    // Check if customer is required for credit sales
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      Alert.alert(
+        'Client requis',
+        'Veuillez sélectionner ou créer un client pour la vente à crédit.',
+        [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Ajouter client', onPress: () => setShowCustomerModal(true) }
+        ]
+      );
       return;
     }
 
@@ -245,6 +306,7 @@ export default function POSScreen() {
           }
           return customer;
         });
+        await storeCustomers(updatedCustomers);
       }
 
       // Save all data
@@ -387,7 +449,7 @@ export default function POSScreen() {
           </ScrollView>
         </View>
 
-        <View style={commonStyles.posContainer}>
+        <View style={[commonStyles.posContainer, { flex: 1 }]}>
           {/* Products List */}
           <View style={commonStyles.posProductsSection}>
             <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm, paddingHorizontal: isSmallScreen ? 0 : spacing.lg }]}>
@@ -473,8 +535,8 @@ export default function POSScreen() {
             </ScrollView>
           </View>
 
-          {/* Cart */}
-          <View style={commonStyles.posCartSection}>
+          {/* Cart - Made scrollable and responsive */}
+          <View style={[commonStyles.posCartSection, { maxHeight: isSmallScreen ? '50%' : '100%' }]}>
             <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
               Panier ({cart.length})
             </Text>
@@ -489,10 +551,12 @@ export default function POSScreen() {
                 </Text>
               </View>
             ) : (
-              <>
+              <View style={{ flex: 1, flexDirection: 'column' }}>
+                {/* Scrollable Cart Items */}
                 <ScrollView 
-                  style={{ flex: 1, marginBottom: spacing.md }}
+                  style={{ flex: 1, maxHeight: isSmallScreen ? 200 : 300 }}
                   contentContainerStyle={{ paddingBottom: spacing.sm }}
+                  showsVerticalScrollIndicator={true}
                 >
                   {cart.map(item => {
                     const priceLabel = getPriceLabel(item.product, item.quantity);
@@ -560,41 +624,97 @@ export default function POSScreen() {
                   })}
                 </ScrollView>
 
-                {/* Cart Summary */}
-                <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
-                  <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                    <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Sous-total:</Text>
-                    <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(subtotal)}</Text>
-                  </View>
-                  {tax > 0 && (
+                {/* Fixed Cart Summary and Checkout */}
+                <View style={{ paddingTop: spacing.sm }}>
+                  {/* Cart Summary */}
+                  <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
                     <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Taxes ({settings?.taxRate}%):</Text>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(tax)}</Text>
+                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Sous-total:</Text>
+                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(subtotal)}</Text>
+                    </View>
+                    {tax > 0 && (
+                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Taxes ({settings?.taxRate}%):</Text>
+                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(tax)}</Text>
+                      </View>
+                    )}
+                    <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.md }]}>Total:</Text>
+                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.lg, color: colors.primary }]}>
+                        {formatCurrency(total)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Customer Selection for Credit */}
+                  {paymentMethod === 'credit' && (
+                    <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
+                        Client (requis pour crédit):
+                      </Text>
+                      {selectedCustomer ? (
+                        <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[commonStyles.text, { fontWeight: '600' }]}>{selectedCustomer.name}</Text>
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                              Crédit actuel: {formatCurrency(selectedCustomer.creditBalance)}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => setSelectedCustomer(null)}
+                            style={{ padding: spacing.xs }}
+                          >
+                            <Icon name="close" size={16} color={colors.danger} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <View style={{ gap: spacing.xs }}>
+                          <TouchableOpacity
+                            style={[buttonStyles.outline, buttonStyles.small]}
+                            onPress={() => setShowCustomerModal(true)}
+                          >
+                            <Text style={{ color: colors.primary, fontSize: fontSizes.sm, textAlign: 'center' }}>
+                              + Nouveau client
+                            </Text>
+                          </TouchableOpacity>
+                          <ScrollView 
+                            style={{ maxHeight: 100 }}
+                            contentContainerStyle={{ gap: spacing.xs }}
+                          >
+                            {customers.map(customer => (
+                              <TouchableOpacity
+                                key={customer.id}
+                                style={[commonStyles.card, commonStyles.cardSmall]}
+                                onPress={() => setSelectedCustomer(customer)}
+                              >
+                                <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{customer.name}</Text>
+                                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                                  Crédit: {formatCurrency(customer.creditBalance)}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
                     </View>
                   )}
-                  <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.md }]}>Total:</Text>
-                    <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.lg, color: colors.primary }]}>
-                      {formatCurrency(total)}
-                    </Text>
-                  </View>
-                </View>
 
-                {/* Checkout Button */}
-                <TouchableOpacity
-                  style={[buttonStyles.primary, { paddingVertical: spacing.lg }]}
-                  onPress={() => setShowPaymentModal(true)}
-                >
-                  <Text style={{ 
-                    color: colors.secondary, 
-                    fontSize: fontSizes.lg, 
-                    fontWeight: '600', 
-                    textAlign: 'center' 
-                  }}>
-                    💳 Procéder au paiement
-                  </Text>
-                </TouchableOpacity>
-              </>
+                  {/* Checkout Button */}
+                  <TouchableOpacity
+                    style={[buttonStyles.primary, { paddingVertical: spacing.lg }]}
+                    onPress={() => setShowPaymentModal(true)}
+                  >
+                    <Text style={{ 
+                      color: colors.secondary, 
+                      fontSize: fontSizes.lg, 
+                      fontWeight: '600', 
+                      textAlign: 'center' 
+                    }}>
+                      💳 Procéder au paiement
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
           </View>
         </View>
@@ -652,6 +772,14 @@ export default function POSScreen() {
               </View>
             </View>
 
+            {paymentMethod === 'credit' && !selectedCustomer && (
+              <View style={[commonStyles.card, { backgroundColor: colors.warning + '20', marginBottom: spacing.lg }]}>
+                <Text style={[commonStyles.text, { color: colors.warning, textAlign: 'center', fontWeight: '600' }]}>
+                  ⚠️ Sélection d'un client requise pour la vente à crédit
+                </Text>
+              </View>
+            )}
+
             {paymentMethod !== 'credit' && (
               <View style={{ marginBottom: spacing.lg }}>
                 <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
@@ -684,6 +812,85 @@ export default function POSScreen() {
             <TouchableOpacity
               style={buttonStyles.outline}
               onPress={() => setShowPaymentModal(false)}
+            >
+              <Text style={{ color: colors.primary, fontSize: fontSizes.lg, fontWeight: '600', textAlign: 'center' }}>
+                ❌ Annuler
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Customer Creation Modal */}
+      <Modal
+        visible={showCustomerModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCustomerModal(false)}
+      >
+        <View style={commonStyles.modalOverlay}>
+          <View style={commonStyles.modalContent}>
+            <View style={[commonStyles.row, { marginBottom: spacing.lg }]}>
+              <Text style={commonStyles.subtitle}>👤 Nouveau Client</Text>
+              <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
+                <Icon name="close" size={24} color={colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                Nom du client *
+              </Text>
+              <TextInput
+                style={commonStyles.input}
+                value={customerForm.name}
+                onChangeText={(text) => setCustomerForm({ ...customerForm, name: text })}
+                placeholder="Nom complet du client"
+              />
+            </View>
+
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                Téléphone
+              </Text>
+              <TextInput
+                style={commonStyles.input}
+                value={customerForm.phone}
+                onChangeText={(text) => setCustomerForm({ ...customerForm, phone: text })}
+                placeholder="Numéro de téléphone"
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            <View style={{ marginBottom: spacing.lg }}>
+              <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                Adresse
+              </Text>
+              <TextInput
+                style={commonStyles.input}
+                value={customerForm.address}
+                onChangeText={(text) => setCustomerForm({ ...customerForm, address: text })}
+                placeholder="Adresse du client"
+                multiline
+                numberOfLines={2}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[buttonStyles.primary, { marginBottom: spacing.sm }]}
+              onPress={saveCustomer}
+            >
+              <Text style={{ color: colors.secondary, fontSize: fontSizes.lg, fontWeight: '600', textAlign: 'center' }}>
+                ✅ Ajouter le client
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={buttonStyles.outline}
+              onPress={() => {
+                setShowCustomerModal(false);
+                resetCustomerForm();
+              }}
             >
               <Text style={{ color: colors.primary, fontSize: fontSizes.lg, fontWeight: '600', textAlign: 'center' }}>
                 ❌ Annuler

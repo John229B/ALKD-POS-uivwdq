@@ -80,12 +80,6 @@ export default function TabLayout() {
           href: null, // Ceci masque l'onglet de la navigation
         }}
       />
-      <Tabs.Screen
-        name="reports"
-        options={{
-          href: null, // Ceci masque l'onglet de la navigation
-        }}
-      />
     </Tabs>
   );
 }

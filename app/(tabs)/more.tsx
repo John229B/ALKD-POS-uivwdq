@@ -17,14 +17,6 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   {
-    id: 'reports',
-    title: 'Rapports',
-    description: 'Analyses et statistiques de vente',
-    icon: 'bar-chart',
-    route: '/reports',
-    color: colors.success,
-  },
-  {
     id: 'customers',
     title: 'Clients',
     description: 'Gestion de la clientèle',
@@ -115,6 +107,10 @@ export default function MoreScreen() {
         {/* Section pour les fonctionnalités futures */}
         <View style={styles.futureSection}>
           <Text style={styles.futureSectionTitle}>Fonctionnalités à venir</Text>
+          <View style={styles.futureItem}>
+            <Icon name="bar-chart" size={24} color={colors.textLight} />
+            <Text style={styles.futureItemText}>Rapports et analyses</Text>
+          </View>
           <View style={styles.futureItem}>
             <Icon name="cloud-upload" size={24} color={colors.textLight} />
             <Text style={styles.futureItemText}>Synchronisation cloud</Text>

@@ -1,29 +1,27 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
+import uuid from 'react-native-uuid';
+import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice } from '../../utils/storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { commonStyles, colors, buttonStyles } from '../../styles/commonStyles';
-import { useAuthState } from '../../hooks/useAuth';
-import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings } from '../../utils/storage';
-import { Product, Customer, CartItem, Sale, SaleItem, AppSettings } from '../../types';
 import Icon from '../../components/Icon';
-import uuid from 'react-native-uuid';
-
-const { width } = Dimensions.get('window');
-const isTablet = width > 768;
+import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, Category } from '../../types';
+import { useAuthState } from '../../hooks/useAuth';
 
 export default function POSScreen() {
   const { user } = useAuthState();
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all');
 
   useEffect(() => {
     loadData();
@@ -31,50 +29,61 @@ export default function POSScreen() {
 
   const loadData = async () => {
     try {
-      const [productsData, customersData, settingsData] = await Promise.all([
+      console.log('Loading POS data...');
+      const [productsData, categoriesData, customersData, settingsData] = await Promise.all([
         getProducts(),
+        getCategories(),
         getCustomers(),
         getSettings(),
       ]);
-      setProducts(productsData);
+      setProducts(productsData.filter(p => p.isActive));
+      setCategories(categoriesData.filter(c => c.isActive));
       setCustomers(customersData);
       setSettings(settingsData);
+      console.log(`Loaded ${productsData.length} products, ${categoriesData.length} categories`);
     } catch (error) {
       console.error('Error loading POS data:', error);
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.isActive &&
-    product.stock > 0 &&
-    (product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     product.barcode?.includes(searchQuery))
-  );
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category?.name || 'Catégorie inconnue';
+  };
+
+  const getCategoryColor = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category?.color || '#3498db';
+  };
+
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
+      product.barcode?.includes(searchQuery);
+    
+    const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
+    
+    return matchesSearch && matchesCategory;
+  });
 
   const addToCart = (product: Product) => {
+    console.log('Adding product to cart:', product.name);
+    
     const existingItem = cart.find(item => item.product.id === product.id);
+    const newQuantity = existingItem ? existingItem.quantity + 1 : 1;
+    
+    // Get the applicable price based on the new quantity
+    const priceInfo = getApplicablePrice(product, newQuantity);
     
     if (existingItem) {
-      if (existingItem.quantity >= product.stock) {
-        Alert.alert('Stock insuffisant', `Stock disponible: ${product.stock}`);
-        return;
-      }
-      
-      setCart(cart.map(item =>
-        item.product.id === product.id
-          ? {
-              ...item,
-              quantity: item.quantity + 1,
-              subtotal: (item.quantity + 1) * item.product.price * (1 - item.discount / 100)
-            }
-          : item
-      ));
+      updateCartItemQuantity(product.id, newQuantity);
     } else {
       const newItem: CartItem = {
         product,
         quantity: 1,
         discount: 0,
-        subtotal: product.price,
+        unitPrice: priceInfo.price,
+        subtotal: priceInfo.price,
       };
       setCart([...cart, newItem]);
     }
@@ -86,70 +95,65 @@ export default function POSScreen() {
       return;
     }
 
-    const product = products.find(p => p.id === productId);
-    if (product && quantity > product.stock) {
-      Alert.alert('Stock insuffisant', `Stock disponible: ${product.stock}`);
-      return;
-    }
-
-    setCart(cart.map(item =>
-      item.product.id === productId
-        ? {
-            ...item,
-            quantity,
-            subtotal: quantity * item.product.price * (1 - item.discount / 100)
-          }
-        : item
-    ));
+    setCart(cart.map(item => {
+      if (item.product.id === productId) {
+        // Recalculate price based on new quantity
+        const priceInfo = getApplicablePrice(item.product, quantity);
+        const subtotal = (priceInfo.price * quantity) - item.discount;
+        
+        return {
+          ...item,
+          quantity,
+          unitPrice: priceInfo.price,
+          subtotal: Math.max(0, subtotal),
+        };
+      }
+      return item;
+    }));
   };
 
   const updateCartItemDiscount = (productId: string, discount: number) => {
-    setCart(cart.map(item =>
-      item.product.id === productId
-        ? {
-            ...item,
-            discount,
-            subtotal: item.quantity * item.product.price * (1 - discount / 100)
-          }
-        : item
-    ));
+    setCart(cart.map(item => {
+      if (item.product.id === productId) {
+        const subtotal = (item.unitPrice * item.quantity) - discount;
+        return {
+          ...item,
+          discount,
+          subtotal: Math.max(0, subtotal),
+        };
+      }
+      return item;
+    }));
   };
 
   const removeFromCart = (productId: string) => {
+    console.log('Removing product from cart:', productId);
     setCart(cart.filter(item => item.product.id !== productId));
   };
 
   const clearCart = () => {
     Alert.alert(
       'Vider le panier',
-      'Êtes-vous sûr de vouloir vider le panier ? Cette action ne peut pas être annulée.',
+      'Êtes-vous sûr de vouloir vider le panier ?',
       [
-        {
-          text: 'Annuler',
-          style: 'cancel',
-        },
-        {
-          text: 'Vider',
-          style: 'destructive',
-          onPress: () => {
-            setCart([]);
-            setSelectedCustomer(null);
-            setDiscount(0);
-            setAmountPaid('');
-            setPaymentMethod('cash');
-          },
-        },
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Vider', style: 'destructive', onPress: clearCartWithoutConfirmation }
       ]
     );
   };
 
+  const clearCartWithoutConfirmation = () => {
+    console.log('Clearing cart');
+    setCart([]);
+    setSelectedCustomer(null);
+  };
+
   const calculateTotals = () => {
     const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-    const discountAmount = subtotal * (discount / 100);
-    const taxAmount = settings ? (subtotal - discountAmount) * (settings.taxRate / 100) : 0;
-    const total = subtotal - discountAmount + taxAmount;
+    const tax = subtotal * (settings?.taxRate || 0) / 100;
+    const total = subtotal + tax;
     
-    return { subtotal, discountAmount, taxAmount, total };
+    return { subtotal, tax, total };
   };
 
   const processSale = async () => {
@@ -163,34 +167,39 @@ export default function POSScreen() {
       return;
     }
 
-    const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
+    const { total } = calculateTotals();
     const paidAmount = parseFloat(amountPaid) || 0;
 
     if (paymentMethod !== 'credit' && paidAmount < total) {
-      Alert.alert('Erreur', 'Montant payé insuffisant');
+      Alert.alert('Erreur', 'Le montant payé est insuffisant');
       return;
     }
 
     try {
-      const receiptNumber = await getNextReceiptNumber();
+      console.log('Processing sale...');
+      
+      // Create sale record
       const saleItems: SaleItem[] = cart.map(item => ({
         id: uuid.v4() as string,
         productId: item.product.id,
         product: item.product,
         quantity: item.quantity,
-        unitPrice: item.product.price,
+        unitPrice: item.unitPrice,
         discount: item.discount,
         subtotal: item.subtotal,
       }));
 
-      const sale: Sale = {
+      const { subtotal, tax } = calculateTotals();
+      const receiptNumber = await getNextReceiptNumber();
+
+      const newSale: Sale = {
         id: uuid.v4() as string,
         customerId: selectedCustomer?.id,
         customer: selectedCustomer,
         items: saleItems,
         subtotal,
-        discount: discountAmount,
-        tax: taxAmount,
+        discount: cart.reduce((sum, item) => sum + item.discount, 0),
+        tax,
         total,
         paymentMethod,
         paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
@@ -215,39 +224,51 @@ export default function POSScreen() {
         return product;
       });
 
-      // Save sale and update products
+      // Update customer credit balance if payment is credit
+      let updatedCustomers = customers;
+      if (paymentMethod === 'credit' && selectedCustomer) {
+        updatedCustomers = customers.map(customer => {
+          if (customer.id === selectedCustomer.id) {
+            return {
+              ...customer,
+              creditBalance: customer.creditBalance + total,
+              totalPurchases: customer.totalPurchases + total,
+              updatedAt: new Date(),
+            };
+          }
+          return customer;
+        });
+      }
+
+      // Save all data
       const sales = await getSales();
-      await storeSales([...sales, sale]);
-      await storeProducts(updatedProducts);
+      await Promise.all([
+        storeSales([...sales, newSale]),
+        storeProducts(updatedProducts),
+      ]);
+
+      // Update local state
       setProducts(updatedProducts);
+      if (paymentMethod === 'credit') {
+        setCustomers(updatedCustomers);
+      }
+
+      // Clear cart and close modal
+      clearCartWithoutConfirmation();
+      setShowPaymentModal(false);
+      setAmountPaid('');
 
       Alert.alert(
         'Vente réussie',
-        `Reçu: ${receiptNumber}\nTotal: ${formatCurrency(total)}`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              clearCartWithoutConfirmation();
-              setShowPaymentModal(false);
-            }
-          }
-        ]
+        `Reçu N°: ${receiptNumber}\nTotal: ${formatCurrency(total)}${paymentMethod === 'credit' ? '\nStatut: À crédit' : ''}`,
+        [{ text: 'OK' }]
       );
 
-      console.log('Sale processed successfully:', sale);
+      console.log('Sale processed successfully:', receiptNumber);
     } catch (error) {
       console.error('Error processing sale:', error);
       Alert.alert('Erreur', 'Erreur lors du traitement de la vente');
     }
-  };
-
-  const clearCartWithoutConfirmation = () => {
-    setCart([]);
-    setSelectedCustomer(null);
-    setDiscount(0);
-    setAmountPaid('');
-    setPaymentMethod('cash');
   };
 
   const formatCurrency = (amount: number) => {
@@ -256,531 +277,268 @@ export default function POSScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  const { subtotal, discountAmount, taxAmount, total } = calculateTotals();
+  const getPriceLabel = (product: Product, quantity: number) => {
+    const priceInfo = getApplicablePrice(product, quantity);
+    switch (priceInfo.type) {
+      case 'promotional':
+        return '🎉 Promo';
+      case 'wholesale':
+        return '📦 Gros';
+      default:
+        return '🏷️ Détail';
+    }
+  };
 
-  // Mobile layout (single column)
-  if (!isTablet) {
-    return (
-      <SafeAreaView style={commonStyles.container}>
-        <View style={commonStyles.content}>
-          {/* Header */}
-          <View style={[commonStyles.section, { paddingBottom: 8 }]}>
-            <Text style={commonStyles.title}>Point de Vente</Text>
-          </View>
+  const { subtotal, tax, total } = calculateTotals();
 
-          {/* Search */}
-          <View style={[commonStyles.section, { paddingTop: 0, paddingBottom: 8 }]}>
-            <TextInput
-              style={[commonStyles.input, { fontSize: 16 }]}
-              placeholder="Rechercher un produit..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-
-          {/* Products Grid */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
-              {filteredProducts.map(product => (
-                <TouchableOpacity
-                  key={product.id}
-                  style={[commonStyles.card, { 
-                    width: '48%', 
-                    minWidth: 150,
-                    minHeight: 100,
-                    justifyContent: 'space-between'
-                  }]}
-                  onPress={() => addToCart(product)}
-                >
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 4, fontSize: 14 }]} numberOfLines={2}>
-                    {product.name}
-                  </Text>
-                  <Text style={[commonStyles.textLight, { marginBottom: 8, fontSize: 12 }]}>
-                    Stock: {product.stock}
-                  </Text>
-                  <Text style={[commonStyles.text, { color: colors.primary, fontWeight: '600', fontSize: 16 }]}>
-                    {formatCurrency(product.price)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-
-          {/* Cart Summary - Fixed at bottom */}
-          {cart.length > 0 && (
-            <View style={{
-              backgroundColor: colors.card,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-              padding: 16,
-              paddingBottom: 20,
-              boxShadow: `0px -2px 8px ${colors.shadow}`,
-              elevation: 5,
-            }}>
-              <View style={[commonStyles.row, { marginBottom: 12 }]}>
-                <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 16 }]}>
-                  Panier ({cart.length} article{cart.length > 1 ? 's' : ''})
-                </Text>
-                <TouchableOpacity 
-                  onPress={clearCart}
-                  style={{
-                    backgroundColor: colors.danger,
-                    padding: 8,
-                    borderRadius: 6,
-                    minWidth: 40,
-                    alignItems: 'center',
-                  }}
-                >
-                  <Icon name="trash" size={18} color={colors.textWhite} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Cart Items Summary */}
-              <ScrollView style={{ maxHeight: 120, marginBottom: 12 }}>
-                {cart.map(item => (
-                  <View key={item.product.id} style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center', 
-                    marginBottom: 8,
-                    paddingBottom: 8,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border
-                  }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 14 }]} numberOfLines={1}>
-                        {item.product.name}
-                      </Text>
-                      <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
-                        {formatCurrency(item.product.price)} × {item.quantity}
-                      </Text>
-                    </View>
-                    
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 8 }}>
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: colors.backgroundAlt,
-                          padding: 6,
-                          borderRadius: 4,
-                          minWidth: 32,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity - 1)}
-                      >
-                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 16 }}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={[commonStyles.text, { marginHorizontal: 12, fontWeight: '600', minWidth: 20, textAlign: 'center' }]}>
-                        {item.quantity}
-                      </Text>
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: colors.primary,
-                          padding: 6,
-                          borderRadius: 4,
-                          minWidth: 32,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity + 1)}
-                      >
-                        <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: 16 }}>+</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <Text style={[commonStyles.text, { 
-                      fontWeight: '600', 
-                      color: colors.primary, 
-                      fontSize: 14,
-                      minWidth: 80,
-                      textAlign: 'right'
-                    }]}>
-                      {formatCurrency(item.subtotal)}
-                    </Text>
-                  </View>
-                ))}
-              </ScrollView>
-
-              {/* Totals Summary */}
-              <View style={{ marginBottom: 16 }}>
-                <View style={[commonStyles.row, { marginBottom: 4 }]}>
-                  <Text style={[commonStyles.text, { fontSize: 14 }]}>Sous-total:</Text>
-                  <Text style={[commonStyles.text, { fontSize: 14 }]}>{formatCurrency(subtotal)}</Text>
-                </View>
-                
-                {discountAmount > 0 && (
-                  <View style={[commonStyles.row, { marginBottom: 4 }]}>
-                    <Text style={[commonStyles.text, { fontSize: 14 }]}>Remise:</Text>
-                    <Text style={[commonStyles.text, { color: colors.danger, fontSize: 14 }]}>
-                      -{formatCurrency(discountAmount)}
-                    </Text>
-                  </View>
-                )}
-                
-                {taxAmount > 0 && (
-                  <View style={[commonStyles.row, { marginBottom: 4 }]}>
-                    <Text style={[commonStyles.text, { fontSize: 14 }]}>Taxes:</Text>
-                    <Text style={[commonStyles.text, { fontSize: 14 }]}>{formatCurrency(taxAmount)}</Text>
-                  </View>
-                )}
-                
-                <View style={[commonStyles.row, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.border }]}>
-                  <Text style={[commonStyles.text, { fontWeight: '700', fontSize: 18 }]}>Total:</Text>
-                  <Text style={[commonStyles.text, { 
-                    fontWeight: '700', 
-                    fontSize: 18, 
-                    color: colors.primary 
-                  }]}>
-                    {formatCurrency(total)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Checkout Button - Full width */}
-              <TouchableOpacity
-                style={[buttonStyles.primary, {
-                  width: '100%',
-                  paddingVertical: 16,
-                  borderRadius: 12,
-                }]}
-                onPress={() => setShowPaymentModal(true)}
-              >
-                <Text style={{ 
-                  color: colors.secondary, 
-                  fontSize: 18, 
-                  fontWeight: '700',
-                  textAlign: 'center'
-                }}>
-                  Procéder au paiement
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Payment Modal */}
-        <Modal
-          visible={showPaymentModal}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setShowPaymentModal(false)}
-        >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-            <View style={[commonStyles.card, { 
-              width: '100%', 
-              maxHeight: '85%',
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              margin: 0,
-            }]}>
-              <View style={[commonStyles.row, { marginBottom: 20 }]}>
-                <Text style={[commonStyles.subtitle, { fontSize: 22 }]}>Paiement</Text>
-                <TouchableOpacity 
-                  onPress={() => setShowPaymentModal(false)}
-                  style={{ padding: 4 }}
-                >
-                  <Icon name="close" size={24} color={colors.textLight} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={{ marginBottom: 24 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 12, fontWeight: '600' }]}>Méthode de paiement:</Text>
-                  <View style={{ gap: 12 }}>
-                    {[
-                      { key: 'cash', label: 'Espèces', icon: 'cash' },
-                      { key: 'mobile_money', label: 'Mobile Money', icon: 'phone-portrait' },
-                      { key: 'credit', label: 'Crédit', icon: 'card' },
-                    ].map(method => (
-                      <TouchableOpacity
-                        key={method.key}
-                        style={[
-                          {
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            padding: 16,
-                            borderRadius: 12,
-                            borderWidth: 2,
-                            borderColor: paymentMethod === method.key ? colors.primary : colors.border,
-                            backgroundColor: paymentMethod === method.key ? colors.primary : colors.background,
-                          }
-                        ]}
-                        onPress={() => setPaymentMethod(method.key as any)}
-                      >
-                        <Icon 
-                          name={method.icon as any} 
-                          size={20} 
-                          color={paymentMethod === method.key ? colors.secondary : colors.text}
-                          style={{ marginRight: 12 }}
-                        />
-                        <Text style={{
-                          color: paymentMethod === method.key ? colors.secondary : colors.text,
-                          fontSize: 16,
-                          fontWeight: '600',
-                        }}>
-                          {method.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {paymentMethod !== 'credit' && (
-                  <View style={{ marginBottom: 24 }}>
-                    <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>Montant payé:</Text>
-                    <TextInput
-                      style={[commonStyles.input, { fontSize: 18, paddingVertical: 16 }]}
-                      value={amountPaid}
-                      onChangeText={setAmountPaid}
-                      placeholder={`Minimum: ${formatCurrency(total)}`}
-                      keyboardType="numeric"
-                    />
-                    {parseFloat(amountPaid) > total && (
-                      <Text style={[commonStyles.text, { marginTop: 8, color: colors.success, fontWeight: '600' }]}>
-                        Monnaie: {formatCurrency(parseFloat(amountPaid) - total)}
-                      </Text>
-                    )}
-                  </View>
-                )}
-
-                <View style={{ 
-                  backgroundColor: colors.backgroundAlt, 
-                  padding: 16, 
-                  borderRadius: 12, 
-                  marginBottom: 24 
-                }}>
-                  <Text style={[commonStyles.text, { 
-                    fontWeight: '700', 
-                    fontSize: 20, 
-                    textAlign: 'center',
-                    color: colors.primary
-                  }]}>
-                    Total à payer: {formatCurrency(total)}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={[buttonStyles.primary, { 
-                    marginBottom: 12, 
-                    paddingVertical: 18,
-                    borderRadius: 12,
-                  }]}
-                  onPress={processSale}
-                >
-                  <Text style={{ 
-                    color: colors.secondary, 
-                    fontSize: 18, 
-                    fontWeight: '700' 
-                  }}>
-                    Confirmer la vente
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[buttonStyles.outline, { 
-                    paddingVertical: 18,
-                    borderRadius: 12,
-                    marginBottom: 20,
-                  }]}
-                  onPress={() => setShowPaymentModal(false)}
-                >
-                  <Text style={{ 
-                    color: colors.primary, 
-                    fontSize: 16, 
-                    fontWeight: '600' 
-                  }}>
-                    Annuler
-                  </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-      </SafeAreaView>
-    );
-  }
-
-  // Tablet layout (two columns) - existing layout
   return (
     <SafeAreaView style={commonStyles.container}>
       <View style={commonStyles.content}>
         {/* Header */}
-        <View style={[commonStyles.section, { paddingBottom: 8 }]}>
-          <Text style={commonStyles.title}>Point de Vente</Text>
+        <View style={[commonStyles.section, commonStyles.row]}>
+          <View>
+            <Text style={commonStyles.title}>Point de Vente</Text>
+            <Text style={[commonStyles.textLight, { fontSize: 14 }]}>
+              {cart.length} article(s) dans le panier
+            </Text>
+          </View>
+          {cart.length > 0 && (
+            <TouchableOpacity
+              style={[buttonStyles.outline, { paddingHorizontal: 12, paddingVertical: 8, borderColor: colors.danger }]}
+              onPress={clearCart}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="trash" size={16} color={colors.danger} />
+                <Text style={{ color: colors.danger, fontSize: 12 }}>Vider</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-          {/* Products Section */}
-          <View style={{ flex: 2, paddingRight: 10 }}>
-            <View style={[commonStyles.section, { paddingTop: 0 }]}>
-              <TextInput
-                style={[commonStyles.input, { marginBottom: 16 }]}
-                placeholder="Rechercher un produit ou scanner un code-barres..."
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
+        {/* Search */}
+        <View style={commonStyles.section}>
+          <TextInput
+            style={commonStyles.input}
+            placeholder="Rechercher un produit..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
 
-            <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-                {filteredProducts.map(product => (
+        {/* Category Filter */}
+        <View style={commonStyles.section}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
+              <TouchableOpacity
+                style={[
+                  buttonStyles.outline,
+                  { paddingHorizontal: 16, paddingVertical: 8 },
+                  selectedCategoryId === 'all' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => setSelectedCategoryId('all')}
+              >
+                <Text style={[
+                  { color: colors.primary, fontSize: 14 },
+                  selectedCategoryId === 'all' && { color: colors.secondary }
+                ]}>
+                  Toutes
+                </Text>
+              </TouchableOpacity>
+              {categories.map(category => (
+                <TouchableOpacity
+                  key={category.id}
+                  style={[
+                    buttonStyles.outline,
+                    { paddingHorizontal: 16, paddingVertical: 8, borderColor: category.color },
+                    selectedCategoryId === category.id && { backgroundColor: category.color }
+                  ]}
+                  onPress={() => setSelectedCategoryId(category.id)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: selectedCategoryId === category.id ? colors.secondary : category.color
+                    }} />
+                    <Text style={[
+                      { color: category.color, fontSize: 14 },
+                      selectedCategoryId === category.id && { color: colors.secondary }
+                    ]}>
+                      {category.name}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        <View style={{ flex: 1, flexDirection: 'row', gap: 16, paddingHorizontal: 20 }}>
+          {/* Products List */}
+          <View style={{ flex: 2 }}>
+            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 12 }]}>
+              Produits disponibles
+            </Text>
+            <ScrollView style={{ flex: 1 }}>
+              {filteredProducts.map(product => {
+                const categoryColor = getCategoryColor(product.categoryId);
+                const priceInfo = getApplicablePrice(product, 1);
+                
+                return (
                   <TouchableOpacity
                     key={product.id}
-                    style={[commonStyles.card, { width: '48%', minWidth: 150 }]}
-                    onPress={() => addToCart(product)}
+                    style={[commonStyles.card, { marginBottom: 8, opacity: product.stock > 0 ? 1 : 0.5 }]}
+                    onPress={() => product.stock > 0 && addToCart(product)}
+                    disabled={product.stock <= 0}
                   >
-                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 4 }]}>
-                      {product.name}
-                    </Text>
-                    <Text style={[commonStyles.textLight, { marginBottom: 8 }]}>
-                      Stock: {product.stock}
-                    </Text>
-                    <Text style={[commonStyles.text, { color: colors.primary, fontWeight: '600' }]}>
-                      {formatCurrency(product.price)}
-                    </Text>
+                    <View style={[commonStyles.row, { marginBottom: 4 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2 }]}>
+                          {product.name}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: 3,
+                              backgroundColor: categoryColor
+                            }} />
+                            <Text style={[commonStyles.textLight, { fontSize: 11 }]}>
+                              {getCategoryName(product.categoryId)}
+                            </Text>
+                          </View>
+                          <Text style={[commonStyles.textLight, { fontSize: 11 }]}>
+                            Stock: {product.stock}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary }]}>
+                          {formatCurrency(priceInfo.price)}
+                        </Text>
+                        <Text style={[commonStyles.textLight, { fontSize: 10 }]}>
+                          {getPriceLabel(product, 1)}
+                        </Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
+
+              {filteredProducts.length === 0 && (
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                  <Text style={[commonStyles.textLight, { fontSize: 16 }]}>
+                    Aucun produit trouvé
+                  </Text>
+                </View>
+              )}
             </ScrollView>
           </View>
 
-          {/* Cart Section */}
-          <View style={{ flex: 1, paddingLeft: 10 }}>
-            <View style={[commonStyles.card, { flex: 1, margin: 20, marginLeft: 0 }]}>
-              <View style={[commonStyles.row, { marginBottom: 16 }]}>
-                <Text style={commonStyles.subtitle}>Panier</Text>
-                {cart.length > 0 && (
-                  <TouchableOpacity 
-                    onPress={clearCart}
-                    style={{
-                      backgroundColor: colors.danger,
-                      padding: 8,
-                      borderRadius: 6,
-                      minWidth: 40,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Icon name="trash" size={20} color={colors.textWhite} />
-                  </TouchableOpacity>
-                )}
+          {/* Cart */}
+          <View style={{ flex: 1, minWidth: 300 }}>
+            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 12 }]}>
+              Panier
+            </Text>
+            
+            {cart.length === 0 ? (
+              <View style={[commonStyles.card, { alignItems: 'center', padding: 40 }]}>
+                <Text style={[commonStyles.textLight, { fontSize: 16, marginBottom: 8 }]}>
+                  Panier vide
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: 14, textAlign: 'center' }]}>
+                  Sélectionnez des produits pour commencer une vente
+                </Text>
               </View>
+            ) : (
+              <>
+                <ScrollView style={{ flex: 1, marginBottom: 16 }}>
+                  {cart.map(item => {
+                    const priceLabel = getPriceLabel(item.product, item.quantity);
+                    return (
+                      <View key={item.product.id} style={[commonStyles.card, { marginBottom: 8 }]}>
+                        <View style={[commonStyles.row, { marginBottom: 8 }]}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2 }]}>
+                              {item.product.name}
+                            </Text>
+                            <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                              {formatCurrency(item.unitPrice)} × {item.quantity} {priceLabel}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => removeFromCart(item.product.id)}
+                            style={{ padding: 4 }}
+                          >
+                            <Icon name="close" size={16} color={colors.danger} />
+                          </TouchableOpacity>
+                        </View>
 
-              <ScrollView style={{ flex: 1 }}>
-                {cart.map(item => (
-                  <View key={item.product.id} style={{ 
-                    marginBottom: 16, 
-                    paddingBottom: 16, 
-                    borderBottomWidth: 1, 
-                    borderBottomColor: colors.border 
-                  }}>
-                    <Text style={[commonStyles.text, { fontWeight: '700', marginBottom: 4, fontSize: 16 }]}>
-                      {item.product.name}
-                    </Text>
-                    <Text style={[commonStyles.textLight, { marginBottom: 8 }]}>
-                      {formatCurrency(item.product.price)} × {item.quantity}
-                    </Text>
-                    
-                    <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: colors.backgroundAlt,
-                          padding: 8,
-                          borderRadius: 6,
-                          minWidth: 36,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity - 1)}
-                      >
-                        <Text style={{ color: colors.text, fontWeight: '600', fontSize: 18 }}>−</Text>
-                      </TouchableOpacity>
-                      <Text style={[commonStyles.text, { marginHorizontal: 16, fontWeight: '600' }]}>
-                        {item.quantity}
-                      </Text>
-                      <TouchableOpacity
-                        style={{
-                          backgroundColor: colors.primary,
-                          padding: 8,
-                          borderRadius: 6,
-                          minWidth: 36,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity + 1)}
-                      >
-                        <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: 18 }}>+</Text>
-                      </TouchableOpacity>
-                    </View>
+                        <View style={[commonStyles.row, { marginBottom: 8 }]}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <TouchableOpacity
+                              style={[buttonStyles.outline, { paddingHorizontal: 8, paddingVertical: 4, minWidth: 32 }]}
+                              onPress={() => updateCartItemQuantity(item.product.id, item.quantity - 1)}
+                            >
+                              <Text style={{ color: colors.primary, textAlign: 'center' }}>-</Text>
+                            </TouchableOpacity>
+                            <Text style={[commonStyles.text, { minWidth: 30, textAlign: 'center' }]}>
+                              {item.quantity}
+                            </Text>
+                            <TouchableOpacity
+                              style={[buttonStyles.outline, { paddingHorizontal: 8, paddingVertical: 4, minWidth: 32 }]}
+                              onPress={() => updateCartItemQuantity(item.product.id, item.quantity + 1)}
+                            >
+                              <Text style={{ color: colors.primary, textAlign: 'center' }}>+</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary }]}>
+                            {formatCurrency(item.subtotal)}
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
 
-                    <Text style={[commonStyles.text, { 
-                      fontWeight: '700', 
-                      color: colors.primary,
-                      fontSize: 16
-                    }]}>
-                      {formatCurrency(item.subtotal)}
-                    </Text>
-                  </View>
-                ))}
-              </ScrollView>
-
-              {cart.length > 0 && (
-                <View>
-                  <View style={commonStyles.divider} />
-                  
+                {/* Cart Summary */}
+                <View style={[commonStyles.card, { marginBottom: 16 }]}>
                   <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                    <Text style={[commonStyles.text, { fontWeight: '600' }]}>Sous-total:</Text>
-                    <Text style={[commonStyles.text, { fontWeight: '600' }]}>{formatCurrency(subtotal)}</Text>
+                    <Text style={commonStyles.text}>Sous-total:</Text>
+                    <Text style={commonStyles.text}>{formatCurrency(subtotal)}</Text>
                   </View>
-                  
-                  {discountAmount > 0 && (
+                  {tax > 0 && (
                     <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>Remise:</Text>
-                      <Text style={[commonStyles.text, { color: colors.danger, fontWeight: '600' }]}>
-                        -{formatCurrency(discountAmount)}
-                      </Text>
+                      <Text style={commonStyles.text}>Taxes ({settings?.taxRate}%):</Text>
+                      <Text style={commonStyles.text}>{formatCurrency(tax)}</Text>
                     </View>
                   )}
-                  
-                  {taxAmount > 0 && (
-                    <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>Taxes:</Text>
-                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>{formatCurrency(taxAmount)}</Text>
-                    </View>
-                  )}
-                  
-                  <View style={[commonStyles.row, { marginBottom: 20, paddingTop: 8, borderTopWidth: 2, borderTopColor: colors.primary }]}>
-                    <Text style={[commonStyles.text, { fontWeight: '700', fontSize: 20 }]}>Total:</Text>
-                    <Text style={[commonStyles.text, { 
-                      fontWeight: '700', 
-                      fontSize: 20, 
-                      color: colors.primary 
-                    }]}>
+                  <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 }]}>
+                    <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 16 }]}>Total:</Text>
+                    <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 16, color: colors.primary }]}>
                       {formatCurrency(total)}
                     </Text>
                   </View>
-
-                  <TouchableOpacity
-                    style={[buttonStyles.primary, {
-                      width: '100%',
-                      paddingVertical: 16,
-                      borderRadius: 12,
-                    }]}
-                    onPress={() => setShowPaymentModal(true)}
-                  >
-                    <Text style={{ 
-                      color: colors.secondary, 
-                      fontSize: 18, 
-                      fontWeight: '700',
-                      textAlign: 'center'
-                    }}>
-                      Procéder au paiement
-                    </Text>
-                  </TouchableOpacity>
                 </View>
-              )}
-            </View>
+
+                {/* Checkout Button */}
+                <TouchableOpacity
+                  style={[buttonStyles.primary, { paddingVertical: 16 }]}
+                  onPress={() => setShowPaymentModal(true)}
+                >
+                  <Text style={{ color: colors.secondary, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
+                    💳 Procéder au paiement
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </View>
 
-      {/* Payment Modal - Same as mobile */}
+      {/* Payment Modal */}
       <Modal
         visible={showPaymentModal}
         animationType="slide"
@@ -788,123 +546,87 @@ export default function POSScreen() {
         onRequestClose={() => setShowPaymentModal(false)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={[commonStyles.card, { width: '90%', maxWidth: 500, maxHeight: '85%' }]}>
+          <View style={[commonStyles.card, { width: '90%', maxWidth: 500 }]}>
             <View style={[commonStyles.row, { marginBottom: 20 }]}>
-              <Text style={[commonStyles.subtitle, { fontSize: 22 }]}>Paiement</Text>
+              <Text style={commonStyles.subtitle}>💳 Paiement</Text>
               <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
                 <Icon name="close" size={24} color={colors.textLight} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView>
-              <View style={{ marginBottom: 24 }}>
-                <Text style={[commonStyles.text, { marginBottom: 12, fontWeight: '600' }]}>Méthode de paiement:</Text>
-                <View style={{ gap: 12 }}>
-                  {[
-                    { key: 'cash', label: 'Espèces', icon: 'cash' },
-                    { key: 'mobile_money', label: 'Mobile Money', icon: 'phone-portrait' },
-                    { key: 'credit', label: 'Crédit', icon: 'card' },
-                  ].map(method => (
-                    <TouchableOpacity
-                      key={method.key}
-                      style={[
-                        {
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          padding: 16,
-                          borderRadius: 12,
-                          borderWidth: 2,
-                          borderColor: paymentMethod === method.key ? colors.primary : colors.border,
-                          backgroundColor: paymentMethod === method.key ? colors.primary : colors.background,
-                        }
-                      ]}
-                      onPress={() => setPaymentMethod(method.key as any)}
-                    >
-                      <Icon 
-                        name={method.icon as any} 
-                        size={20} 
-                        color={paymentMethod === method.key ? colors.secondary : colors.text}
-                        style={{ marginRight: 12 }}
-                      />
-                      <Text style={{
-                        color: paymentMethod === method.key ? colors.secondary : colors.text,
-                        fontSize: 16,
-                        fontWeight: '600',
-                      }}>
-                        {method.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+            <View style={{ marginBottom: 20 }}>
+              <Text style={[commonStyles.text, { fontWeight: '600', fontSize: 18, textAlign: 'center' }]}>
+                Total à payer: {formatCurrency(total)}
+              </Text>
+            </View>
 
-              {paymentMethod !== 'credit' && (
-                <View style={{ marginBottom: 24 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>Montant payé:</Text>
-                  <TextInput
-                    style={[commonStyles.input, { fontSize: 18, paddingVertical: 16 }]}
-                    value={amountPaid}
-                    onChangeText={setAmountPaid}
-                    placeholder={`Minimum: ${formatCurrency(total)}`}
-                    keyboardType="numeric"
-                  />
-                  {parseFloat(amountPaid) > total && (
-                    <Text style={[commonStyles.text, { marginTop: 8, color: colors.success, fontWeight: '600' }]}>
-                      Monnaie: {formatCurrency(parseFloat(amountPaid) - total)}
+            <View style={{ marginBottom: 20 }}>
+              <Text style={[commonStyles.text, { marginBottom: 12, fontWeight: '600' }]}>
+                Mode de paiement:
+              </Text>
+              <View style={{ gap: 8 }}>
+                {[
+                  { key: 'cash', label: '💵 Espèces', value: 'cash' },
+                  { key: 'mobile_money', label: '📱 Mobile Money', value: 'mobile_money' },
+                  { key: 'credit', label: '📋 À crédit', value: 'credit' },
+                ].map(method => (
+                  <TouchableOpacity
+                    key={method.key}
+                    style={[
+                      buttonStyles.outline,
+                      { paddingVertical: 12 },
+                      paymentMethod === method.value && { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => setPaymentMethod(method.value as any)}
+                  >
+                    <Text style={[
+                      { color: colors.primary, textAlign: 'center' },
+                      paymentMethod === method.value && { color: colors.secondary }
+                    ]}>
+                      {method.label}
                     </Text>
-                  )}
-                </View>
-              )}
-
-              <View style={{ 
-                backgroundColor: colors.backgroundAlt, 
-                padding: 16, 
-                borderRadius: 12, 
-                marginBottom: 24 
-              }}>
-                <Text style={[commonStyles.text, { 
-                  fontWeight: '700', 
-                  fontSize: 20, 
-                  textAlign: 'center',
-                  color: colors.primary
-                }]}>
-                  Total à payer: {formatCurrency(total)}
-                </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
+            </View>
 
-              <TouchableOpacity
-                style={[buttonStyles.primary, { 
-                  marginBottom: 12, 
-                  paddingVertical: 18,
-                  borderRadius: 12,
-                }]}
-                onPress={processSale}
-              >
-                <Text style={{ 
-                  color: colors.secondary, 
-                  fontSize: 18, 
-                  fontWeight: '700' 
-                }}>
-                  Confirmer la vente
+            {paymentMethod !== 'credit' && (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  Montant reçu:
                 </Text>
-              </TouchableOpacity>
+                <TextInput
+                  style={commonStyles.input}
+                  value={amountPaid}
+                  onChangeText={setAmountPaid}
+                  placeholder={total.toString()}
+                  keyboardType="numeric"
+                />
+                {parseFloat(amountPaid) > total && (
+                  <Text style={[commonStyles.textLight, { marginTop: 4 }]}>
+                    Monnaie à rendre: {formatCurrency(parseFloat(amountPaid) - total)}
+                  </Text>
+                )}
+              </View>
+            )}
 
-              <TouchableOpacity
-                style={[buttonStyles.outline, { 
-                  paddingVertical: 18,
-                  borderRadius: 12,
-                }]}
-                onPress={() => setShowPaymentModal(false)}
-              >
-                <Text style={{ 
-                  color: colors.primary, 
-                  fontSize: 16, 
-                  fontWeight: '600' 
-                }}>
-                  Annuler
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
+            <TouchableOpacity
+              style={[buttonStyles.primary, { marginBottom: 12 }]}
+              onPress={processSale}
+            >
+              <Text style={{ color: colors.secondary, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
+                ✅ Confirmer la vente
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={buttonStyles.outline}
+              onPress={() => setShowPaymentModal(false)}
+            >
+              <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
+                ❌ Annuler
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

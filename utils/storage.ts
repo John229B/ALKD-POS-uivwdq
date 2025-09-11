@@ -1,10 +1,11 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Product, Customer, Sale, AppSettings, DashboardStats } from '../types';
+import { User, Product, Customer, Sale, AppSettings, DashboardStats, Category } from '../types';
 
 const STORAGE_KEYS = {
   USERS: 'alkd_pos_users',
   PRODUCTS: 'alkd_pos_products',
+  CATEGORIES: 'alkd_pos_categories',
   CUSTOMERS: 'alkd_pos_customers',
   SALES: 'alkd_pos_sales',
   SETTINGS: 'alkd_pos_settings',
@@ -69,6 +70,16 @@ export const clearCurrentUser = async (): Promise<void> => {
   await removeData(STORAGE_KEYS.CURRENT_USER);
 };
 
+// Category management
+export const storeCategories = async (categories: Category[]): Promise<void> => {
+  await storeData(STORAGE_KEYS.CATEGORIES, categories);
+};
+
+export const getCategories = async (): Promise<Category[]> => {
+  const categories = await getData<Category[]>(STORAGE_KEYS.CATEGORIES);
+  return categories || [];
+};
+
 // Product management
 export const storeProducts = async (products: Product[]): Promise<void> => {
   await storeData(STORAGE_KEYS.PRODUCTS, products);
@@ -126,6 +137,24 @@ export const getNextReceiptNumber = async (): Promise<string> => {
   return `REC-${nextCounter.toString().padStart(6, '0')}`;
 };
 
+// Pricing logic utility
+export const getApplicablePrice = (product: Product, quantity: number = 1): { price: number; type: 'retail' | 'wholesale' | 'promotional' } => {
+  const now = new Date();
+  
+  // Check promotional price first (if valid and not expired)
+  if (product.promotionalPrice && product.promotionalValidUntil && new Date(product.promotionalValidUntil) > now) {
+    return { price: product.promotionalPrice, type: 'promotional' };
+  }
+  
+  // Check wholesale price (if quantity meets minimum requirement)
+  if (product.wholesalePrice && product.wholesaleMinQuantity && quantity >= product.wholesaleMinQuantity) {
+    return { price: product.wholesalePrice, type: 'wholesale' };
+  }
+  
+  // Default to retail price
+  return { price: product.retailPrice, type: 'retail' };
+};
+
 // Initialize default data
 export const initializeDefaultData = async (): Promise<void> => {
   try {
@@ -146,7 +175,52 @@ export const initializeDefaultData = async (): Promise<void> => {
       console.log('Default admin user created');
     }
 
-    // Initialize default products
+    // Initialize default categories
+    const categories = await getCategories();
+    if (categories.length === 0) {
+      const defaultCategories: Category[] = [
+        {
+          id: 'cat-001',
+          name: 'Boissons',
+          description: 'Boissons gazeuses, jus, eau',
+          color: '#3498db',
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'cat-002',
+          name: 'Boulangerie',
+          description: 'Pain, viennoiseries, pâtisseries',
+          color: '#e67e22',
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'cat-003',
+          name: 'Produits laitiers',
+          description: 'Lait, yaourts, fromages',
+          color: '#2ecc71',
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'cat-004',
+          name: 'Électronique',
+          description: 'Téléphones, accessoires, gadgets',
+          color: '#9b59b6',
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ];
+      await storeCategories(defaultCategories);
+      console.log('Default categories created');
+    }
+
+    // Initialize default products with new pricing structure
     const products = await getProducts();
     if (products.length === 0) {
       const defaultProducts: Product[] = [
@@ -154,10 +228,14 @@ export const initializeDefaultData = async (): Promise<void> => {
           id: 'prod-001',
           name: 'Coca Cola 33cl',
           description: 'Boisson gazeuse',
-          price: 500,
+          retailPrice: 500,
+          wholesalePrice: 450,
+          wholesaleMinQuantity: 12,
+          promotionalPrice: 400,
+          promotionalValidUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
           cost: 300,
           barcode: '123456789001',
-          category: 'Boissons',
+          categoryId: 'cat-001',
           stock: 50,
           minStock: 10,
           isActive: true,
@@ -168,10 +246,12 @@ export const initializeDefaultData = async (): Promise<void> => {
           id: 'prod-002',
           name: 'Pain de mie',
           description: 'Pain de mie complet',
-          price: 800,
+          retailPrice: 800,
+          wholesalePrice: 750,
+          wholesaleMinQuantity: 6,
           cost: 500,
           barcode: '123456789002',
-          category: 'Boulangerie',
+          categoryId: 'cat-002',
           stock: 25,
           minStock: 5,
           isActive: true,
@@ -182,10 +262,12 @@ export const initializeDefaultData = async (): Promise<void> => {
           id: 'prod-003',
           name: 'Lait 1L',
           description: 'Lait frais pasteurisé',
-          price: 1200,
+          retailPrice: 1200,
+          wholesalePrice: 1100,
+          wholesaleMinQuantity: 10,
           cost: 800,
           barcode: '123456789003',
-          category: 'Produits laitiers',
+          categoryId: 'cat-003',
           stock: 30,
           minStock: 8,
           isActive: true,

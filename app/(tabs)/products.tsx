@@ -2,26 +2,33 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles } from '../../styles/commonStyles';
-import { getProducts, storeProducts, getSettings } from '../../utils/storage';
-import { Product, AppSettings } from '../../types';
+import { getProducts, storeProducts, getSettings, getCategories } from '../../utils/storage';
+import { Product, AppSettings, Category } from '../../types';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 
 export default function ProductsScreen() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    price: '',
+    retailPrice: '',
+    wholesalePrice: '',
+    wholesaleMinQuantity: '',
+    promotionalPrice: '',
+    promotionalValidUntil: '',
     cost: '',
     barcode: '',
-    category: '',
+    categoryId: '',
     stock: '',
     minStock: '',
   });
@@ -33,27 +40,36 @@ export default function ProductsScreen() {
   const loadData = async () => {
     try {
       console.log('Loading products data...');
-      const [productsData, settingsData] = await Promise.all([
+      const [productsData, categoriesData, settingsData] = await Promise.all([
         getProducts(),
+        getCategories(),
         getSettings(),
       ]);
       setProducts(productsData);
+      setCategories(categoriesData);
       setSettings(settingsData);
-      console.log(`Loaded ${productsData.length} products`);
+      console.log(`Loaded ${productsData.length} products and ${categoriesData.length} categories`);
     } catch (error) {
       console.error('Error loading products data:', error);
     }
   };
 
-  // Get unique categories
-  const categories = ['all', ...new Set(products.map(p => p.category))];
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category?.name || 'Catégorie inconnue';
+  };
+
+  const getCategoryColor = (categoryId: string) => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category?.color || '#3498db';
+  };
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
       product.barcode?.includes(searchQuery);
     
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
+    const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
     
     return matchesSearch && matchesCategory;
   });
@@ -62,10 +78,14 @@ export default function ProductsScreen() {
     setFormData({
       name: '',
       description: '',
-      price: '',
+      retailPrice: '',
+      wholesalePrice: '',
+      wholesaleMinQuantity: '',
+      promotionalPrice: '',
+      promotionalValidUntil: '',
       cost: '',
       barcode: '',
-      category: '',
+      categoryId: '',
       stock: '',
       minStock: '',
     });
@@ -83,10 +103,15 @@ export default function ProductsScreen() {
     setFormData({
       name: product.name,
       description: product.description || '',
-      price: product.price.toString(),
+      retailPrice: product.retailPrice.toString(),
+      wholesalePrice: product.wholesalePrice?.toString() || '',
+      wholesaleMinQuantity: product.wholesaleMinQuantity?.toString() || '',
+      promotionalPrice: product.promotionalPrice?.toString() || '',
+      promotionalValidUntil: product.promotionalValidUntil ? 
+        new Date(product.promotionalValidUntil).toISOString().split('T')[0] : '',
       cost: product.cost.toString(),
       barcode: product.barcode || '',
-      category: product.category,
+      categoryId: product.categoryId,
       stock: product.stock.toString(),
       minStock: product.minStock.toString(),
     });
@@ -95,18 +120,42 @@ export default function ProductsScreen() {
   };
 
   const saveProduct = async () => {
-    if (!formData.name.trim() || !formData.price || !formData.category.trim()) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires (Nom, Prix, Catégorie)');
+    if (!formData.name.trim() || !formData.retailPrice || !formData.categoryId) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires (Nom, Prix de détail, Catégorie)');
       return;
     }
 
-    const price = parseFloat(formData.price);
+    const retailPrice = parseFloat(formData.retailPrice);
+    const wholesalePrice = formData.wholesalePrice ? parseFloat(formData.wholesalePrice) : undefined;
+    const wholesaleMinQuantity = formData.wholesaleMinQuantity ? parseInt(formData.wholesaleMinQuantity) : undefined;
+    const promotionalPrice = formData.promotionalPrice ? parseFloat(formData.promotionalPrice) : undefined;
+    const promotionalValidUntil = formData.promotionalValidUntil ? new Date(formData.promotionalValidUntil) : undefined;
     const cost = parseFloat(formData.cost) || 0;
     const stock = parseInt(formData.stock) || 0;
     const minStock = parseInt(formData.minStock) || 0;
 
-    if (price <= 0) {
-      Alert.alert('Erreur', 'Le prix doit être supérieur à 0');
+    if (retailPrice <= 0) {
+      Alert.alert('Erreur', 'Le prix de détail doit être supérieur à 0');
+      return;
+    }
+
+    if (wholesalePrice && wholesalePrice <= 0) {
+      Alert.alert('Erreur', 'Le prix de gros doit être supérieur à 0');
+      return;
+    }
+
+    if (promotionalPrice && promotionalPrice <= 0) {
+      Alert.alert('Erreur', 'Le prix promotionnel doit être supérieur à 0');
+      return;
+    }
+
+    if (wholesalePrice && !wholesaleMinQuantity) {
+      Alert.alert('Erreur', 'Veuillez spécifier la quantité minimum pour le prix de gros');
+      return;
+    }
+
+    if (promotionalPrice && !promotionalValidUntil) {
+      Alert.alert('Erreur', 'Veuillez spécifier la date limite pour le prix promotionnel');
       return;
     }
 
@@ -119,10 +168,14 @@ export default function ProductsScreen() {
           ...editingProduct,
           name: formData.name.trim(),
           description: formData.description.trim(),
-          price,
+          retailPrice,
+          wholesalePrice,
+          wholesaleMinQuantity,
+          promotionalPrice,
+          promotionalValidUntil,
           cost,
           barcode: formData.barcode.trim() || undefined,
-          category: formData.category.trim(),
+          categoryId: formData.categoryId,
           stock,
           minStock,
           updatedAt: new Date(),
@@ -137,10 +190,14 @@ export default function ProductsScreen() {
           id: uuid.v4() as string,
           name: formData.name.trim(),
           description: formData.description.trim(),
-          price,
+          retailPrice,
+          wholesalePrice,
+          wholesaleMinQuantity,
+          promotionalPrice,
+          promotionalValidUntil,
           cost,
           barcode: formData.barcode.trim() || undefined,
-          category: formData.category.trim(),
+          categoryId: formData.categoryId,
           stock,
           minStock,
           isActive: true,
@@ -202,7 +259,35 @@ export default function ProductsScreen() {
 
   const getMarginPercentage = (product: Product) => {
     if (product.cost === 0) return 0;
-    return ((product.price - product.cost) / product.cost * 100);
+    return ((product.retailPrice - product.cost) / product.cost * 100);
+  };
+
+  const getPriceInfo = (product: Product) => {
+    const now = new Date();
+    const info = [];
+
+    // Promotional price
+    if (product.promotionalPrice && product.promotionalValidUntil && new Date(product.promotionalValidUntil) > now) {
+      const daysLeft = Math.ceil((new Date(product.promotionalValidUntil).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      info.push({
+        type: 'promotional',
+        price: product.promotionalPrice,
+        label: `🎉 Promo (${daysLeft}j restants)`,
+        color: colors.success
+      });
+    }
+
+    // Wholesale price
+    if (product.wholesalePrice && product.wholesaleMinQuantity) {
+      info.push({
+        type: 'wholesale',
+        price: product.wholesalePrice,
+        label: `📦 Gros (${product.wholesaleMinQuantity}+ unités)`,
+        color: colors.primary
+      });
+    }
+
+    return info;
   };
 
   return (
@@ -216,15 +301,26 @@ export default function ProductsScreen() {
               {filteredProducts.length} produit(s) • Version 1.1.0
             </Text>
           </View>
-          <TouchableOpacity
-            style={[buttonStyles.primary, { paddingHorizontal: 16, paddingVertical: 8 }]}
-            onPress={openAddModal}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Icon name="add" size={20} color={colors.secondary} />
-              <Text style={{ color: colors.secondary, fontWeight: '600' }}>Ajouter</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[buttonStyles.outline, { paddingHorizontal: 12, paddingVertical: 8 }]}
+              onPress={() => router.push('/categories')}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Icon name="grid" size={16} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 12 }}>Catégories</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[buttonStyles.primary, { paddingHorizontal: 16, paddingVertical: 8 }]}
+              onPress={openAddModal}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="add" size={20} color={colors.secondary} />
+                <Text style={{ color: colors.secondary, fontWeight: '600' }}>Ajouter</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search */}
@@ -241,22 +337,45 @@ export default function ProductsScreen() {
         <View style={commonStyles.section}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
-              {categories.map(category => (
+              <TouchableOpacity
+                style={[
+                  buttonStyles.outline,
+                  { paddingHorizontal: 16, paddingVertical: 8 },
+                  selectedCategoryId === 'all' && { backgroundColor: colors.primary }
+                ]}
+                onPress={() => setSelectedCategoryId('all')}
+              >
+                <Text style={[
+                  { color: colors.primary, fontSize: 14 },
+                  selectedCategoryId === 'all' && { color: colors.secondary }
+                ]}>
+                  Toutes
+                </Text>
+              </TouchableOpacity>
+              {categories.filter(cat => cat.isActive).map(category => (
                 <TouchableOpacity
-                  key={category}
+                  key={category.id}
                   style={[
                     buttonStyles.outline,
-                    { paddingHorizontal: 16, paddingVertical: 8 },
-                    selectedCategory === category && { backgroundColor: colors.primary }
+                    { paddingHorizontal: 16, paddingVertical: 8, borderColor: category.color },
+                    selectedCategoryId === category.id && { backgroundColor: category.color }
                   ]}
-                  onPress={() => setSelectedCategory(category)}
+                  onPress={() => setSelectedCategoryId(category.id)}
                 >
-                  <Text style={[
-                    { color: colors.primary, fontSize: 14 },
-                    selectedCategory === category && { color: colors.secondary }
-                  ]}>
-                    {category === 'all' ? 'Toutes' : category}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: selectedCategoryId === category.id ? colors.secondary : category.color
+                    }} />
+                    <Text style={[
+                      { color: category.color, fontSize: 14 },
+                      selectedCategoryId === category.id && { color: colors.secondary }
+                    ]}>
+                      {category.name}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -268,6 +387,9 @@ export default function ProductsScreen() {
           {filteredProducts.map(product => {
             const stockStatus = getStockStatus(product);
             const margin = getMarginPercentage(product);
+            const priceInfo = getPriceInfo(product);
+            const categoryColor = getCategoryColor(product.categoryId);
+            
             return (
               <View key={product.id} style={[commonStyles.card, { marginBottom: 12, opacity: product.isActive ? 1 : 0.6 }]}>
                 {/* Product Header */}
@@ -278,9 +400,17 @@ export default function ProductsScreen() {
                       {!product.isActive && <Text style={{ color: colors.danger }}> (Inactif)</Text>}
                     </Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
-                        📦 {product.category}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <View style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: 4,
+                          backgroundColor: categoryColor
+                        }} />
+                        <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                          {getCategoryName(product.categoryId)}
+                        </Text>
+                      </View>
                       {product.barcode && (
                         <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
                           🏷️ {product.barcode}
@@ -290,7 +420,7 @@ export default function ProductsScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: 16 }]}>
-                      {formatCurrency(product.price)}
+                      {formatCurrency(product.retailPrice)}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
                       Coût: {formatCurrency(product.cost)}
@@ -303,6 +433,19 @@ export default function ProductsScreen() {
                   <Text style={[commonStyles.textLight, { fontSize: 12, marginBottom: 8 }]}>
                     {product.description}
                   </Text>
+                )}
+
+                {/* Price Information */}
+                {priceInfo.length > 0 && (
+                  <View style={{ marginBottom: 8 }}>
+                    {priceInfo.map((info, index) => (
+                      <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={[commonStyles.textLight, { fontSize: 11, color: info.color }]}>
+                          {info.label}: {formatCurrency(info.price)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
                 )}
 
                 {/* Stock and Margin Info */}
@@ -320,7 +463,7 @@ export default function ProductsScreen() {
                       💰 Marge: {margin.toFixed(1)}%
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
-                      Bénéfice: {formatCurrency(product.price - product.cost)}
+                      Bénéfice: {formatCurrency(product.retailPrice - product.cost)}
                     </Text>
                   </View>
                 </View>
@@ -385,7 +528,7 @@ export default function ProductsScreen() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={[commonStyles.card, { width: '90%', maxWidth: 500, maxHeight: '90%' }]}>
+          <View style={[commonStyles.card, { width: '95%', maxWidth: 500, maxHeight: '95%' }]}>
             <View style={[commonStyles.row, { marginBottom: 20 }]}>
               <Text style={commonStyles.subtitle}>
                 {editingProduct ? '✏️ Modifier le produit' : '➕ Ajouter un produit'}
@@ -421,42 +564,135 @@ export default function ProductsScreen() {
                 />
               </View>
 
+              {/* Category Selection */}
+              <View style={{ marginBottom: 16 }}>
+                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  📦 Catégorie *
+                </Text>
+                <TouchableOpacity
+                  style={[commonStyles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                >
+                  <Text style={{ color: formData.categoryId ? colors.text : colors.textLight }}>
+                    {formData.categoryId ? getCategoryName(formData.categoryId) : 'Sélectionner une catégorie'}
+                  </Text>
+                  <Icon name={showCategoryDropdown ? "chevron-up" : "chevron-down"} size={20} color={colors.textLight} />
+                </TouchableOpacity>
+                
+                {showCategoryDropdown && (
+                  <View style={[commonStyles.card, { marginTop: 4, maxHeight: 200 }]}>
+                    <ScrollView>
+                      {categories.filter(cat => cat.isActive).map(category => (
+                        <TouchableOpacity
+                          key={category.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: 12,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                          }}
+                          onPress={() => {
+                            setFormData({ ...formData, categoryId: category.id });
+                            setShowCategoryDropdown(false);
+                          }}
+                        >
+                          <View style={{
+                            width: 12,
+                            height: 12,
+                            borderRadius: 6,
+                            backgroundColor: category.color,
+                            marginRight: 12
+                          }} />
+                          <Text style={commonStyles.text}>{category.name}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {/* Pricing Section */}
+              <Text style={[commonStyles.text, { marginBottom: 12, fontWeight: '600', fontSize: 16 }]}>
+                💰 Tarification
+              </Text>
+
+              <View style={{ marginBottom: 16 }}>
+                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  🏷️ Prix de détail *
+                </Text>
+                <TextInput
+                  style={commonStyles.input}
+                  value={formData.retailPrice}
+                  onChangeText={(text) => setFormData({ ...formData, retailPrice: text })}
+                  placeholder="0"
+                  keyboardType="numeric"
+                />
+              </View>
+
               <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
-                    💰 Prix de vente *
+                    📦 Prix de gros
                   </Text>
                   <TextInput
                     style={commonStyles.input}
-                    value={formData.price}
-                    onChangeText={(text) => setFormData({ ...formData, price: text })}
+                    value={formData.wholesalePrice}
+                    onChangeText={(text) => setFormData({ ...formData, wholesalePrice: text })}
                     placeholder="0"
                     keyboardType="numeric"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
-                    🏷️ Prix d'achat
+                    📊 Qté min. gros
                   </Text>
                   <TextInput
                     style={commonStyles.input}
-                    value={formData.cost}
-                    onChangeText={(text) => setFormData({ ...formData, cost: text })}
+                    value={formData.wholesaleMinQuantity}
+                    onChangeText={(text) => setFormData({ ...formData, wholesaleMinQuantity: text })}
                     placeholder="0"
                     keyboardType="numeric"
                   />
                 </View>
               </View>
 
+              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                    🎉 Prix promotionnel
+                  </Text>
+                  <TextInput
+                    style={commonStyles.input}
+                    value={formData.promotionalPrice}
+                    onChangeText={(text) => setFormData({ ...formData, promotionalPrice: text })}
+                    placeholder="0"
+                    keyboardType="numeric"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                    📅 Valide jusqu'au
+                  </Text>
+                  <TextInput
+                    style={commonStyles.input}
+                    value={formData.promotionalValidUntil}
+                    onChangeText={(text) => setFormData({ ...formData, promotionalValidUntil: text })}
+                    placeholder="YYYY-MM-DD"
+                  />
+                </View>
+              </View>
+
               <View style={{ marginBottom: 16 }}>
                 <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
-                  📦 Catégorie *
+                  🏷️ Prix d'achat
                 </Text>
                 <TextInput
                   style={commonStyles.input}
-                  value={formData.category}
-                  onChangeText={(text) => setFormData({ ...formData, category: text })}
-                  placeholder="Ex: Électronique, Vêtements, Alimentation..."
+                  value={formData.cost}
+                  onChangeText={(text) => setFormData({ ...formData, cost: text })}
+                  placeholder="0"
+                  keyboardType="numeric"
                 />
               </View>
 

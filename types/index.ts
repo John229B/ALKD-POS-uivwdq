@@ -8,14 +8,29 @@ export interface User {
   isActive: boolean;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Product {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  // Multiple pricing system
+  retailPrice: number; // Prix de détail (par défaut)
+  wholesalePrice?: number; // Prix de gros
+  wholesaleMinQuantity?: number; // Quantité minimum pour prix de gros
+  promotionalPrice?: number; // Prix promotionnel
+  promotionalValidUntil?: Date; // Date limite du prix promotionnel
   cost: number;
   barcode?: string;
-  category: string;
+  categoryId: string; // Changed from category string to categoryId
   stock: number;
   minStock: number;
   imageUrl?: string;
@@ -40,6 +55,7 @@ export interface CartItem {
   product: Product;
   quantity: number;
   discount: number;
+  unitPrice: number; // The actual price applied (retail, wholesale, or promotional)
   subtotal: number;
 }
 

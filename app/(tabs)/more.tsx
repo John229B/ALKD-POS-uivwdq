@@ -51,21 +51,24 @@ const menuItems: MenuItem[] = [
   {
     id: 'licenses',
     title: 'Licences',
-    description: 'Gestion des licences',
+    description: 'Gestion des licences clients',
     icon: 'key-outline',
-    route: '#',
+    route: '/licenses',
     color: colors.primary,
   },
 ];
 
 export default function MoreScreen() {
   const handleMenuPress = (item: MenuItem) => {
-    console.log('Menu item pressed:', item.title);
-    if (item.route !== '#') {
+    console.log('Menu item pressed:', item.title, 'Route:', item.route);
+    try {
       router.push(item.route as any);
-    } else {
-      // Pour les fonctionnalités futures
-      console.log('Fonctionnalité à venir:', item.title);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback pour les routes qui n'existent pas encore
+      if (item.id === 'licenses') {
+        router.push('/licenses');
+      }
     }
   };
 
@@ -107,6 +110,23 @@ export default function MoreScreen() {
               />
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Section pour les fonctionnalités futures */}
+        <View style={styles.futureSection}>
+          <Text style={styles.futureSectionTitle}>Fonctionnalités à venir</Text>
+          <View style={styles.futureItem}>
+            <Icon name="cloud-upload" size={24} color={colors.textLight} />
+            <Text style={styles.futureItemText}>Synchronisation cloud</Text>
+          </View>
+          <View style={styles.futureItem}>
+            <Icon name="analytics" size={24} color={colors.textLight} />
+            <Text style={styles.futureItemText}>Analyses avancées</Text>
+          </View>
+          <View style={styles.futureItem}>
+            <Icon name="notifications" size={24} color={colors.textLight} />
+            <Text style={styles.futureItemText}>Notifications push</Text>
+          </View>
         </View>
 
         <View style={styles.footer}>
@@ -185,6 +205,29 @@ const styles = {
     fontSize: fontSizes.sm,
     color: colors.textLight,
     lineHeight: 18,
+  },
+  futureSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+    marginTop: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  futureSectionTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '600' as const,
+    color: colors.text,
+    marginBottom: spacing.md,
+  },
+  futureItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+  },
+  futureItemText: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
   },
   footer: {
     alignItems: 'center' as const,

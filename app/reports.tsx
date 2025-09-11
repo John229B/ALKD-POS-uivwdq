@@ -1,27 +1,35 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
-import { getSales, getProducts, getCustomers, getSettings } from '../utils/storage';
 import Icon from '../components/Icon';
+import { getSales, getProducts, getCustomers, getSettings } from '../utils/storage';
 import { Sale, Product, Customer, AppSettings } from '../types';
+
+interface ReportData {
+  totalRevenue: number;
+  totalSales: number;
+  averageOrderValue: number;
+  topProducts: Array<{ product: Product; quantity: number; revenue: number }>;
+  paymentMethods: Array<{ method: string; count: number; amount: number }>;
+  dailyRevenue: Array<{ date: string; revenue: number; sales: number }>;
+  customerStats: {
+    totalCustomers: number;
+    newCustomers: number;
+    creditAmount: number;
+  };
+}
 
 export default function ReportsScreen() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [reportData, setReportData] = useState<ReportData | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'year'>('today');
-  const [reportData, setReportData] = useState({
-    totalRevenue: 0,
-    totalSales: 0,
-    averageSale: 0,
-    topProducts: [] as { name: string; quantity: number; revenue: number }[],
-    paymentMethods: {} as Record<string, number>,
-    creditSales: 0,
-  });
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -34,6 +42,7 @@ export default function ReportsScreen() {
   }, [sales, products, selectedPeriod]);
 
   const loadData = async () => {
+    console.log('Loading reports data...');
     try {
       const [salesData, productsData, customersData, settingsData] = await Promise.all([
         getSales(),
@@ -41,93 +50,149 @@ export default function ReportsScreen() {
         getCustomers(),
         getSettings(),
       ]);
+
       setSales(salesData);
       setProducts(productsData);
       setCustomers(customersData);
       setSettings(settingsData);
+      console.log('Reports data loaded:', {
+        sales: salesData.length,
+        products: productsData.length,
+        customers: customersData.length,
+      });
     } catch (error) {
-      console.log('Error loading data:', error);
+      console.error('Error loading reports data:', error);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setRefreshing(false);
   };
 
   const getDateRange = () => {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
+    let startDate: Date;
+
     switch (selectedPeriod) {
       case 'today':
-        return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
       case 'week':
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        return { start: weekStart, end: new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000) };
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
       case 'month':
-        const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-        const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-        return { start: monthStart, end: monthEnd };
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
       case 'year':
-        const yearStart = new Date(today.getFullYear(), 0, 1);
-        const yearEnd = new Date(today.getFullYear() + 1, 0, 1);
-        return { start: yearStart, end: yearEnd };
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
       default:
-        return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     }
+
+    return { startDate, endDate: now };
   };
 
   const calculateReportData = () => {
-    const { start, end } = getDateRange();
+    console.log('Calculating report data for period:', selectedPeriod);
+    const { startDate, endDate } = getDateRange();
+    
+    // Filtrer les ventes par période
     const filteredSales = sales.filter(sale => {
       const saleDate = new Date(sale.date);
-      return saleDate >= start && saleDate < end;
+      return saleDate >= startDate && saleDate <= endDate;
     });
 
+    console.log('Filtered sales:', filteredSales.length);
+
+    // Calculer les revenus totaux
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
     const totalSales = filteredSales.length;
-    const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0;
+    const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
 
-    // Calcul des produits les plus vendus
-    const productSales: Record<string, { quantity: number; revenue: number }> = {};
+    // Calculer les produits les plus vendus
+    const productSales: { [key: string]: { quantity: number; revenue: number } } = {};
+    
     filteredSales.forEach(sale => {
       sale.items.forEach(item => {
         if (!productSales[item.productId]) {
           productSales[item.productId] = { quantity: 0, revenue: 0 };
         }
         productSales[item.productId].quantity += item.quantity;
-        productSales[item.productId].revenue += item.total;
+        productSales[item.productId].revenue += item.quantity * item.price;
       });
     });
 
     const topProducts = Object.entries(productSales)
-      .map(([productId, data]) => {
+      .map(([productId, stats]) => {
         const product = products.find(p => p.id === productId);
-        return {
-          name: product?.name || 'Produit inconnu',
-          quantity: data.quantity,
-          revenue: data.revenue,
-        };
+        return product ? { product, ...stats } : null;
       })
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+      .filter(Boolean)
+      .sort((a, b) => b!.revenue - a!.revenue)
+      .slice(0, 5) as Array<{ product: Product; quantity: number; revenue: number }>;
 
-    // Calcul des méthodes de paiement
-    const paymentMethods: Record<string, number> = {};
+    // Calculer les méthodes de paiement
+    const paymentMethodStats: { [key: string]: { count: number; amount: number } } = {};
+    
     filteredSales.forEach(sale => {
-      paymentMethods[sale.paymentMethod] = (paymentMethods[sale.paymentMethod] || 0) + sale.total;
+      if (!paymentMethodStats[sale.paymentMethod]) {
+        paymentMethodStats[sale.paymentMethod] = { count: 0, amount: 0 };
+      }
+      paymentMethodStats[sale.paymentMethod].count++;
+      paymentMethodStats[sale.paymentMethod].amount += sale.total;
     });
 
-    // Calcul des ventes à crédit
-    const creditSales = filteredSales
-      .filter(sale => sale.paymentMethod === 'credit')
-      .reduce((sum, sale) => sum + sale.total, 0);
+    const paymentMethods = Object.entries(paymentMethodStats).map(([method, stats]) => ({
+      method,
+      ...stats,
+    }));
 
-    setReportData({
+    // Calculer les revenus quotidiens (pour les 7 derniers jours)
+    const dailyRevenue: Array<{ date: string; revenue: number; sales: number }> = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const daySales = sales.filter(sale => sale.date.startsWith(dateStr));
+      const dayRevenue = daySales.reduce((sum, sale) => sum + sale.total, 0);
+      
+      dailyRevenue.push({
+        date: dateStr,
+        revenue: dayRevenue,
+        sales: daySales.length,
+      });
+    }
+
+    // Statistiques clients
+    const newCustomersThisPeriod = customers.filter(customer => {
+      const customerDate = new Date(customer.createdAt || '');
+      return customerDate >= startDate && customerDate <= endDate;
+    });
+
+    const creditAmount = customers.reduce((sum, customer) => sum + (customer.creditBalance || 0), 0);
+
+    const customerStats = {
+      totalCustomers: customers.length,
+      newCustomers: newCustomersThisPeriod.length,
+      creditAmount,
+    };
+
+    const data: ReportData = {
       totalRevenue,
       totalSales,
-      averageSale,
+      averageOrderValue,
       topProducts,
       paymentMethods,
-      creditSales,
-    });
+      dailyRevenue,
+      customerStats,
+    };
+
+    console.log('Report data calculated:', data);
+    setReportData(data);
   };
 
   const formatCurrency = (amount: number | undefined | null): string => {
@@ -145,33 +210,58 @@ export default function ReportsScreen() {
       mobile: 'Mobile Money',
       credit: 'À crédit',
     };
-    return labels[method] || method;
+    return labels[method as keyof typeof labels] || method;
   };
 
-  const periodLabels = {
-    today: "Aujourd'hui",
-    week: 'Cette semaine',
-    month: 'Ce mois',
-    year: 'Cette année',
+  const getPeriodLabel = (period: string): string => {
+    const labels = {
+      today: 'Aujourd\'hui',
+      week: 'Cette semaine',
+      month: 'Ce mois',
+      year: 'Cette année',
+    };
+    return labels[period as keyof typeof labels] || period;
   };
+
+  if (!reportData) {
+    return (
+      <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Icon name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Rapports</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Chargement des données...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
           <Icon name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rapports</Text>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Rapports</Text>
+          <Text style={styles.headerSubtitle}>Analyses et statistiques</Text>
+        </View>
       </View>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {/* Period Selector */}
-        <View style={styles.periodSelector}>
-          {(Object.keys(periodLabels) as Array<keyof typeof periodLabels>).map((period) => (
+      {/* Period Selector */}
+      <View style={styles.periodSelector}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {(['today', 'week', 'month', 'year'] as const).map((period) => (
             <TouchableOpacity
               key={period}
               style={[
@@ -186,36 +276,36 @@ export default function ReportsScreen() {
                   selectedPeriod === period && styles.periodButtonTextActive,
                 ]}
               >
-                {periodLabels[period]}
+                {getPeriodLabel(period)}
               </Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
+      </View>
 
-        {/* Summary Cards */}
-        <View style={styles.summaryGrid}>
-          <View style={styles.summaryCard}>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Key Metrics */}
+        <View style={styles.metricsContainer}>
+          <View style={styles.metricCard}>
             <Icon name="trending-up" size={24} color={colors.success} />
-            <Text style={styles.summaryValue}>{formatCurrency(reportData.totalRevenue)}</Text>
-            <Text style={styles.summaryLabel}>Chiffre d'affaires</Text>
+            <Text style={styles.metricValue}>{formatCurrency(reportData.totalRevenue)}</Text>
+            <Text style={styles.metricLabel}>Revenus</Text>
           </View>
-
-          <View style={styles.summaryCard}>
-            <Icon name="shopping-bag" size={24} color={colors.info} />
-            <Text style={styles.summaryValue}>{reportData.totalSales}</Text>
-            <Text style={styles.summaryLabel}>Ventes</Text>
+          <View style={styles.metricCard}>
+            <Icon name="receipt" size={24} color={colors.primary} />
+            <Text style={styles.metricValue}>{reportData.totalSales}</Text>
+            <Text style={styles.metricLabel}>Ventes</Text>
           </View>
-
-          <View style={styles.summaryCard}>
-            <Icon name="calculator" size={24} color={colors.warning} />
-            <Text style={styles.summaryValue}>{formatCurrency(reportData.averageSale)}</Text>
-            <Text style={styles.summaryLabel}>Panier moyen</Text>
-          </View>
-
-          <View style={styles.summaryCard}>
-            <Icon name="credit-card" size={24} color={colors.error} />
-            <Text style={styles.summaryValue}>{formatCurrency(reportData.creditSales)}</Text>
-            <Text style={styles.summaryLabel}>Ventes à crédit</Text>
+          <View style={styles.metricCard}>
+            <Icon name="calculator" size={24} color={colors.info} />
+            <Text style={styles.metricValue}>{formatCurrency(reportData.averageOrderValue)}</Text>
+            <Text style={styles.metricLabel}>Panier moyen</Text>
           </View>
         </View>
 
@@ -223,37 +313,93 @@ export default function ReportsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Produits les plus vendus</Text>
           {reportData.topProducts.length > 0 ? (
-            reportData.topProducts.map((product, index) => (
-              <View key={index} style={styles.productItem}>
+            reportData.topProducts.map((item, index) => (
+              <View key={item.product.id} style={styles.productItem}>
                 <View style={styles.productRank}>
-                  <Text style={styles.productRankText}>{index + 1}</Text>
+                  <Text style={styles.rankNumber}>{index + 1}</Text>
                 </View>
                 <View style={styles.productInfo}>
-                  <Text style={styles.productName}>{product.name}</Text>
+                  <Text style={styles.productName}>{item.product.name}</Text>
                   <Text style={styles.productStats}>
-                    {product.quantity} unités • {formatCurrency(product.revenue)}
+                    {item.quantity} vendus • {formatCurrency(item.revenue)}
                   </Text>
                 </View>
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>Aucune vente pour cette période</Text>
+            <Text style={styles.noDataText}>Aucune donnée disponible</Text>
           )}
         </View>
 
         {/* Payment Methods */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Méthodes de paiement</Text>
-          {Object.entries(reportData.paymentMethods).length > 0 ? (
-            Object.entries(reportData.paymentMethods).map(([method, amount]) => (
-              <View key={method} style={styles.paymentItem}>
-                <Text style={styles.paymentMethod}>{getPaymentMethodLabel(method)}</Text>
-                <Text style={styles.paymentAmount}>{formatCurrency(amount)}</Text>
+          {reportData.paymentMethods.length > 0 ? (
+            reportData.paymentMethods.map((method) => (
+              <View key={method.method} style={styles.paymentItem}>
+                <Text style={styles.paymentMethod}>{getPaymentMethodLabel(method.method)}</Text>
+                <View style={styles.paymentStats}>
+                  <Text style={styles.paymentCount}>{method.count} transactions</Text>
+                  <Text style={styles.paymentAmount}>{formatCurrency(method.amount)}</Text>
+                </View>
               </View>
             ))
           ) : (
-            <Text style={styles.emptyText}>Aucune vente pour cette période</Text>
+            <Text style={styles.noDataText}>Aucune donnée disponible</Text>
           )}
+        </View>
+
+        {/* Customer Stats */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Statistiques clients</Text>
+          <View style={styles.customerStatsContainer}>
+            <View style={styles.customerStat}>
+              <Icon name="people" size={20} color={colors.primary} />
+              <Text style={styles.customerStatValue}>{reportData.customerStats.totalCustomers}</Text>
+              <Text style={styles.customerStatLabel}>Total clients</Text>
+            </View>
+            <View style={styles.customerStat}>
+              <Icon name="person-add" size={20} color={colors.success} />
+              <Text style={styles.customerStatValue}>{reportData.customerStats.newCustomers}</Text>
+              <Text style={styles.customerStatLabel}>Nouveaux</Text>
+            </View>
+            <View style={styles.customerStat}>
+              <Icon name="card" size={20} color={colors.warning} />
+              <Text style={styles.customerStatValue}>{formatCurrency(reportData.customerStats.creditAmount)}</Text>
+              <Text style={styles.customerStatLabel}>Crédit total</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Daily Revenue Chart */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Revenus des 7 derniers jours</Text>
+          <View style={styles.chartContainer}>
+            {reportData.dailyRevenue.map((day, index) => {
+              const maxRevenue = Math.max(...reportData.dailyRevenue.map(d => d.revenue));
+              const height = maxRevenue > 0 ? (day.revenue / maxRevenue) * 100 : 0;
+              
+              return (
+                <View key={day.date} style={styles.chartBar}>
+                  <View style={styles.barContainer}>
+                    <View
+                      style={[
+                        styles.bar,
+                        {
+                          height: `${height}%`,
+                          backgroundColor: colors.primary,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.barLabel}>
+                    {new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short' })}
+                  </Text>
+                  <Text style={styles.barValue}>{formatCurrency(day.revenue)}</Text>
+                </View>
+              );
+            })}
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -266,37 +412,51 @@ const styles = {
     alignItems: 'center' as const,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   backButton: {
-    marginRight: spacing.md,
-    padding: spacing.xs,
+    padding: spacing.sm,
+    marginRight: spacing.sm,
+  },
+  headerContent: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: fontSizes.xl,
     fontWeight: '700' as const,
     color: colors.text,
   },
-  scrollView: {
+  headerSubtitle: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    marginTop: 2,
+  },
+  loadingContainer: {
     flex: 1,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  loadingText: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
   },
   periodSelector: {
-    flexDirection: 'row' as const,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   periodButton: {
-    flex: 1,
-    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
+    paddingVertical: spacing.sm,
+    marginRight: spacing.sm,
+    borderRadius: 20,
+    backgroundColor: colors.background,
     borderWidth: 1,
     borderColor: colors.border,
-    alignItems: 'center' as const,
   },
   periodButtonActive: {
     backgroundColor: colors.primary,
@@ -304,43 +464,47 @@ const styles = {
   },
   periodButtonText: {
     fontSize: fontSizes.sm,
-    fontWeight: '500' as const,
     color: colors.text,
+    fontWeight: '500' as const,
   },
   periodButtonTextActive: {
-    color: colors.background,
+    color: colors.surface,
+    fontWeight: '600' as const,
   },
-  summaryGrid: {
+  scrollView: {
+    flex: 1,
+  },
+  metricsContainer: {
     flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
     paddingHorizontal: spacing.lg,
-    gap: spacing.md,
+    paddingVertical: spacing.md,
+    gap: spacing.sm,
   },
-  summaryCard: {
-    width: isSmallScreen ? '48%' : '23%',
+  metricCard: {
+    flex: 1,
     backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.lg,
+    borderRadius: 16,
+    padding: spacing.md,
     alignItems: 'center' as const,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  summaryValue: {
-    fontSize: fontSizes.lg,
+  metricValue: {
+    fontSize: isSmallScreen ? fontSizes.md : fontSizes.lg,
     fontWeight: '700' as const,
     color: colors.text,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
     textAlign: 'center' as const,
   },
-  summaryLabel: {
-    fontSize: fontSizes.sm,
+  metricLabel: {
+    fontSize: fontSizes.xs,
     color: colors.textLight,
     marginTop: spacing.xs,
     textAlign: 'center' as const,
   },
   section: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.md,
   },
   sectionTitle: {
     fontSize: fontSizes.lg,
@@ -352,7 +516,7 @@ const styles = {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
@@ -367,10 +531,10 @@ const styles = {
     alignItems: 'center' as const,
     marginRight: spacing.md,
   },
-  productRankText: {
+  rankNumber: {
     fontSize: fontSizes.sm,
     fontWeight: '700' as const,
-    color: colors.background,
+    color: colors.surface,
   },
   productInfo: {
     flex: 1,
@@ -390,7 +554,7 @@ const styles = {
     justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
@@ -398,19 +562,87 @@ const styles = {
   },
   paymentMethod: {
     fontSize: fontSizes.md,
-    fontWeight: '500' as const,
+    fontWeight: '600' as const,
     color: colors.text,
+  },
+  paymentStats: {
+    alignItems: 'flex-end' as const,
+  },
+  paymentCount: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
   },
   paymentAmount: {
     fontSize: fontSizes.md,
     fontWeight: '600' as const,
-    color: colors.primary,
+    color: colors.text,
   },
-  emptyText: {
+  customerStatsContainer: {
+    flexDirection: 'row' as const,
+    gap: spacing.sm,
+  },
+  customerStat: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center' as const,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  customerStatValue: {
+    fontSize: fontSizes.md,
+    fontWeight: '700' as const,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  customerStatLabel: {
+    fontSize: fontSizes.xs,
+    color: colors.textLight,
+    marginTop: spacing.xs,
+    textAlign: 'center' as const,
+  },
+  chartContainer: {
+    flexDirection: 'row' as const,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  chartBar: {
+    flex: 1,
+    alignItems: 'center' as const,
+  },
+  barContainer: {
+    height: 100,
+    width: '100%',
+    justifyContent: 'flex-end' as const,
+    alignItems: 'center' as const,
+    marginBottom: spacing.xs,
+  },
+  bar: {
+    width: '80%',
+    borderRadius: 4,
+    minHeight: 2,
+  },
+  barLabel: {
+    fontSize: fontSizes.xs,
+    color: colors.textLight,
+    marginBottom: spacing.xs,
+  },
+  barValue: {
+    fontSize: fontSizes.xs,
+    color: colors.text,
+    fontWeight: '600' as const,
+    textAlign: 'center' as const,
+  },
+  noDataText: {
     fontSize: fontSizes.md,
     color: colors.textLight,
     textAlign: 'center' as const,
     fontStyle: 'italic' as const,
-    paddingVertical: spacing.xl,
+    paddingVertical: spacing.lg,
   },
 };

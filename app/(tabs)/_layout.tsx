@@ -12,12 +12,20 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.text,
         tabBarStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingBottom: 8,
           paddingTop: 8,
           height: 70,
+          shadowColor: colors.text,
+          shadowOffset: {
+            width: 0,
+            height: -2,
+          },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 8,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -63,6 +71,19 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="ellipsis-horizontal" size={28} color={color} />
           ),
+        }}
+      />
+      {/* Masquer les autres onglets qui ne doivent pas apparaître dans la navigation principale */}
+      <Tabs.Screen
+        name="customers"
+        options={{
+          href: null, // Ceci masque l'onglet de la navigation
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          href: null, // Ceci masque l'onglet de la navigation
         }}
       />
     </Tabs>

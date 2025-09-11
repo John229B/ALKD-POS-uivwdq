@@ -4,8 +4,8 @@ import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dime
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
-import { getProducts, storeProducts, getSettings, getCategories } from '../../utils/storage';
-import { Product, AppSettings, Category } from '../../types';
+import { getProducts, storeProducts, getSettings, getCategories, deleteProduct } from '../../utils/storage';
+import { Product, AppSettings, Category, UNITS_OF_MEASUREMENT } from '../../types';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 
@@ -18,6 +18,9 @@ export default function ProductsScreen() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState('all');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [customUnit, setCustomUnit] = useState('');
+  const [showCustomUnitInput, setShowCustomUnitInput] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -31,6 +34,7 @@ export default function ProductsScreen() {
     categoryId: '',
     stock: '',
     minStock: '',
+    unit: 'pièce', // Default unit
   });
 
   useEffect(() => {
@@ -76,6 +80,12 @@ export default function ProductsScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   }, [settings?.currency]);
 
+  // Get unit display name
+  const getUnitDisplayName = useCallback((unitId: string) => {
+    const predefinedUnit = UNITS_OF_MEASUREMENT.find(u => u.id === unitId);
+    return predefinedUnit ? predefinedUnit.symbol : unitId;
+  }, []);
+
   // Memoize filtered products to prevent unnecessary recalculations
   const filteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -103,8 +113,11 @@ export default function ProductsScreen() {
       categoryId: '',
       stock: '',
       minStock: '',
+      unit: 'pièce',
     });
     setEditingProduct(null);
+    setCustomUnit('');
+    setShowCustomUnitInput(false);
   }, []);
 
   const openAddModal = useCallback(() => {
@@ -138,14 +151,23 @@ export default function ProductsScreen() {
       categoryId: product.categoryId || '',
       stock: safeToString(product.stock),
       minStock: safeToString(product.minStock),
+      unit: product.unit || 'pièce',
     });
+
+    // Check if it's a custom unit
+    const isPredefinedUnit = UNITS_OF_MEASUREMENT.some(u => u.id === product.unit);
+    if (!isPredefinedUnit && product.unit) {
+      setCustomUnit(product.unit);
+      setShowCustomUnitInput(true);
+    }
+
     setEditingProduct(product);
     setShowAddModal(true);
   }, []);
 
   const saveProduct = useCallback(async () => {
-    if (!formData.name.trim() || !formData.retailPrice || !formData.categoryId) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires (Nom, Prix de détail, Catégorie)');
+    if (!formData.name.trim() || !formData.retailPrice || !formData.categoryId || !formData.unit) {
+      Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires (Nom, Prix de détail, Catégorie, Unité)');
       return;
     }
 
@@ -157,6 +179,7 @@ export default function ProductsScreen() {
     const cost = parseFloat(formData.cost) || 0;
     const stock = parseInt(formData.stock) || 0;
     const minStock = parseInt(formData.minStock) || 0;
+    const unit = showCustomUnitInput ? customUnit.trim() : formData.unit;
 
     if (retailPrice <= 0) {
       Alert.alert('Erreur', 'Le prix de détail doit être supérieur à 0');
@@ -183,6 +206,11 @@ export default function ProductsScreen() {
       return;
     }
 
+    if (showCustomUnitInput && !customUnit.trim()) {
+      Alert.alert('Erreur', 'Veuillez spécifier l\'unité personnalisée');
+      return;
+    }
+
     try {
       let updatedProducts: Product[];
 
@@ -202,6 +230,7 @@ export default function ProductsScreen() {
           categoryId: formData.categoryId,
           stock,
           minStock,
+          unit,
           updatedAt: new Date(),
         };
 
@@ -224,6 +253,7 @@ export default function ProductsScreen() {
           categoryId: formData.categoryId,
           stock,
           minStock,
+          unit,
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -245,7 +275,7 @@ export default function ProductsScreen() {
       console.error('Products: Error saving product:', error);
       Alert.alert('Erreur', 'Erreur lors de la sauvegarde du produit');
     }
-  }, [formData, editingProduct, products, resetForm]);
+  }, [formData, editingProduct, products, resetForm, showCustomUnitInput, customUnit]);
 
   const toggleProductStatus = useCallback(async (product: Product) => {
     try {
@@ -266,6 +296,40 @@ export default function ProductsScreen() {
     } catch (error) {
       console.error('Products: Error toggling product status:', error);
       Alert.alert('Erreur', 'Erreur lors de la modification du statut');
+    }
+  }, [products]);
+
+  const confirmDeleteProduct = useCallback((product: Product) => {
+    Alert.alert(
+      'Confirmer la suppression',
+      `Êtes-vous sûr de vouloir supprimer définitivement le produit "${product.name}" ?\n\nCette action est irréversible et supprimera toutes les données associées.`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => handleDeleteProduct(product),
+        },
+      ]
+    );
+  }, []);
+
+  const handleDeleteProduct = useCallback(async (product: Product) => {
+    try {
+      console.log('Products: Deleting product permanently:', product.name);
+      await deleteProduct(product.id);
+      
+      // Update local state
+      const updatedProducts = products.filter(p => p.id !== product.id);
+      setProducts(updatedProducts);
+
+      Alert.alert('Succès', 'Produit supprimé définitivement');
+    } catch (error) {
+      console.error('Products: Error deleting product:', error);
+      Alert.alert('Erreur', 'Erreur lors de la suppression du produit');
     }
   }, [products]);
 
@@ -304,13 +368,13 @@ export default function ProductsScreen() {
       info.push({
         type: 'wholesale',
         price: product.wholesalePrice,
-        label: `📦 Gros (${product.wholesaleMinQuantity}+ unités)`,
+        label: `📦 Gros (${product.wholesaleMinQuantity}+ ${getUnitDisplayName(product.unit)})`,
         color: colors.primary
       });
     }
 
     return info;
-  }, []);
+  }, [getUnitDisplayName]);
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -436,6 +500,9 @@ export default function ProductsScreen() {
                           {getCategoryName(product.categoryId)}
                         </Text>
                       </View>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                        📏 Unité: {getUnitDisplayName(product.unit)}
+                      </Text>
                       {product.barcode && (
                         <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                           🏷️ {product.barcode}
@@ -445,7 +512,7 @@ export default function ProductsScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.lg }]}>
-                      {formatCurrency(product.retailPrice)}
+                      {formatCurrency(product.retailPrice)}/{getUnitDisplayName(product.unit)}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       Coût: {formatCurrency(product.cost)}
@@ -466,7 +533,7 @@ export default function ProductsScreen() {
                     {priceInfo.map((info, index) => (
                       <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
                         <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: info.color }]}>
-                          {info.label}: {formatCurrency(info.price)}
+                          {info.label}: {formatCurrency(info.price)}/{getUnitDisplayName(product.unit)}
                         </Text>
                       </View>
                     ))}
@@ -477,7 +544,7 @@ export default function ProductsScreen() {
                 <View style={[commonStyles.row, { marginBottom: spacing.sm, alignItems: 'flex-start' }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                      📊 Stock: {product.stock || 0} unités (Min: {product.minStock || 0})
+                      📊 Stock: {product.stock || 0} {getUnitDisplayName(product.unit)} (Min: {product.minStock || 0})
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: stockStatus.color, fontWeight: '600' }]}>
                       {stockStatus.text}
@@ -524,6 +591,22 @@ export default function ProductsScreen() {
                         fontSize: fontSizes.xs 
                       }}>
                         {product.isActive ? 'Désactiver' : 'Activer'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      buttonStyles.outline,
+                      buttonStyles.small,
+                      { flex: 1, borderColor: colors.danger }
+                    ]}
+                    onPress={() => confirmDeleteProduct(product)}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
+                      <Icon name="trash" size={14} color={colors.danger} />
+                      <Text style={{ color: colors.danger, fontSize: fontSizes.xs }}>
+                        Supprimer
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -637,6 +720,83 @@ export default function ProductsScreen() {
                 )}
               </View>
 
+              {/* Unit Selection */}
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  📏 Unité de mesure *
+                </Text>
+                <TouchableOpacity
+                  style={[commonStyles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                  onPress={() => setShowUnitDropdown(!showUnitDropdown)}
+                >
+                  <Text style={{ color: formData.unit ? colors.text : colors.textLight }}>
+                    {formData.unit ? getUnitDisplayName(formData.unit) : 'Sélectionner une unité'}
+                  </Text>
+                  <Icon name={showUnitDropdown ? "chevron-up" : "chevron-down"} size={20} color={colors.textLight} />
+                </TouchableOpacity>
+                
+                {showUnitDropdown && (
+                  <View style={[commonStyles.card, { marginTop: spacing.xs, maxHeight: 250 }]}>
+                    <ScrollView>
+                      {UNITS_OF_MEASUREMENT.map(unit => (
+                        <TouchableOpacity
+                          key={unit.id}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            padding: spacing.sm,
+                            borderBottomWidth: 1,
+                            borderBottomColor: colors.border,
+                          }}
+                          onPress={() => {
+                            setFormData({ ...formData, unit: unit.id });
+                            setShowUnitDropdown(false);
+                            setShowCustomUnitInput(false);
+                          }}
+                        >
+                          <Text style={[commonStyles.text, { flex: 1 }]}>
+                            {unit.name} ({unit.symbol})
+                          </Text>
+                          {unit.allowsFractions && (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                              Fractions autorisées
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          padding: spacing.sm,
+                          backgroundColor: colors.backgroundLight,
+                        }}
+                        onPress={() => {
+                          setShowCustomUnitInput(true);
+                          setShowUnitDropdown(false);
+                        }}
+                      >
+                        <Icon name="add" size={16} color={colors.primary} />
+                        <Text style={[commonStyles.text, { marginLeft: spacing.xs, color: colors.primary }]}>
+                          Unité personnalisée
+                        </Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {showCustomUnitInput && (
+                  <View style={{ marginTop: spacing.xs }}>
+                    <TextInput
+                      style={commonStyles.input}
+                      value={customUnit}
+                      onChangeText={setCustomUnit}
+                      placeholder="Ex: sac, paquet, boîte..."
+                    />
+                  </View>
+                )}
+              </View>
+
               {/* Pricing Section */}
               <Text style={[commonStyles.text, { marginBottom: spacing.sm, fontWeight: '600', fontSize: fontSizes.lg }]}>
                 💰 Tarification
@@ -644,7 +804,7 @@ export default function ProductsScreen() {
 
               <View style={{ marginBottom: spacing.md }}>
                 <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                  🏷️ Prix de détail *
+                  🏷️ Prix de détail * (par {getUnitDisplayName(showCustomUnitInput ? customUnit : formData.unit)})
                 </Text>
                 <TextInput
                   style={commonStyles.input}

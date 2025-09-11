@@ -35,6 +35,8 @@ export interface Product {
   minStock: number;
   imageUrl?: string;
   isActive: boolean;
+  // New unit of measurement field
+  unit: string; // Unit of measurement (Kg, L, Cart, pièce, etc.)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,7 +55,7 @@ export interface Customer {
 
 export interface CartItem {
   product: Product;
-  quantity: number;
+  quantity: number; // Now supports fractional quantities
   discount: number;
   unitPrice: number; // The actual price applied (retail, wholesale, or promotional)
   subtotal: number;
@@ -83,7 +85,7 @@ export interface SaleItem {
   id: string;
   productId: string;
   product?: Product;
-  quantity: number;
+  quantity: number; // Now supports fractional quantities
   unitPrice: number;
   discount: number;
   subtotal: number;
@@ -122,3 +124,17 @@ export interface License {
   isActive: boolean;
   clientId: string;
 }
+
+// Predefined units of measurement
+export const UNITS_OF_MEASUREMENT = [
+  { id: 'kg', name: 'Kilogramme', symbol: 'Kg', allowsFractions: true },
+  { id: 'l', name: 'Litre', symbol: 'L', allowsFractions: true },
+  { id: 'cart', name: 'Carton', symbol: 'Cart', allowsFractions: false },
+  { id: 'piece', name: 'Unité', symbol: 'pièce', allowsFractions: true },
+  { id: 'g', name: 'Gramme', symbol: 'g', allowsFractions: true },
+  { id: 'ml', name: 'Millilitre', symbol: 'ml', allowsFractions: true },
+  { id: 'pack', name: 'Pack', symbol: 'pack', allowsFractions: false },
+  { id: 'box', name: 'Boîte', symbol: 'boîte', allowsFractions: false },
+  { id: 'bottle', name: 'Bouteille', symbol: 'bouteille', allowsFractions: false },
+  { id: 'can', name: 'Canette', symbol: 'canette', allowsFractions: false },
+];

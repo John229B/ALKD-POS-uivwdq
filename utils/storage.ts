@@ -102,6 +102,20 @@ export const getProducts = async (): Promise<Product[]> => {
   return products || [];
 };
 
+// New function to delete a product permanently
+export const deleteProduct = async (productId: string): Promise<void> => {
+  try {
+    console.log('Deleting product permanently:', productId);
+    const products = await getProducts();
+    const updatedProducts = products.filter(p => p.id !== productId);
+    await storeProducts(updatedProducts);
+    console.log('Product deleted successfully');
+  } catch (error) {
+    console.error('Error deleting product:', error);
+    throw error;
+  }
+};
+
 // Customer management
 export const storeCustomers = async (customers: Customer[]): Promise<void> => {
   await storeData(STORAGE_KEYS.CUSTOMERS, customers);
@@ -186,6 +200,17 @@ export const getApplicablePrice = (product: Product, quantity: number = 1): { pr
   return { price: retailPrice, type: 'retail' };
 };
 
+// Utility function to format quantity with unit
+export const formatQuantityWithUnit = (quantity: number, unit: string): string => {
+  // Format fractional quantities nicely
+  if (quantity % 1 === 0) {
+    return `${quantity} ${unit}`;
+  } else {
+    // For fractions, show up to 3 decimal places but remove trailing zeros
+    return `${parseFloat(quantity.toFixed(3))} ${unit}`;
+  }
+};
+
 // Initialize default data
 export const initializeDefaultData = async (): Promise<void> => {
   try {
@@ -263,7 +288,7 @@ export const initializeDefaultData = async (): Promise<void> => {
       console.log('Default categories created');
     }
 
-    // Initialize default products with new pricing structure
+    // Initialize default products with new pricing structure and units
     const products = await getProducts().catch(error => {
       console.error('Error getting products during initialization:', error);
       return []; // Return empty array if getting products fails
@@ -285,6 +310,7 @@ export const initializeDefaultData = async (): Promise<void> => {
           categoryId: 'cat-001',
           stock: 50,
           minStock: 10,
+          unit: 'bouteille',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -301,13 +327,14 @@ export const initializeDefaultData = async (): Promise<void> => {
           categoryId: 'cat-002',
           stock: 25,
           minStock: 5,
+          unit: 'pièce',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
         {
           id: 'prod-003',
-          name: 'Lait 1L',
+          name: 'Lait frais',
           description: 'Lait frais pasteurisé',
           retailPrice: 1200,
           wholesalePrice: 1100,
@@ -317,6 +344,7 @@ export const initializeDefaultData = async (): Promise<void> => {
           categoryId: 'cat-003',
           stock: 30,
           minStock: 8,
+          unit: 'L',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -333,22 +361,24 @@ export const initializeDefaultData = async (): Promise<void> => {
           categoryId: 'cat-004',
           stock: 15,
           minStock: 3,
+          unit: 'pièce',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
         {
           id: 'prod-005',
-          name: 'Yaourt nature',
-          description: 'Yaourt nature 125g',
-          retailPrice: 300,
-          wholesalePrice: 280,
-          wholesaleMinQuantity: 20,
-          cost: 200,
+          name: 'Riz jasmin',
+          description: 'Riz jasmin de qualité premium',
+          retailPrice: 1000,
+          wholesalePrice: 900,
+          wholesaleMinQuantity: 5,
+          cost: 700,
           barcode: '123456789005',
           categoryId: 'cat-003',
-          stock: 40,
-          minStock: 10,
+          stock: 100,
+          minStock: 20,
+          unit: 'Kg',
           isActive: true,
           createdAt: new Date(),
           updatedAt: new Date(),

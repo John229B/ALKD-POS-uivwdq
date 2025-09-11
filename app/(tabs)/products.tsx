@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -39,7 +39,7 @@ export default function ProductsScreen() {
 
   const loadData = async () => {
     try {
-      console.log('Loading products data...');
+      console.log('Products: Loading data...');
       const [productsData, categoriesData, settingsData] = await Promise.all([
         getProducts(),
         getCategories(),
@@ -48,33 +48,48 @@ export default function ProductsScreen() {
       setProducts(productsData);
       setCategories(categoriesData);
       setSettings(settingsData);
-      console.log(`Loaded ${productsData.length} products and ${categoriesData.length} categories`);
+      console.log(`Products: Loaded ${productsData.length} products and ${categoriesData.length} categories`);
     } catch (error) {
-      console.error('Error loading products data:', error);
+      console.error('Products: Error loading data:', error);
     }
   };
 
-  const getCategoryName = (categoryId: string) => {
+  // Memoize helper functions to prevent re-renders
+  const getCategoryName = useCallback((categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category?.name || 'Catégorie inconnue';
-  };
+  }, [categories]);
 
-  const getCategoryColor = (categoryId: string) => {
+  const getCategoryColor = useCallback((categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category?.color || '#3498db';
-  };
+  }, [categories]);
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.barcode?.includes(searchQuery);
+  // Memoize currency formatter to prevent infinite loops
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      return '0 FCFA';
+    }
     
-    const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
-    
-    return matchesSearch && matchesCategory;
-  });
+    const currency = settings?.currency || 'XOF';
+    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
+    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
+  }, [settings?.currency]);
 
-  const resetForm = () => {
+  // Memoize filtered products to prevent unnecessary recalculations
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.barcode?.includes(searchQuery);
+      
+      const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategoryId, getCategoryName]);
+
+  const resetForm = useCallback(() => {
     setFormData({
       name: '',
       description: '',
@@ -90,16 +105,16 @@ export default function ProductsScreen() {
       minStock: '',
     });
     setEditingProduct(null);
-  };
+  }, []);
 
-  const openAddModal = () => {
-    console.log('Opening add product modal');
+  const openAddModal = useCallback(() => {
+    console.log('Products: Opening add product modal');
     resetForm();
     setShowAddModal(true);
-  };
+  }, [resetForm]);
 
-  const openEditModal = (product: Product) => {
-    console.log('Opening edit modal for product:', product.name);
+  const openEditModal = useCallback((product: Product) => {
+    console.log('Products: Opening edit modal for product:', product.name);
     
     // Safe conversion with null/undefined checks
     const safeToString = (value: number | undefined | null): string => {
@@ -126,9 +141,9 @@ export default function ProductsScreen() {
     });
     setEditingProduct(product);
     setShowAddModal(true);
-  };
+  }, []);
 
-  const saveProduct = async () => {
+  const saveProduct = useCallback(async () => {
     if (!formData.name.trim() || !formData.retailPrice || !formData.categoryId) {
       Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires (Nom, Prix de détail, Catégorie)');
       return;
@@ -172,7 +187,7 @@ export default function ProductsScreen() {
       let updatedProducts: Product[];
 
       if (editingProduct) {
-        console.log('Updating existing product:', editingProduct.id);
+        console.log('Products: Updating existing product:', editingProduct.id);
         const updatedProduct: Product = {
           ...editingProduct,
           name: formData.name.trim(),
@@ -194,7 +209,7 @@ export default function ProductsScreen() {
           p.id === editingProduct.id ? updatedProduct : p
         );
       } else {
-        console.log('Adding new product');
+        console.log('Products: Adding new product');
         const newProduct: Product = {
           id: uuid.v4() as string,
           name: formData.name.trim(),
@@ -227,14 +242,14 @@ export default function ProductsScreen() {
         editingProduct ? 'Produit modifié avec succès' : 'Produit ajouté avec succès'
       );
     } catch (error) {
-      console.error('Error saving product:', error);
+      console.error('Products: Error saving product:', error);
       Alert.alert('Erreur', 'Erreur lors de la sauvegarde du produit');
     }
-  };
+  }, [formData, editingProduct, products, resetForm]);
 
-  const toggleProductStatus = async (product: Product) => {
+  const toggleProductStatus = useCallback(async (product: Product) => {
     try {
-      console.log('Toggling status for product:', product.name);
+      console.log('Products: Toggling status for product:', product.name);
       const updatedProducts = products.map(p =>
         p.id === product.id
           ? { ...p, isActive: !p.isActive, updatedAt: new Date() }
@@ -249,40 +264,29 @@ export default function ProductsScreen() {
         `Produit ${product.isActive ? 'désactivé' : 'activé'} avec succès`
       );
     } catch (error) {
-      console.error('Error toggling product status:', error);
+      console.error('Products: Error toggling product status:', error);
       Alert.alert('Erreur', 'Erreur lors de la modification du statut');
     }
-  };
+  }, [products]);
 
-  const formatCurrency = (amount: number | undefined | null): string => {
-    if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('formatCurrency called with invalid amount:', amount);
-      amount = 0;
-    }
-    
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
-
-  const getStockStatus = (product: Product) => {
+  const getStockStatus = useCallback((product: Product) => {
     const stock = product.stock || 0;
     const minStock = product.minStock || 0;
     
     if (stock <= 0) return { text: 'Rupture', color: colors.danger };
     if (stock <= minStock) return { text: 'Stock bas', color: colors.warning };
     return { text: 'En stock', color: colors.success };
-  };
+  }, []);
 
-  const getMarginPercentage = (product: Product) => {
+  const getMarginPercentage = useCallback((product: Product) => {
     const cost = product.cost || 0;
     const retailPrice = product.retailPrice || 0;
     
     if (cost === 0) return 0;
     return ((retailPrice - cost) / cost * 100);
-  };
+  }, []);
 
-  const getPriceInfo = (product: Product) => {
+  const getPriceInfo = useCallback((product: Product) => {
     const now = new Date();
     const info = [];
 
@@ -306,7 +310,7 @@ export default function ProductsScreen() {
     }
 
     return info;
-  };
+  }, []);
 
   return (
     <SafeAreaView style={commonStyles.container}>

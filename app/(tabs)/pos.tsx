@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import uuid from 'react-native-uuid';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers } from '../../utils/storage';
@@ -37,7 +37,7 @@ export default function POSScreen() {
 
   const loadData = async () => {
     try {
-      console.log('Loading POS data...');
+      console.log('POS: Loading data...');
       const [productsData, categoriesData, customersData, settingsData] = await Promise.all([
         getProducts(),
         getCategories(),
@@ -54,63 +54,91 @@ export default function POSScreen() {
       setCustomers(customersData);
       setSettings(settingsData);
       
-      console.log(`Loaded ${activeProducts.length} active products out of ${productsData.length} total products`);
-      console.log(`Loaded ${activeCategories.length} active categories`);
+      console.log(`POS: Loaded ${activeProducts.length} active products out of ${productsData.length} total products`);
+      console.log(`POS: Loaded ${activeCategories.length} active categories`);
     } catch (error) {
-      console.error('Error loading POS data:', error);
+      console.error('POS: Error loading data:', error);
     }
   };
 
-  const getCategoryName = (categoryId: string) => {
+  // Memoize helper functions to prevent re-renders
+  const getCategoryName = useCallback((categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category?.name || 'Catégorie inconnue';
-  };
+  }, [categories]);
 
-  const getCategoryColor = (categoryId: string) => {
+  const getCategoryColor = useCallback((categoryId: string) => {
     const category = categories.find(cat => cat.id === categoryId);
     return category?.color || '#3498db';
-  };
+  }, [categories]);
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.barcode?.includes(searchQuery);
-    
-    const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
-    
-    return matchesSearch && matchesCategory;
-  });
-
-  const addToCart = (product: Product) => {
-    console.log('Adding product to cart:', product.name);
-    
-    const existingItem = cart.find(item => item.product.id === product.id);
-    const newQuantity = existingItem ? existingItem.quantity + 1 : 1;
-    
-    // Get the applicable price based on the new quantity
-    const priceInfo = getApplicablePrice(product, newQuantity);
-    
-    if (existingItem) {
-      updateCartItemQuantity(product.id, newQuantity);
-    } else {
-      const newItem: CartItem = {
-        product,
-        quantity: 1,
-        discount: 0,
-        unitPrice: priceInfo.price,
-        subtotal: priceInfo.price,
-      };
-      setCart([...cart, newItem]);
+  // Memoize currency formatter to prevent infinite loops
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      return '0 FCFA';
     }
-  };
+    
+    const currency = settings?.currency || 'XOF';
+    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
+    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
+  }, [settings?.currency]);
 
-  const updateCartItemQuantity = (productId: string, quantity: number) => {
+  // Memoize filtered products to prevent unnecessary recalculations
+  const filteredProducts = useMemo(() => {
+    return products.filter(product => {
+      const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        getCategoryName(product.categoryId).toLowerCase().includes(searchQuery.toLowerCase()) ||
+        product.barcode?.includes(searchQuery);
+      
+      const matchesCategory = selectedCategoryId === 'all' || product.categoryId === selectedCategoryId;
+      
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategoryId, getCategoryName]);
+
+  const addToCart = useCallback((product: Product) => {
+    console.log('POS: Adding product to cart:', product.name);
+    
+    setCart(prevCart => {
+      const existingItem = prevCart.find(item => item.product.id === product.id);
+      const newQuantity = existingItem ? existingItem.quantity + 1 : 1;
+      
+      // Get the applicable price based on the new quantity
+      const priceInfo = getApplicablePrice(product, newQuantity);
+      
+      if (existingItem) {
+        return prevCart.map(item => {
+          if (item.product.id === product.id) {
+            const subtotal = (priceInfo.price * newQuantity) - item.discount;
+            return {
+              ...item,
+              quantity: newQuantity,
+              unitPrice: priceInfo.price,
+              subtotal: Math.max(0, subtotal),
+            };
+          }
+          return item;
+        });
+      } else {
+        const newItem: CartItem = {
+          product,
+          quantity: 1,
+          discount: 0,
+          unitPrice: priceInfo.price,
+          subtotal: priceInfo.price,
+        };
+        return [...prevCart, newItem];
+      }
+    });
+  }, []);
+
+  const updateCartItemQuantity = useCallback((productId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
       return;
     }
 
-    setCart(cart.map(item => {
+    setCart(prevCart => prevCart.map(item => {
       if (item.product.id === productId) {
         // Recalculate price based on new quantity
         const priceInfo = getApplicablePrice(item.product, quantity);
@@ -125,10 +153,10 @@ export default function POSScreen() {
       }
       return item;
     }));
-  };
+  }, []);
 
-  const updateCartItemDiscount = (productId: string, discount: number) => {
-    setCart(cart.map(item => {
+  const updateCartItemDiscount = useCallback((productId: string, discount: number) => {
+    setCart(prevCart => prevCart.map(item => {
       if (item.product.id === productId) {
         const subtotal = (item.unitPrice * item.quantity) - discount;
         return {
@@ -139,14 +167,14 @@ export default function POSScreen() {
       }
       return item;
     }));
-  };
+  }, []);
 
-  const removeFromCart = (productId: string) => {
-    console.log('Removing product from cart:', productId);
-    setCart(cart.filter(item => item.product.id !== productId));
-  };
+  const removeFromCart = useCallback((productId: string) => {
+    console.log('POS: Removing product from cart:', productId);
+    setCart(prevCart => prevCart.filter(item => item.product.id !== productId));
+  }, []);
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
     Alert.alert(
       'Vider le panier',
       'Êtes-vous sûr de vouloir vider le panier ?',
@@ -155,37 +183,39 @@ export default function POSScreen() {
         { text: 'Vider', style: 'destructive', onPress: clearCartWithoutConfirmation }
       ]
     );
-  };
+  }, []);
 
-  const clearCartWithoutConfirmation = () => {
-    console.log('Clearing cart');
+  const clearCartWithoutConfirmation = useCallback(() => {
+    console.log('POS: Clearing cart');
     setCart([]);
     setSelectedCustomer(null);
-  };
+  }, []);
 
-  const calculateTotals = () => {
+  // Memoize cart totals calculation
+  const cartTotals = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
     const tax = subtotal * (settings?.taxRate || 0) / 100;
     const total = subtotal + tax;
     
     return { subtotal, tax, total };
-  };
+  }, [cart, settings?.taxRate]);
 
-  const resetCustomerForm = () => {
+  const resetCustomerForm = useCallback(() => {
     setCustomerForm({
       name: '',
       phone: '',
       address: '',
     });
-  };
+  }, []);
 
-  const saveCustomer = async () => {
+  const saveCustomer = useCallback(async () => {
     if (!customerForm.name.trim()) {
       Alert.alert('Erreur', 'Le nom du client est requis');
       return;
     }
 
     try {
+      console.log('POS: Saving new customer:', customerForm.name);
       const newCustomer: Customer = {
         id: uuid.v4() as string,
         name: customerForm.name.trim(),
@@ -206,12 +236,12 @@ export default function POSScreen() {
 
       Alert.alert('Succès', 'Client ajouté avec succès');
     } catch (error) {
-      console.error('Error saving customer:', error);
+      console.error('POS: Error saving customer:', error);
       Alert.alert('Erreur', 'Erreur lors de l\'ajout du client');
     }
-  };
+  }, [customerForm, customers, resetCustomerForm]);
 
-  const processSale = async () => {
+  const processSale = useCallback(async () => {
     if (cart.length === 0) {
       Alert.alert('Erreur', 'Le panier est vide');
       return;
@@ -235,7 +265,7 @@ export default function POSScreen() {
       return;
     }
 
-    const { total } = calculateTotals();
+    const { total } = cartTotals;
     const paidAmount = parseFloat(amountPaid) || 0;
 
     if (paymentMethod !== 'credit' && paidAmount < total) {
@@ -244,7 +274,7 @@ export default function POSScreen() {
     }
 
     try {
-      console.log('Processing sale...');
+      console.log('POS: Processing sale...');
       
       // Create sale record
       const saleItems: SaleItem[] = cart.map(item => ({
@@ -257,7 +287,7 @@ export default function POSScreen() {
         subtotal: item.subtotal,
       }));
 
-      const { subtotal, tax } = calculateTotals();
+      const { subtotal, tax } = cartTotals;
       const receiptNumber = await getNextReceiptNumber();
 
       const newSale: Sale = {
@@ -333,25 +363,14 @@ export default function POSScreen() {
         [{ text: 'OK' }]
       );
 
-      console.log('Sale processed successfully:', receiptNumber);
+      console.log('POS: Sale processed successfully:', receiptNumber);
     } catch (error) {
-      console.error('Error processing sale:', error);
+      console.error('POS: Error processing sale:', error);
       Alert.alert('Erreur', 'Erreur lors du traitement de la vente');
     }
-  };
+  }, [cart, user, paymentMethod, selectedCustomer, cartTotals, amountPaid, products, customers, clearCartWithoutConfirmation, formatCurrency]);
 
-  const formatCurrency = (amount: number | undefined | null): string => {
-    if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('formatCurrency called with invalid amount:', amount);
-      amount = 0;
-    }
-    
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
-
-  const getPriceLabel = (product: Product, quantity: number) => {
+  const getPriceLabel = useCallback((product: Product, quantity: number) => {
     const priceInfo = getApplicablePrice(product, quantity);
     switch (priceInfo.type) {
       case 'promotional':
@@ -361,9 +380,9 @@ export default function POSScreen() {
       default:
         return '🏷️ Détail';
     }
-  };
+  }, []);
 
-  const { subtotal, tax, total } = calculateTotals();
+  const { subtotal, tax, total } = cartTotals;
 
   return (
     <SafeAreaView style={commonStyles.container}>

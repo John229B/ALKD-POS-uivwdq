@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -19,9 +19,9 @@ export default function DashboardScreen() {
     loadDashboardData();
   }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
-      console.log('Loading dashboard data...');
+      console.log('Dashboard: Loading data...');
       const [sales, products, customers, settingsData] = await Promise.all([
         getSales(),
         getProducts(),
@@ -82,32 +82,38 @@ export default function DashboardScreen() {
       };
 
       setStats(dashboardStats);
-      console.log('Dashboard data loaded successfully');
+      console.log('Dashboard: Data loaded successfully');
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Dashboard: Error loading data:', error);
     }
-  };
+  }, []);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadDashboardData();
     setRefreshing(false);
-  };
+  }, [loadDashboardData]);
 
-  const formatCurrency = (amount: number | undefined | null): string => {
+  // Memoize currency formatter to prevent infinite loops
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('formatCurrency called with invalid amount:', amount);
-      amount = 0;
+      return '0 FCFA';
     }
     
     const currency = settings?.currency || 'XOF';
     const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
+  }, [settings?.currency]);
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    console.log('Dashboard: User logging out');
     router.replace('/(auth)/login');
-  };
+  }, []);
+
+  // Memoize current date string to prevent re-renders
+  const currentDateString = useMemo(() => {
+    return new Date().toLocaleDateString('fr-FR');
+  }, []);
 
   if (!stats) {
     return (
@@ -131,7 +137,7 @@ export default function DashboardScreen() {
           <View style={{ flex: 1 }}>
             <Text style={commonStyles.title}>Tableau de bord</Text>
             <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              Bonjour {user?.username} • {new Date().toLocaleDateString('fr-FR')}
+              Bonjour {user?.username} • {currentDateString}
             </Text>
           </View>
           <TouchableOpacity

@@ -6,15 +6,24 @@ import { Platform } from 'react-native';
 import { useEffect, useState } from 'react';
 import { setupErrorLogging } from '../utils/errorLogger';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useAuthState, AuthContext } from '../hooks/useAuth';
+import { useAuthState, AuthContext, AuthContextType } from '../hooks/useAuth';
 
 const STORAGE_KEY = 'emulated_device';
 
 function AuthProvider({ children }: { children: React.ReactNode }) {
   const authState = useAuthState();
   
+  // Create a stable context value to prevent infinite re-renders
+  const contextValue: AuthContextType = {
+    user: authState.user,
+    isLoading: authState.isLoading,
+    login: authState.login,
+    logout: authState.logout,
+    isAuthenticated: authState.isAuthenticated,
+  };
+  
   return (
-    <AuthContext.Provider value={authState}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
@@ -26,6 +35,8 @@ export default function RootLayout() {
   const [storedEmulate, setStoredEmulate] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('RootLayout: Setting up error logging and device emulation');
+    
     // Set up global error logging
     setupErrorLogging();
 
@@ -34,11 +45,13 @@ export default function RootLayout() {
       if (emulate) {
         localStorage.setItem(STORAGE_KEY, emulate);
         setStoredEmulate(emulate);
+        console.log('RootLayout: Emulating device:', emulate);
       } else {
         // If no emulate parameter, try to get from localStorage
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
           setStoredEmulate(stored);
+          console.log('RootLayout: Using stored device emulation:', stored);
         }
       }
     }

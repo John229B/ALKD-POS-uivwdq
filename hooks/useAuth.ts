@@ -31,10 +31,13 @@ export const useAuthState = () => {
 
   const loadUser = async () => {
     try {
+      console.log('Loading current user...');
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      console.log('Current user loaded:', currentUser?.username || 'No user');
     } catch (error) {
       console.error('Error loading user:', error);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -43,6 +46,7 @@ export const useAuthState = () => {
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
+      console.log('Attempting login for username:', username);
       
       // For demo purposes, we'll use simple authentication
       // In a real app, you'd hash passwords and use proper authentication
@@ -60,7 +64,7 @@ export const useAuthState = () => {
         return true;
       }
       
-      console.log('Invalid credentials');
+      console.log('Invalid credentials for username:', username);
       return false;
     } catch (error) {
       console.error('Login error:', error);
@@ -72,6 +76,7 @@ export const useAuthState = () => {
 
   const logout = async (): Promise<void> => {
     try {
+      console.log('Logging out user...');
       await clearCurrentUser();
       setUser(null);
       console.log('User logged out successfully');
@@ -80,13 +85,16 @@ export const useAuthState = () => {
     }
   };
 
+  const isAuthenticated = user !== null;
+
   return {
     user,
     isLoading,
     login,
     logout,
-    isAuthenticated: !!user,
+    isAuthenticated,
   };
 };
 
 export { AuthContext };
+export type { AuthContextType };

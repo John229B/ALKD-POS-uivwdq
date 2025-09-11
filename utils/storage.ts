@@ -139,20 +139,39 @@ export const getNextReceiptNumber = async (): Promise<string> => {
 
 // Pricing logic utility
 export const getApplicablePrice = (product: Product, quantity: number = 1): { price: number; type: 'retail' | 'wholesale' | 'promotional' } => {
+  // Handle undefined or null product
+  if (!product) {
+    console.log('getApplicablePrice called with undefined product');
+    return { price: 0, type: 'retail' };
+  }
+
+  // Ensure quantity is a valid number
+  if (quantity === undefined || quantity === null || isNaN(quantity) || quantity <= 0) {
+    console.log('getApplicablePrice called with invalid quantity:', quantity);
+    quantity = 1;
+  }
+
   const now = new Date();
   
   // Check promotional price first (if valid and not expired)
-  if (product.promotionalPrice && product.promotionalValidUntil && new Date(product.promotionalValidUntil) > now) {
+  if (product.promotionalPrice && 
+      product.promotionalPrice > 0 && 
+      product.promotionalValidUntil && 
+      new Date(product.promotionalValidUntil) > now) {
     return { price: product.promotionalPrice, type: 'promotional' };
   }
   
   // Check wholesale price (if quantity meets minimum requirement)
-  if (product.wholesalePrice && product.wholesaleMinQuantity && quantity >= product.wholesaleMinQuantity) {
+  if (product.wholesalePrice && 
+      product.wholesalePrice > 0 && 
+      product.wholesaleMinQuantity && 
+      quantity >= product.wholesaleMinQuantity) {
     return { price: product.wholesalePrice, type: 'wholesale' };
   }
   
-  // Default to retail price
-  return { price: product.retailPrice, type: 'retail' };
+  // Default to retail price (ensure it's a valid number)
+  const retailPrice = product.retailPrice || 0;
+  return { price: retailPrice, type: 'retail' };
 };
 
 // Initialize default data

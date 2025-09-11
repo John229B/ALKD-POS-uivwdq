@@ -271,7 +271,13 @@ export default function POSScreen() {
     }
   };
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | undefined | null): string => {
+    // Handle undefined, null, or invalid numbers
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      console.log('formatCurrency called with invalid amount:', amount);
+      amount = 0;
+    }
+    
     const currency = settings?.currency || 'XOF';
     const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;

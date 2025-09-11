@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -30,20 +30,12 @@ export default function ReportsScreen() {
   const [reportData, setReportData] = useState<ReportData | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'today' | 'week' | 'month' | 'year'>('today');
   const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    if (sales.length > 0 && products.length > 0) {
-      calculateReportData();
-    }
-  }, [sales, products, selectedPeriod]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     console.log('Loading reports data...');
     try {
+      setIsLoading(true);
       const [salesData, productsData, customersData, settingsData] = await Promise.all([
         getSales(),
         getProducts(),
@@ -62,16 +54,18 @@ export default function ReportsScreen() {
       });
     } catch (error) {
       console.error('Error loading reports data:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
-  };
+  }, [loadData]);
 
-  const getDateRange = () => {
+  const getDateRange = useCallback(() => {
     const now = new Date();
     let startDate: Date;
 
@@ -93,10 +87,16 @@ export default function ReportsScreen() {
     }
 
     return { startDate, endDate: now };
-  };
+  }, [selectedPeriod]);
 
-  const calculateReportData = () => {
+  const calculateReportData = useCallback(() => {
     console.log('Calculating report data for period:', selectedPeriod);
+    
+    if (!sales.length || !products.length) {
+      console.log('No sales or products data available yet');
+      return;
+    }
+
     const { startDate, endDate } = getDateRange();
     
     // Filtrer les ventes par période
@@ -108,7 +108,7 @@ export default function ReportsScreen() {
     console.log('Filtered sales:', filteredSales.length);
 
     // Calculer les revenus totaux
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (sale.total || 0), 0);
     const totalSales = filteredSales.length;
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
 
@@ -116,13 +116,15 @@ export default function ReportsScreen() {
     const productSales: { [key: string]: { quantity: number; revenue: number } } = {};
     
     filteredSales.forEach(sale => {
-      sale.items.forEach(item => {
-        if (!productSales[item.productId]) {
-          productSales[item.productId] = { quantity: 0, revenue: 0 };
-        }
-        productSales[item.productId].quantity += item.quantity;
-        productSales[item.productId].revenue += item.quantity * item.price;
-      });
+      if (sale.items && Array.isArray(sale.items)) {
+        sale.items.forEach(item => {
+          if (!productSales[item.productId]) {
+            productSales[item.productId] = { quantity: 0, revenue: 0 };
+          }
+          productSales[item.productId].quantity += item.quantity || 0;
+          productSales[item.productId].revenue += (item.quantity || 0) * (item.price || 0);
+        });
+      }
     });
 
     const topProducts = Object.entries(productSales)
@@ -138,11 +140,12 @@ export default function ReportsScreen() {
     const paymentMethodStats: { [key: string]: { count: number; amount: number } } = {};
     
     filteredSales.forEach(sale => {
-      if (!paymentMethodStats[sale.paymentMethod]) {
-        paymentMethodStats[sale.paymentMethod] = { count: 0, amount: 0 };
+      const method = sale.paymentMethod || 'cash';
+      if (!paymentMethodStats[method]) {
+        paymentMethodStats[method] = { count: 0, amount: 0 };
       }
-      paymentMethodStats[sale.paymentMethod].count++;
-      paymentMethodStats[sale.paymentMethod].amount += sale.total;
+      paymentMethodStats[method].count++;
+      paymentMethodStats[method].amount += sale.total || 0;
     });
 
     const paymentMethods = Object.entries(paymentMethodStats).map(([method, stats]) => ({
@@ -157,8 +160,8 @@ export default function ReportsScreen() {
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
       
-      const daySales = sales.filter(sale => sale.date.startsWith(dateStr));
-      const dayRevenue = daySales.reduce((sum, sale) => sum + sale.total, 0);
+      const daySales = sales.filter(sale => sale.date && sale.date.startsWith(dateStr));
+      const dayRevenue = daySales.reduce((sum, sale) => sum + (sale.total || 0), 0);
       
       dailyRevenue.push({
         date: dateStr,
@@ -169,7 +172,8 @@ export default function ReportsScreen() {
 
     // Statistiques clients
     const newCustomersThisPeriod = customers.filter(customer => {
-      const customerDate = new Date(customer.createdAt || '');
+      if (!customer.createdAt) return false;
+      const customerDate = new Date(customer.createdAt);
       return customerDate >= startDate && customerDate <= endDate;
     });
 
@@ -193,27 +197,27 @@ export default function ReportsScreen() {
 
     console.log('Report data calculated:', data);
     setReportData(data);
-  };
+  }, [sales, products, customers, selectedPeriod, getDateRange]);
 
-  const formatCurrency = (amount: number | undefined | null): string => {
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
       amount = 0;
     }
     const currency = settings?.currency || 'XOF';
     const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
+  }, [settings?.currency]);
 
-  const getPaymentMethodLabel = (method: string): string => {
+  const getPaymentMethodLabel = useCallback((method: string): string => {
     const labels = {
       cash: 'Espèces',
       mobile: 'Mobile Money',
       credit: 'À crédit',
     };
     return labels[method as keyof typeof labels] || method;
-  };
+  }, []);
 
-  const getPeriodLabel = (period: string): string => {
+  const getPeriodLabel = useCallback((period: string): string => {
     const labels = {
       today: 'Aujourd\'hui',
       week: 'Cette semaine',
@@ -221,9 +225,21 @@ export default function ReportsScreen() {
       year: 'Cette année',
     };
     return labels[period as keyof typeof labels] || period;
-  };
+  }, []);
 
-  if (!reportData) {
+  // Load data on mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Calculate report data when dependencies change
+  useEffect(() => {
+    if (!isLoading && sales.length >= 0 && products.length >= 0) {
+      calculateReportData();
+    }
+  }, [calculateReportData, isLoading]);
+
+  if (isLoading || !reportData) {
     return (
       <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
         <View style={styles.header}>

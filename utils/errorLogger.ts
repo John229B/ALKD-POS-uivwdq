@@ -114,17 +114,27 @@ export const setupErrorLogging = () => {
       sendErrorToParent('error', 'JavaScript Runtime Error', errorData);
       return false; // Don't prevent default error handling
     };
+    
     // check if platform is web
     if (Platform.OS === 'web') {
       // Capture unhandled promise rejections
       window.addEventListener('unhandledrejection', (event) => {
+        try {
           const errorData = {
-          reason: event.reason,
-          timestamp: new Date().toISOString()
-        };
+            reason: event.reason,
+            reasonString: String(event.reason),
+            reasonStack: event.reason?.stack || 'No stack trace available',
+            timestamp: new Date().toISOString()
+          };
 
-        console.error('🚨 UNHANDLED PROMISE REJECTION:', errorData);
-        sendErrorToParent('error', 'Unhandled Promise Rejection', errorData);
+          console.error('🚨 UNHANDLED PROMISE REJECTION:', errorData);
+          sendErrorToParent('error', 'Unhandled Promise Rejection', errorData);
+          
+          // Prevent the default unhandled rejection behavior
+          event.preventDefault();
+        } catch (handlerError) {
+          console.error('❌ Error in unhandledrejection handler:', handlerError);
+        }
       });
     }
   }

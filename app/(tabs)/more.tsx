@@ -65,11 +65,17 @@ export default function MoreScreen() {
       router.push(item.route as any);
     } catch (error) {
       console.error('Navigation error:', error);
-      // Fallback pour les routes qui n'existent pas encore
-      if (item.id === 'licenses') {
-        router.push('/licenses');
-      } else if (item.id === 'reports') {
-        router.push('/reports');
+      // Fallback navigation with proper error handling
+      try {
+        if (item.id === 'licenses') {
+          router.push('/licenses');
+        } else if (item.id === 'reports') {
+          router.push('/reports');
+        } else {
+          console.warn('No fallback route available for:', item.id);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback navigation also failed:', fallbackError);
       }
     }
   };

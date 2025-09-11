@@ -1,5 +1,5 @@
 
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
 import { User } from '../types';
 import { getCurrentUser, storeCurrentUser, clearCurrentUser, getUsers } from '../utils/storage';
 
@@ -26,35 +26,47 @@ export const useAuthState = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
+    const loadUser = async () => {
+      try {
+        console.log('Loading current user...');
+        const currentUser = await getCurrentUser().catch(error => {
+          console.error('Error getting current user from storage:', error);
+          return null;
+        });
+        
+        if (isMounted) {
+          setUser(currentUser);
+          setIsLoading(false);
+          console.log('Current user loaded:', currentUser?.username || 'No user');
+        }
+      } catch (error) {
+        console.error('Error loading user:', error);
+        if (isMounted) {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    };
+
     loadUser();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  const loadUser = async () => {
-    try {
-      console.log('Loading current user...');
-      const currentUser = await getCurrentUser();
-      setUser(currentUser);
-      console.log('Current user loaded:', currentUser?.username || 'No user');
-    } catch (error) {
-      console.error('Error loading user:', error);
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
       console.log('Attempting login for username:', username);
       
-      // For demo purposes, we'll use simple authentication
-      // In a real app, you'd hash passwords and use proper authentication
       const users = await getUsers();
       const foundUser = users.find(u => 
         u.username === username && 
         u.isActive &&
-        (username === 'admin' || password === 'password') // Simple demo auth
+        (username === 'admin' || password === 'password')
       );
 
       if (foundUser) {
@@ -72,9 +84,9 @@ export const useAuthState = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const logout = async (): Promise<void> => {
+  const logout = useCallback(async (): Promise<void> => {
     try {
       console.log('Logging out user...');
       await clearCurrentUser();
@@ -83,7 +95,7 @@ export const useAuthState = () => {
     } catch (error) {
       console.error('Logout error:', error);
     }
-  };
+  }, []);
 
   const isAuthenticated = user !== null;
 

@@ -17,7 +17,10 @@ const STORAGE_KEYS = {
 export const storeData = async (key: string, data: any): Promise<void> => {
   try {
     const jsonValue = JSON.stringify(data);
-    await AsyncStorage.setItem(key, jsonValue);
+    await AsyncStorage.setItem(key, jsonValue).catch(storageError => {
+      console.error(`AsyncStorage.setItem failed for key ${key}:`, storageError);
+      throw storageError;
+    });
     console.log(`Data stored successfully for key: ${key}`);
   } catch (error) {
     console.error(`Error storing data for key ${key}:`, error);
@@ -27,9 +30,18 @@ export const storeData = async (key: string, data: any): Promise<void> => {
 
 export const getData = async <T>(key: string): Promise<T | null> => {
   try {
-    const jsonValue = await AsyncStorage.getItem(key);
+    const jsonValue = await AsyncStorage.getItem(key).catch(storageError => {
+      console.error(`AsyncStorage.getItem failed for key ${key}:`, storageError);
+      return null;
+    });
+    
     if (jsonValue != null) {
-      return JSON.parse(jsonValue) as T;
+      try {
+        return JSON.parse(jsonValue) as T;
+      } catch (parseError) {
+        console.error(`JSON.parse failed for key ${key}:`, parseError);
+        return null;
+      }
     }
     return null;
   } catch (error) {
@@ -180,7 +192,11 @@ export const initializeDefaultData = async (): Promise<void> => {
     console.log('Initializing default data...');
     
     // Check if users exist, if not create default admin
-    const users = await getUsers();
+    const users = await getUsers().catch(error => {
+      console.error('Error getting users during initialization:', error);
+      return []; // Return empty array if getting users fails
+    });
+    
     if (users.length === 0) {
       const defaultAdmin: User = {
         id: 'admin-001',
@@ -190,12 +206,18 @@ export const initializeDefaultData = async (): Promise<void> => {
         createdAt: new Date(),
         isActive: true,
       };
-      await storeUsers([defaultAdmin]);
+      await storeUsers([defaultAdmin]).catch(error => {
+        console.error('Error storing default admin user:', error);
+      });
       console.log('Default admin user created');
     }
 
     // Initialize default categories
-    const categories = await getCategories();
+    const categories = await getCategories().catch(error => {
+      console.error('Error getting categories during initialization:', error);
+      return []; // Return empty array if getting categories fails
+    });
+    
     if (categories.length === 0) {
       const defaultCategories: Category[] = [
         {
@@ -235,12 +257,18 @@ export const initializeDefaultData = async (): Promise<void> => {
           updatedAt: new Date(),
         },
       ];
-      await storeCategories(defaultCategories);
+      await storeCategories(defaultCategories).catch(error => {
+        console.error('Error storing default categories:', error);
+      });
       console.log('Default categories created');
     }
 
     // Initialize default products with new pricing structure
-    const products = await getProducts();
+    const products = await getProducts().catch(error => {
+      console.error('Error getting products during initialization:', error);
+      return []; // Return empty array if getting products fails
+    });
+    
     if (products.length === 0) {
       const defaultProducts: Product[] = [
         {
@@ -326,12 +354,15 @@ export const initializeDefaultData = async (): Promise<void> => {
           updatedAt: new Date(),
         },
       ];
-      await storeProducts(defaultProducts);
+      await storeProducts(defaultProducts).catch(error => {
+        console.error('Error storing default products:', error);
+      });
       console.log('Default products created');
     }
 
     console.log('Default data initialization completed');
   } catch (error) {
     console.error('Error initializing default data:', error);
+    // Don't re-throw the error to prevent app crashes
   }
 };

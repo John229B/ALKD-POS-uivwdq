@@ -342,9 +342,11 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
       
-      // Use cacheDirectory for file storage - this is available in expo-file-system
-      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      // Use fallback pattern: documentDirectory if available, otherwise cacheDirectory
+      const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+      const fileUri = `${dir}${fileName}`;
       
+      console.log('Saving report to:', fileUri);
       await FileSystem.writeAsStringAsync(fileUri, reportContent);
       
       if (await Sharing.isAvailableAsync()) {

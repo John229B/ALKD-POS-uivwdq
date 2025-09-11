@@ -10,18 +10,22 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textLight,
+        tabBarInactiveTintColor: colors.text,
         tabBarStyle: {
           backgroundColor: colors.background,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 70,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 4,
+        },
+        tabBarIconStyle: {
+          marginBottom: 2,
         },
       }}
     >
@@ -30,16 +34,16 @@ export default function TabLayout() {
         options={{
           title: 'Tableau de bord',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="grid" size={size} color={color} />
+            <Icon name="grid" size={28} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="pos"
         options={{
-          title: 'Caisse',
+          title: 'Vente / Caisse',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="calculator" size={size} color={color} />
+            <Icon name="calculator" size={28} color={color} />
           ),
         }}
       />
@@ -48,25 +52,16 @@ export default function TabLayout() {
         options={{
           title: 'Produits',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="cube" size={size} color={color} />
+            <Icon name="cube" size={28} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="customers"
+        name="more"
         options={{
-          title: 'Clients',
+          title: 'Plus',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="people" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="reports"
-        options={{
-          title: 'Rapports',
-          tabBarIcon: ({ color, size }) => (
-            <Icon name="bar-chart" size={size} color={color} />
+            <Icon name="ellipsis-horizontal" size={28} color={color} />
           ),
         }}
       />

@@ -367,7 +367,8 @@ export default function POSScreen() {
 
   return (
     <SafeAreaView style={commonStyles.container}>
-      <View style={commonStyles.content}>
+      {/* Main Content Area - Scrollable */}
+      <View style={{ flex: 1 }}>
         {/* Header */}
         <View style={[commonStyles.section, commonStyles.header]}>
           <View style={{ flex: 1 }}>
@@ -449,276 +450,242 @@ export default function POSScreen() {
           </ScrollView>
         </View>
 
-        <View style={[commonStyles.posContainer, { flex: 1 }]}>
-          {/* Products List */}
-          <View style={commonStyles.posProductsSection}>
-            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm, paddingHorizontal: isSmallScreen ? 0 : spacing.lg }]}>
-              Produits disponibles ({filteredProducts.length})
-            </Text>
-            <ScrollView 
-              style={{ flex: 1 }} 
-              contentContainerStyle={{ 
-                paddingHorizontal: isSmallScreen ? 0 : spacing.lg,
-                paddingBottom: spacing.xl 
-              }}
-            >
-              {filteredProducts.map(product => {
-                const categoryColor = getCategoryColor(product.categoryId);
-                const priceInfo = getApplicablePrice(product, 1);
-                
-                return (
-                  <TouchableOpacity
-                    key={product.id}
-                    style={[
-                      commonStyles.card, 
-                      commonStyles.cardSmall,
-                      { 
-                        marginBottom: spacing.xs, 
-                        opacity: product.stock > 0 ? 1 : 0.5,
-                        backgroundColor: product.stock > 0 ? colors.card : colors.backgroundAlt
-                      }
-                    ]}
-                    onPress={() => product.stock > 0 && addToCart(product)}
-                    disabled={product.stock <= 0}
-                  >
-                    <View style={[commonStyles.row, { alignItems: 'flex-start' }]}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2, fontSize: fontSizes.sm }]}>
-                          {product.name}
-                        </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                            <View style={{
-                              width: 4,
-                              height: 4,
-                              borderRadius: 2,
-                              backgroundColor: categoryColor
-                            }} />
-                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                              {getCategoryName(product.categoryId)}
-                            </Text>
-                          </View>
-                          <Text style={[
-                            commonStyles.textLight, 
-                            { 
-                              fontSize: fontSizes.xs,
-                              color: product.stock <= 0 ? colors.danger : product.stock <= product.minStock ? colors.warning : colors.textLight
-                            }
-                          ]}>
-                            Stock: {product.stock}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.md }]}>
-                          {formatCurrency(priceInfo.price)}
-                        </Text>
-                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                          {getPriceLabel(product, 1)}
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-
-              {filteredProducts.length === 0 && (
-                <View style={{ alignItems: 'center', marginTop: 40 }}>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
-                    Aucun produit trouvé
-                  </Text>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.md, textAlign: 'center' }]}>
-                    {searchQuery ? 'Essayez un autre terme de recherche' : 'Aucun produit actif disponible'}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-
-          {/* Cart - Made scrollable and responsive */}
-          <View style={[commonStyles.posCartSection, { maxHeight: isSmallScreen ? '50%' : '100%' }]}>
-            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
-              Panier ({cart.length})
-            </Text>
-            
-            {cart.length === 0 ? (
-              <View style={[commonStyles.card, { alignItems: 'center', padding: spacing.xl }]}>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
-                  Panier vide
-                </Text>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
-                  Sélectionnez des produits pour commencer une vente
-                </Text>
-              </View>
-            ) : (
-              <View style={{ flex: 1, flexDirection: 'column' }}>
-                {/* Scrollable Cart Items */}
-                <ScrollView 
-                  style={{ flex: 1, maxHeight: isSmallScreen ? 200 : 300 }}
-                  contentContainerStyle={{ paddingBottom: spacing.sm }}
-                  showsVerticalScrollIndicator={true}
+        {/* Products List - Scrollable Area */}
+        <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
+          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
+            Produits disponibles ({filteredProducts.length})
+          </Text>
+          <ScrollView 
+            style={{ flex: 1 }} 
+            contentContainerStyle={{ 
+              paddingBottom: spacing.xl 
+            }}
+            showsVerticalScrollIndicator={true}
+          >
+            {filteredProducts.map(product => {
+              const categoryColor = getCategoryColor(product.categoryId);
+              const priceInfo = getApplicablePrice(product, 1);
+              
+              return (
+                <TouchableOpacity
+                  key={product.id}
+                  style={[
+                    commonStyles.card, 
+                    commonStyles.cardSmall,
+                    { 
+                      marginBottom: spacing.xs, 
+                      opacity: product.stock > 0 ? 1 : 0.5,
+                      backgroundColor: product.stock > 0 ? colors.card : colors.backgroundAlt
+                    }
+                  ]}
+                  onPress={() => product.stock > 0 && addToCart(product)}
+                  disabled={product.stock <= 0}
                 >
-                  {cart.map(item => {
-                    const priceLabel = getPriceLabel(item.product, item.quantity);
-                    return (
-                      <View key={item.product.id} style={[commonStyles.card, commonStyles.cardSmall, { marginBottom: spacing.xs }]}>
-                        <View style={[commonStyles.row, { marginBottom: spacing.xs, alignItems: 'flex-start' }]}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2, fontSize: fontSizes.sm }]}>
-                              {item.product.name}
-                            </Text>
-                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                              {formatCurrency(item.unitPrice)} × {item.quantity} {priceLabel}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => removeFromCart(item.product.id)}
-                            style={{ padding: spacing.xs }}
-                          >
-                            <Icon name="close" size={14} color={colors.danger} />
-                          </TouchableOpacity>
-                        </View>
-
-                        <View style={[commonStyles.row, { alignItems: 'center' }]}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                            <TouchableOpacity
-                              style={[
-                                buttonStyles.outline, 
-                                buttonStyles.small,
-                                { 
-                                  paddingHorizontal: spacing.xs, 
-                                  paddingVertical: 2, 
-                                  minWidth: 28,
-                                  minHeight: 28
-                                }
-                              ]}
-                              onPress={() => updateCartItemQuantity(item.product.id, item.quantity - 1)}
-                            >
-                              <Text style={{ color: colors.primary, textAlign: 'center', fontSize: fontSizes.sm, fontWeight: '600' }}>-</Text>
-                            </TouchableOpacity>
-                            <Text style={[commonStyles.text, { minWidth: 24, textAlign: 'center', fontSize: fontSizes.sm }]}>
-                              {item.quantity}
-                            </Text>
-                            <TouchableOpacity
-                              style={[
-                                buttonStyles.outline, 
-                                buttonStyles.small,
-                                { 
-                                  paddingHorizontal: spacing.xs, 
-                                  paddingVertical: 2, 
-                                  minWidth: 28,
-                                  minHeight: 28
-                                }
-                              ]}
-                              onPress={() => updateCartItemQuantity(item.product.id, item.quantity + 1)}
-                            >
-                              <Text style={{ color: colors.primary, textAlign: 'center', fontSize: fontSizes.sm, fontWeight: '600' }}>+</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.md }]}>
-                            {formatCurrency(item.subtotal)}
+                  <View style={[commonStyles.row, { alignItems: 'flex-start' }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2, fontSize: fontSizes.sm }]}>
+                        {product.name}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                          <View style={{
+                            width: 4,
+                            height: 4,
+                            borderRadius: 2,
+                            backgroundColor: categoryColor
+                          }} />
+                          <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                            {getCategoryName(product.categoryId)}
                           </Text>
                         </View>
+                        <Text style={[
+                          commonStyles.textLight, 
+                          { 
+                            fontSize: fontSizes.xs,
+                            color: product.stock <= 0 ? colors.danger : product.stock <= product.minStock ? colors.warning : colors.textLight
+                          }
+                        ]}>
+                          Stock: {product.stock}
+                        </Text>
                       </View>
-                    );
-                  })}
-                </ScrollView>
-
-                {/* Fixed Cart Summary and Checkout */}
-                <View style={{ paddingTop: spacing.sm }}>
-                  {/* Cart Summary */}
-                  <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
-                    <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Sous-total:</Text>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(subtotal)}</Text>
                     </View>
-                    {tax > 0 && (
-                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Taxes ({settings?.taxRate}%):</Text>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(tax)}</Text>
-                      </View>
-                    )}
-                    <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.md }]}>Total:</Text>
-                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.lg, color: colors.primary }]}>
-                        {formatCurrency(total)}
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.md }]}>
+                        {formatCurrency(priceInfo.price)}
+                      </Text>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                        {getPriceLabel(product, 1)}
                       </Text>
                     </View>
                   </View>
+                </TouchableOpacity>
+              );
+            })}
 
-                  {/* Customer Selection for Credit */}
-                  {paymentMethod === 'credit' && (
-                    <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
-                      <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
-                        Client (requis pour crédit):
-                      </Text>
-                      {selectedCustomer ? (
-                        <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[commonStyles.text, { fontWeight: '600' }]}>{selectedCustomer.name}</Text>
-                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                              Crédit actuel: {formatCurrency(selectedCustomer.creditBalance)}
-                            </Text>
-                          </View>
-                          <TouchableOpacity
-                            onPress={() => setSelectedCustomer(null)}
-                            style={{ padding: spacing.xs }}
-                          >
-                            <Icon name="close" size={16} color={colors.danger} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={{ gap: spacing.xs }}>
-                          <TouchableOpacity
-                            style={[buttonStyles.outline, buttonStyles.small]}
-                            onPress={() => setShowCustomerModal(true)}
-                          >
-                            <Text style={{ color: colors.primary, fontSize: fontSizes.sm, textAlign: 'center' }}>
-                              + Nouveau client
-                            </Text>
-                          </TouchableOpacity>
-                          <ScrollView 
-                            style={{ maxHeight: 100 }}
-                            contentContainerStyle={{ gap: spacing.xs }}
-                          >
-                            {customers.map(customer => (
-                              <TouchableOpacity
-                                key={customer.id}
-                                style={[commonStyles.card, commonStyles.cardSmall]}
-                                onPress={() => setSelectedCustomer(customer)}
-                              >
-                                <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{customer.name}</Text>
-                                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                                  Crédit: {formatCurrency(customer.creditBalance)}
-                                </Text>
-                              </TouchableOpacity>
-                            ))}
-                          </ScrollView>
-                        </View>
-                      )}
-                    </View>
-                  )}
-
-                  {/* Checkout Button */}
-                  <TouchableOpacity
-                    style={[buttonStyles.primary, { paddingVertical: spacing.lg }]}
-                    onPress={() => setShowPaymentModal(true)}
-                  >
-                    <Text style={{ 
-                      color: colors.secondary, 
-                      fontSize: fontSizes.lg, 
-                      fontWeight: '600', 
-                      textAlign: 'center' 
-                    }}>
-                      💳 Procéder au paiement
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+            {filteredProducts.length === 0 && (
+              <View style={{ alignItems: 'center', marginTop: 40 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
+                  Aucun produit trouvé
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.md, textAlign: 'center' }]}>
+                  {searchQuery ? 'Essayez un autre terme de recherche' : 'Aucun produit actif disponible'}
+                </Text>
               </View>
             )}
-          </View>
+          </ScrollView>
         </View>
       </View>
+
+      {/* Sticky Cart Footer - Always Visible */}
+      {cart.length > 0 && (
+        <View style={{
+          backgroundColor: colors.card,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.md,
+          maxHeight: isSmallScreen ? '45%' : '40%',
+          boxShadow: `0px -2px 8px ${colors.shadow}`,
+          elevation: 8,
+        }}>
+          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
+            Panier ({cart.length})
+          </Text>
+          
+          {/* Scrollable Cart Items */}
+          <ScrollView 
+            style={{ maxHeight: isSmallScreen ? 120 : 150 }}
+            contentContainerStyle={{ paddingBottom: spacing.xs }}
+            showsVerticalScrollIndicator={true}
+          >
+            {cart.map(item => {
+              const priceLabel = getPriceLabel(item.product, item.quantity);
+              return (
+                <View key={item.product.id} style={[
+                  commonStyles.card, 
+                  commonStyles.cardSmall, 
+                  { marginBottom: spacing.xs, backgroundColor: colors.backgroundAlt }
+                ]}>
+                  <View style={[commonStyles.row, { marginBottom: spacing.xs, alignItems: 'flex-start' }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 2, fontSize: fontSizes.sm }]}>
+                        {item.product.name}
+                      </Text>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                        {formatCurrency(item.unitPrice)} × {item.quantity} {priceLabel}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => removeFromCart(item.product.id)}
+                      style={{ padding: spacing.xs }}
+                    >
+                      <Icon name="close" size={14} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={[commonStyles.row, { alignItems: 'center' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                      <TouchableOpacity
+                        style={[
+                          buttonStyles.outline, 
+                          buttonStyles.small,
+                          { 
+                            paddingHorizontal: spacing.xs, 
+                            paddingVertical: 2, 
+                            minWidth: 28,
+                            minHeight: 28
+                          }
+                        ]}
+                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity - 1)}
+                      >
+                        <Text style={{ color: colors.primary, textAlign: 'center', fontSize: fontSizes.sm, fontWeight: '600' }}>-</Text>
+                      </TouchableOpacity>
+                      <Text style={[commonStyles.text, { minWidth: 24, textAlign: 'center', fontSize: fontSizes.sm }]}>
+                        {item.quantity}
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          buttonStyles.outline, 
+                          buttonStyles.small,
+                          { 
+                            paddingHorizontal: spacing.xs, 
+                            paddingVertical: 2, 
+                            minWidth: 28,
+                            minHeight: 28
+                          }
+                        ]}
+                        onPress={() => updateCartItemQuantity(item.product.id, item.quantity + 1)}
+                      >
+                        <Text style={{ color: colors.primary, textAlign: 'center', fontSize: fontSizes.sm, fontWeight: '600' }}>+</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.md }]}>
+                      {formatCurrency(item.subtotal)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {/* Fixed Cart Summary and Checkout */}
+          <View style={{ paddingTop: spacing.sm }}>
+            {/* Cart Summary */}
+            <View style={[commonStyles.card, { marginBottom: spacing.sm, backgroundColor: colors.backgroundAlt }]}>
+              <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Sous-total:</Text>
+                <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(subtotal)}</Text>
+              </View>
+              {tax > 0 && (
+                <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                  <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Taxes ({settings?.taxRate}%):</Text>
+                  <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(tax)}</Text>
+                </View>
+              )}
+              <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
+                <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.md }]}>Total:</Text>
+                <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.lg, color: colors.primary }]}>
+                  {formatCurrency(total)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Checkout Button */}
+            <TouchableOpacity
+              style={[buttonStyles.primary, { paddingVertical: spacing.md }]}
+              onPress={() => setShowPaymentModal(true)}
+            >
+              <Text style={{ 
+                color: colors.secondary, 
+                fontSize: fontSizes.lg, 
+                fontWeight: '600', 
+                textAlign: 'center' 
+              }}>
+                💳 Procéder au paiement
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Empty Cart State */}
+      {cart.length === 0 && (
+        <View style={{
+          backgroundColor: colors.card,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.lg,
+          alignItems: 'center',
+        }}>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
+            Panier vide
+          </Text>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+            Sélectionnez des produits pour commencer une vente
+          </Text>
+        </View>
+      )}
 
       {/* Payment Modal */}
       <Modal
@@ -775,8 +742,60 @@ export default function POSScreen() {
             {paymentMethod === 'credit' && !selectedCustomer && (
               <View style={[commonStyles.card, { backgroundColor: colors.warning + '20', marginBottom: spacing.lg }]}>
                 <Text style={[commonStyles.text, { color: colors.warning, textAlign: 'center', fontWeight: '600' }]}>
-                  ⚠️ Sélection d'un client requise pour la vente à crédit
+                  ⚠️ Sélection d&apos;un client requise pour la vente à crédit
                 </Text>
+              </View>
+            )}
+
+            {paymentMethod === 'credit' && (
+              <View style={[commonStyles.card, { marginBottom: spacing.lg }]}>
+                <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
+                  Client (requis pour crédit):
+                </Text>
+                {selectedCustomer ? (
+                  <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[commonStyles.text, { fontWeight: '600' }]}>{selectedCustomer.name}</Text>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                        Crédit actuel: {formatCurrency(selectedCustomer.creditBalance)}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedCustomer(null)}
+                      style={{ padding: spacing.xs }}
+                    >
+                      <Icon name="close" size={16} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ gap: spacing.xs }}>
+                    <TouchableOpacity
+                      style={[buttonStyles.outline, buttonStyles.small]}
+                      onPress={() => setShowCustomerModal(true)}
+                    >
+                      <Text style={{ color: colors.primary, fontSize: fontSizes.sm, textAlign: 'center' }}>
+                        + Nouveau client
+                      </Text>
+                    </TouchableOpacity>
+                    <ScrollView 
+                      style={{ maxHeight: 100 }}
+                      contentContainerStyle={{ gap: spacing.xs }}
+                    >
+                      {customers.map(customer => (
+                        <TouchableOpacity
+                          key={customer.id}
+                          style={[commonStyles.card, commonStyles.cardSmall]}
+                          onPress={() => setSelectedCustomer(customer)}
+                        >
+                          <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{customer.name}</Text>
+                          <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                            Crédit: {formatCurrency(customer.creditBalance)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
             )}
 

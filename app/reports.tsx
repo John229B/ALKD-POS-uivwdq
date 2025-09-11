@@ -310,6 +310,29 @@ export default function ReportsScreen() {
     return labels[method] || method;
   };
 
+  const getFileSystemDirectory = useCallback(() => {
+    try {
+      // Try to access documentDirectory first
+      if (FileSystem && 'documentDirectory' in FileSystem && FileSystem.documentDirectory) {
+        console.log('Using documentDirectory:', FileSystem.documentDirectory);
+        return FileSystem.documentDirectory;
+      }
+      
+      // Fallback to cacheDirectory
+      if (FileSystem && 'cacheDirectory' in FileSystem && FileSystem.cacheDirectory) {
+        console.log('Using cacheDirectory:', FileSystem.cacheDirectory);
+        return FileSystem.cacheDirectory;
+      }
+      
+      // If neither is available, return null
+      console.warn('Neither documentDirectory nor cacheDirectory is available');
+      return null;
+    } catch (error) {
+      console.error('Error accessing FileSystem directories:', error);
+      return null;
+    }
+  }, []);
+
   const exportToPDF = useCallback(async () => {
     try {
       console.log('Exporting report to PDF...');
@@ -342,8 +365,22 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
       
-      // Use fallback pattern: documentDirectory if available, otherwise cacheDirectory
-      const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+      // Get the appropriate directory
+      const dir = getFileSystemDirectory();
+      
+      if (!dir) {
+        // If no file system directory is available, show the report content in an alert
+        Alert.alert(
+          'Rapport généré',
+          'Le rapport a été généré mais ne peut pas être sauvegardé sur cet appareil. Voici un résumé:\n\n' +
+          `CA total: ${formatCurrency(reportData.totalRevenue)}\n` +
+          `Ventes: ${reportData.totalSales}\n` +
+          `Panier moyen: ${formatCurrency(reportData.averageOrderValue)}`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
       const fileUri = `${dir}${fileName}`;
       
       console.log('Saving report to:', fileUri);
@@ -360,7 +397,7 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       console.error('Error exporting report:', error);
       Alert.alert('Erreur', 'Impossible d\'exporter le rapport');
     }
-  }, [reportData, settings, filters, formatCurrency]);
+  }, [reportData, settings, filters, formatCurrency, getFileSystemDirectory]);
 
   const chartConfig = {
     backgroundColor: colors.surface,

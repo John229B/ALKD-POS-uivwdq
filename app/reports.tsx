@@ -310,32 +310,55 @@ export default function ReportsScreen() {
     return labels[method] || method;
   };
 
-  const getFileSystemDirectory = useCallback(() => {
+  const ensureDirectoryExists = useCallback(async (dirPath: string): Promise<boolean> => {
     try {
-      // Try to access documentDirectory first
-      if (FileSystem && 'documentDirectory' in FileSystem && FileSystem.documentDirectory) {
-        console.log('Using documentDirectory:', FileSystem.documentDirectory);
-        return FileSystem.documentDirectory;
+      console.log('Checking directory existence:', dirPath);
+      const dirInfo = await FileSystem.getInfoAsync(dirPath);
+      
+      if (!dirInfo.exists) {
+        console.log('Directory does not exist, creating:', dirPath);
+        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+        console.log('Directory created successfully');
+        return true;
       }
       
-      // Fallback to cacheDirectory
-      if (FileSystem && 'cacheDirectory' in FileSystem && FileSystem.cacheDirectory) {
-        console.log('Using cacheDirectory:', FileSystem.cacheDirectory);
-        return FileSystem.cacheDirectory;
+      console.log('Directory already exists');
+      return true;
+    } catch (error) {
+      console.error('Error ensuring directory exists:', error);
+      return false;
+    }
+  }, []);
+
+  const getFileSystemDirectory = useCallback(async (): Promise<string | null> => {
+    try {
+      // Try documentDirectory first
+      const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+      
+      if (!dir) {
+        console.warn('Neither documentDirectory nor cacheDirectory is available');
+        return null;
+      }
+
+      console.log('Using directory:', dir);
+      
+      // Ensure the directory exists
+      const dirExists = await ensureDirectoryExists(dir);
+      if (!dirExists) {
+        console.error('Failed to ensure directory exists');
+        return null;
       }
       
-      // If neither is available, return null
-      console.warn('Neither documentDirectory nor cacheDirectory is available');
-      return null;
+      return dir;
     } catch (error) {
       console.error('Error accessing FileSystem directories:', error);
       return null;
     }
-  }, []);
+  }, [ensureDirectoryExists]);
 
   const exportToPDF = useCallback(async () => {
     try {
-      console.log('Exporting report to PDF...');
+      console.log('Starting report export...');
       
       const reportContent = `
 RAPPORT DE VENTES - ${settings?.companyName || 'ALKD-POS'}
@@ -365,10 +388,11 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
       
-      // Get the appropriate directory
-      const dir = getFileSystemDirectory();
+      // Get the appropriate directory with proper error handling
+      const dir = await getFileSystemDirectory();
       
       if (!dir) {
+        console.log('No file system directory available, showing report in alert');
         // If no file system directory is available, show the report content in an alert
         Alert.alert(
           'Rapport généré',
@@ -383,21 +407,111 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       
       const fileUri = `${dir}${fileName}`;
       
-      console.log('Saving report to:', fileUri);
-      await FileSystem.writeAsStringAsync(fileUri, reportContent);
+      console.log('Writing report to file:', fileUri);
+      await FileSystem.writeAsStringAsync(fileUri, reportContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
       
+      console.log('Report file written successfully');
+      
+      // Try to share the file if sharing is available
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
+        console.log('Sharing is available, sharing file...');
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/plain',
+          dialogTitle: 'Partager le rapport'
+        });
+        console.log('File shared successfully');
       } else {
+        console.log('Sharing not available, showing success alert');
         Alert.alert('Succès', `Rapport exporté vers: ${fileUri}`);
       }
       
-      console.log('Report exported successfully');
     } catch (error) {
       console.error('Error exporting report:', error);
-      Alert.alert('Erreur', 'Impossible d\'exporter le rapport');
+      Alert.alert(
+        'Erreur d\'export', 
+        'Impossible d\'exporter le rapport. Vérifiez les permissions de stockage.',
+        [{ text: 'OK' }]
+      );
     }
   }, [reportData, settings, filters, formatCurrency, getFileSystemDirectory]);
+
+  const exportToExcel = useCallback(async () => {
+    try {
+      console.log('Starting Excel export...');
+      
+      // Create CSV content (Excel-compatible)
+      const csvContent = [
+        // Header
+        'Date,Numéro Reçu,Client,Produit,Quantité,Prix Unitaire,Sous-total,Méthode Paiement,Statut',
+        // Data rows
+        ...filteredSales.flatMap(sale => 
+          sale.items.map(item => {
+            const product = products.find(p => p.id === item.productId);
+            const customer = customers.find(c => c.id === sale.customerId);
+            return [
+              new Date(sale.createdAt).toLocaleDateString('fr-FR'),
+              sale.receiptNumber,
+              customer?.name || 'Client anonyme',
+              product?.name || 'Produit inconnu',
+              item.quantity,
+              item.price,
+              item.subtotal,
+              getPaymentMethodLabel(sale.paymentMethod),
+              sale.paymentStatus === 'paid' ? 'Payé' : 
+              sale.paymentStatus === 'credit' ? 'À crédit' : 'Partiellement payé'
+            ].join(',');
+          })
+        )
+      ].join('\n');
+
+      const fileName = `rapport_excel_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      // Get the appropriate directory with proper error handling
+      const dir = await getFileSystemDirectory();
+      
+      if (!dir) {
+        console.log('No file system directory available for Excel export');
+        Alert.alert(
+          'Export Excel',
+          'Impossible de sauvegarder le fichier Excel sur cet appareil.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      const fileUri = `${dir}${fileName}`;
+      
+      console.log('Writing Excel file to:', fileUri);
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      
+      console.log('Excel file written successfully');
+      
+      // Try to share the file if sharing is available
+      if (await Sharing.isAvailableAsync()) {
+        console.log('Sharing Excel file...');
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Partager le rapport Excel'
+        });
+        console.log('Excel file shared successfully');
+      } else {
+        console.log('Sharing not available for Excel file');
+        Alert.alert('Succès', `Rapport Excel exporté vers: ${fileUri}`);
+      }
+      
+    } catch (error) {
+      console.error('Error exporting Excel report:', error);
+      Alert.alert(
+        'Erreur d\'export Excel', 
+        'Impossible d\'exporter le rapport Excel.',
+        [{ text: 'OK' }]
+      );
+    }
+  }, [filteredSales, products, customers, getFileSystemDirectory]);
 
   const chartConfig = {
     backgroundColor: colors.surface,
@@ -539,6 +653,9 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
         </TouchableOpacity>
         <TouchableOpacity onPress={exportToPDF} style={styles.exportButton}>
           <Icon name="download" size={24} color={colors.success} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={exportToExcel} style={styles.exportButton}>
+          <Icon name="grid" size={24} color={colors.info} />
         </TouchableOpacity>
       </View>
 

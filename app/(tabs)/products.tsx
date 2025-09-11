@@ -100,20 +100,29 @@ export default function ProductsScreen() {
 
   const openEditModal = (product: Product) => {
     console.log('Opening edit modal for product:', product.name);
+    
+    // Safe conversion with null/undefined checks
+    const safeToString = (value: number | undefined | null): string => {
+      if (value === undefined || value === null || isNaN(value)) {
+        return '';
+      }
+      return value.toString();
+    };
+
     setFormData({
-      name: product.name,
+      name: product.name || '',
       description: product.description || '',
-      retailPrice: product.retailPrice.toString(),
-      wholesalePrice: product.wholesalePrice?.toString() || '',
-      wholesaleMinQuantity: product.wholesaleMinQuantity?.toString() || '',
-      promotionalPrice: product.promotionalPrice?.toString() || '',
+      retailPrice: safeToString(product.retailPrice),
+      wholesalePrice: safeToString(product.wholesalePrice),
+      wholesaleMinQuantity: safeToString(product.wholesaleMinQuantity),
+      promotionalPrice: safeToString(product.promotionalPrice),
       promotionalValidUntil: product.promotionalValidUntil ? 
         new Date(product.promotionalValidUntil).toISOString().split('T')[0] : '',
-      cost: product.cost.toString(),
+      cost: safeToString(product.cost),
       barcode: product.barcode || '',
-      categoryId: product.categoryId,
-      stock: product.stock.toString(),
-      minStock: product.minStock.toString(),
+      categoryId: product.categoryId || '',
+      stock: safeToString(product.stock),
+      minStock: safeToString(product.minStock),
     });
     setEditingProduct(product);
     setShowAddModal(true);
@@ -257,14 +266,20 @@ export default function ProductsScreen() {
   };
 
   const getStockStatus = (product: Product) => {
-    if (product.stock <= 0) return { text: 'Rupture', color: colors.danger };
-    if (product.stock <= product.minStock) return { text: 'Stock bas', color: colors.warning };
+    const stock = product.stock || 0;
+    const minStock = product.minStock || 0;
+    
+    if (stock <= 0) return { text: 'Rupture', color: colors.danger };
+    if (stock <= minStock) return { text: 'Stock bas', color: colors.warning };
     return { text: 'En stock', color: colors.success };
   };
 
   const getMarginPercentage = (product: Product) => {
-    if (product.cost === 0) return 0;
-    return ((product.retailPrice - product.cost) / product.cost * 100);
+    const cost = product.cost || 0;
+    const retailPrice = product.retailPrice || 0;
+    
+    if (cost === 0) return 0;
+    return ((retailPrice - cost) / cost * 100);
   };
 
   const getPriceInfo = (product: Product) => {
@@ -458,7 +473,7 @@ export default function ProductsScreen() {
                 <View style={[commonStyles.row, { marginBottom: spacing.sm, alignItems: 'flex-start' }]}>
                   <View style={{ flex: 1 }}>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                      📊 Stock: {product.stock} unités (Min: {product.minStock})
+                      📊 Stock: {product.stock || 0} unités (Min: {product.minStock || 0})
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: stockStatus.color, fontWeight: '600' }]}>
                       {stockStatus.text}
@@ -469,7 +484,7 @@ export default function ProductsScreen() {
                       💰 Marge: {margin.toFixed(1)}%
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                      Bénéfice: {formatCurrency(product.retailPrice - product.cost)}
+                      Bénéfice: {formatCurrency((product.retailPrice || 0) - (product.cost || 0))}
                     </Text>
                   </View>
                 </View>

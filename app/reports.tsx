@@ -342,8 +342,8 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
       
-      // Use documentDirectory for file storage
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      // Use cacheDirectory for file storage - this is available in expo-file-system
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, reportContent);
       

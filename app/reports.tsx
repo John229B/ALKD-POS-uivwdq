@@ -341,7 +341,9 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       `;
 
       const fileName = `rapport_${new Date().toISOString().split('T')[0]}.txt`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      
+      // Use cacheDirectory instead of documentDirectory for better compatibility
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, reportContent);
       

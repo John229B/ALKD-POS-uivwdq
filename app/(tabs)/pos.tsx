@@ -29,10 +29,6 @@ export default function POSScreen() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [customQuantity, setCustomQuantity] = useState('1');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
   const loadData = useCallback(async () => {
     try {
       console.log('POS: Loading data...');
@@ -51,6 +47,10 @@ export default function POSScreen() {
       console.error('POS: Error loading data:', error);
     }
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   // Get unit display name and check if fractions are allowed
   const getUnitInfo = useCallback((unitId: string) => {

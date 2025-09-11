@@ -299,6 +299,22 @@ export default function ProductsScreen() {
     }
   }, [products]);
 
+  const handleDeleteProduct = useCallback(async (product: Product) => {
+    try {
+      console.log('Products: Deleting product permanently:', product.name);
+      await deleteProduct(product.id);
+      
+      // Update local state
+      const updatedProducts = products.filter(p => p.id !== product.id);
+      setProducts(updatedProducts);
+
+      Alert.alert('Succès', 'Produit supprimé définitivement');
+    } catch (error) {
+      console.error('Products: Error deleting product:', error);
+      Alert.alert('Erreur', 'Erreur lors de la suppression du produit');
+    }
+  }, [products]);
+
   const confirmDeleteProduct = useCallback((product: Product) => {
     Alert.alert(
       'Confirmer la suppression',
@@ -315,23 +331,7 @@ export default function ProductsScreen() {
         },
       ]
     );
-  }, []);
-
-  const handleDeleteProduct = useCallback(async (product: Product) => {
-    try {
-      console.log('Products: Deleting product permanently:', product.name);
-      await deleteProduct(product.id);
-      
-      // Update local state
-      const updatedProducts = products.filter(p => p.id !== product.id);
-      setProducts(updatedProducts);
-
-      Alert.alert('Succès', 'Produit supprimé définitivement');
-    } catch (error) {
-      console.error('Products: Error deleting product:', error);
-      Alert.alert('Erreur', 'Erreur lors de la suppression du produit');
-    }
-  }, [products]);
+  }, [handleDeleteProduct]);
 
   const getStockStatus = useCallback((product: Product) => {
     const stock = product.stock || 0;

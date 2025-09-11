@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { commonStyles, colors, buttonStyles } from '../../styles/commonStyles';
+import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { getProducts, storeProducts, getSettings, getCategories } from '../../utils/storage';
 import { Product, AppSettings, Category } from '../../types';
 import Icon from '../../components/Icon';
@@ -246,7 +246,6 @@ export default function ProductsScreen() {
   };
 
   const formatCurrency = (amount: number | undefined | null): string => {
-    // Handle undefined, null, or invalid numbers
     if (amount === undefined || amount === null || isNaN(amount)) {
       console.log('formatCurrency called with invalid amount:', amount);
       amount = 0;
@@ -272,7 +271,6 @@ export default function ProductsScreen() {
     const now = new Date();
     const info = [];
 
-    // Promotional price
     if (product.promotionalPrice && product.promotionalValidUntil && new Date(product.promotionalValidUntil) > now) {
       const daysLeft = Math.ceil((new Date(product.promotionalValidUntil).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       info.push({
@@ -283,7 +281,6 @@ export default function ProductsScreen() {
       });
     }
 
-    // Wholesale price
     if (product.wholesalePrice && product.wholesaleMinQuantity) {
       info.push({
         type: 'wholesale',
@@ -300,30 +297,32 @@ export default function ProductsScreen() {
     <SafeAreaView style={commonStyles.container}>
       <View style={commonStyles.content}>
         {/* Header */}
-        <View style={[commonStyles.section, commonStyles.row]}>
-          <View>
+        <View style={[commonStyles.section, commonStyles.header]}>
+          <View style={{ flex: 1 }}>
             <Text style={commonStyles.title}>Gestion des Produits</Text>
-            <Text style={[commonStyles.textLight, { fontSize: 14 }]}>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
               {filteredProducts.length} produit(s) • Version 1.1.0
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={commonStyles.headerActions}>
             <TouchableOpacity
-              style={[buttonStyles.outline, { paddingHorizontal: 12, paddingVertical: 8 }]}
+              style={[buttonStyles.outline, buttonStyles.small]}
               onPress={() => router.push('/categories')}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <Icon name="grid" size={16} color={colors.primary} />
-                <Text style={{ color: colors.primary, fontSize: 12 }}>Catégories</Text>
+                {!isSmallScreen && <Text style={{ color: colors.primary, fontSize: fontSizes.xs }}>Catégories</Text>}
               </View>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[buttonStyles.primary, { paddingHorizontal: 16, paddingVertical: 8 }]}
+              style={[buttonStyles.primary, isSmallScreen ? buttonStyles.small : {}]}
               onPress={openAddModal}
             >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <Icon name="add" size={20} color={colors.secondary} />
-                <Text style={{ color: colors.secondary, fontWeight: '600' }}>Ajouter</Text>
+                <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
+                  {isSmallScreen ? 'Ajouter' : 'Ajouter produit'}
+                </Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -340,19 +339,19 @@ export default function ProductsScreen() {
         </View>
 
         {/* Category Filter */}
-        <View style={commonStyles.section}>
+        <View style={commonStyles.sectionSmall}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg }}>
               <TouchableOpacity
                 style={[
                   buttonStyles.outline,
-                  { paddingHorizontal: 16, paddingVertical: 8 },
+                  buttonStyles.small,
                   selectedCategoryId === 'all' && { backgroundColor: colors.primary }
                 ]}
                 onPress={() => setSelectedCategoryId('all')}
               >
                 <Text style={[
-                  { color: colors.primary, fontSize: 14 },
+                  { color: colors.primary, fontSize: fontSizes.sm },
                   selectedCategoryId === 'all' && { color: colors.secondary }
                 ]}>
                   Toutes
@@ -363,20 +362,21 @@ export default function ProductsScreen() {
                   key={category.id}
                   style={[
                     buttonStyles.outline,
-                    { paddingHorizontal: 16, paddingVertical: 8, borderColor: category.color },
+                    buttonStyles.small,
+                    { borderColor: category.color },
                     selectedCategoryId === category.id && { backgroundColor: category.color }
                   ]}
                   onPress={() => setSelectedCategoryId(category.id)}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                     <View style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: 4,
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
                       backgroundColor: selectedCategoryId === category.id ? colors.secondary : category.color
                     }} />
                     <Text style={[
-                      { color: category.color, fontSize: 14 },
+                      { color: category.color, fontSize: fontSizes.sm },
                       selectedCategoryId === category.id && { color: colors.secondary }
                     ]}>
                       {category.name}
@@ -389,7 +389,7 @@ export default function ProductsScreen() {
         </View>
 
         {/* Products List */}
-        <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}>
           {filteredProducts.map(product => {
             const stockStatus = getStockStatus(product);
             const margin = getMarginPercentage(product);
@@ -397,38 +397,38 @@ export default function ProductsScreen() {
             const categoryColor = getCategoryColor(product.categoryId);
             
             return (
-              <View key={product.id} style={[commonStyles.card, { marginBottom: 12, opacity: product.isActive ? 1 : 0.6 }]}>
+              <View key={product.id} style={[commonStyles.card, { opacity: product.isActive ? 1 : 0.6 }]}>
                 {/* Product Header */}
-                <View style={[commonStyles.row, { marginBottom: 8 }]}>
+                <View style={[commonStyles.row, { marginBottom: spacing.xs, alignItems: 'flex-start' }]}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 4 }]}>
+                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
                       {product.name}
                       {!product.isActive && <Text style={{ color: colors.danger }}> (Inactif)</Text>}
                     </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                         <View style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
                           backgroundColor: categoryColor
                         }} />
-                        <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                           {getCategoryName(product.categoryId)}
                         </Text>
                       </View>
                       {product.barcode && (
-                        <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                           🏷️ {product.barcode}
                         </Text>
                       )}
                     </View>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: 16 }]}>
+                    <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary, fontSize: fontSizes.lg }]}>
                       {formatCurrency(product.retailPrice)}
                     </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       Coût: {formatCurrency(product.cost)}
                     </Text>
                   </View>
@@ -436,17 +436,17 @@ export default function ProductsScreen() {
 
                 {/* Product Description */}
                 {product.description && (
-                  <Text style={[commonStyles.textLight, { fontSize: 12, marginBottom: 8 }]}>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
                     {product.description}
                   </Text>
                 )}
 
                 {/* Price Information */}
                 {priceInfo.length > 0 && (
-                  <View style={{ marginBottom: 8 }}>
+                  <View style={{ marginBottom: spacing.xs }}>
                     {priceInfo.map((info, index) => (
-                      <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={[commonStyles.textLight, { fontSize: 11, color: info.color }]}>
+                      <View key={index} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: info.color }]}>
                           {info.label}: {formatCurrency(info.price)}
                         </Text>
                       </View>
@@ -455,54 +455,54 @@ export default function ProductsScreen() {
                 )}
 
                 {/* Stock and Margin Info */}
-                <View style={[commonStyles.row, { marginBottom: 12 }]}>
+                <View style={[commonStyles.row, { marginBottom: spacing.sm, alignItems: 'flex-start' }]}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       📊 Stock: {product.stock} unités (Min: {product.minStock})
                     </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: 12, color: stockStatus.color, fontWeight: '600' }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: stockStatus.color, fontWeight: '600' }]}>
                       {stockStatus.text}
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       💰 Marge: {margin.toFixed(1)}%
                     </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       Bénéfice: {formatCurrency(product.retailPrice - product.cost)}
                     </Text>
                   </View>
                 </View>
 
                 {/* Action Buttons */}
-                <View style={[commonStyles.row, { gap: 8 }]}>
+                <View style={commonStyles.buttonContainer}>
                   <TouchableOpacity
-                    style={[buttonStyles.outline, { flex: 1, paddingVertical: 8 }]}
+                    style={[buttonStyles.outline, buttonStyles.small, { flex: 1 }]}
                     onPress={() => openEditModal(product)}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                      <Icon name="create" size={16} color={colors.primary} />
-                      <Text style={{ color: colors.primary, fontSize: 12 }}>Modifier</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
+                      <Icon name="create" size={14} color={colors.primary} />
+                      <Text style={{ color: colors.primary, fontSize: fontSizes.xs }}>Modifier</Text>
                     </View>
                   </TouchableOpacity>
                   
                   <TouchableOpacity
                     style={[
                       buttonStyles.outline,
-                      { flex: 1, paddingVertical: 8 },
-                      { borderColor: product.isActive ? colors.danger : colors.success }
+                      buttonStyles.small,
+                      { flex: 1, borderColor: product.isActive ? colors.danger : colors.success }
                     ]}
                     onPress={() => toggleProductStatus(product)}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs }}>
                       <Icon 
                         name={product.isActive ? "close" : "checkmark"} 
-                        size={16} 
+                        size={14} 
                         color={product.isActive ? colors.danger : colors.success} 
                       />
                       <Text style={{ 
                         color: product.isActive ? colors.danger : colors.success, 
-                        fontSize: 12 
+                        fontSize: fontSizes.xs 
                       }}>
                         {product.isActive ? 'Désactiver' : 'Activer'}
                       </Text>
@@ -515,10 +515,10 @@ export default function ProductsScreen() {
 
           {filteredProducts.length === 0 && (
             <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Text style={[commonStyles.textLight, { fontSize: 16, marginBottom: 8 }]}>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
                 Aucun produit trouvé
               </Text>
-              <Text style={[commonStyles.textLight, { fontSize: 14 }]}>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
                 {searchQuery ? 'Essayez un autre terme de recherche' : 'Commencez par ajouter votre premier produit'}
               </Text>
             </View>
@@ -533,9 +533,9 @@ export default function ProductsScreen() {
         transparent={true}
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={[commonStyles.card, { width: '95%', maxWidth: 500, maxHeight: '95%' }]}>
-            <View style={[commonStyles.row, { marginBottom: 20 }]}>
+        <View style={commonStyles.modalOverlay}>
+          <View style={commonStyles.modalContent}>
+            <View style={[commonStyles.row, { marginBottom: spacing.lg }]}>
               <Text style={commonStyles.subtitle}>
                 {editingProduct ? '✏️ Modifier le produit' : '➕ Ajouter un produit'}
               </Text>
@@ -544,9 +544,9 @@ export default function ProductsScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView>
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   📝 Nom du produit *
                 </Text>
                 <TextInput
@@ -557,8 +557,8 @@ export default function ProductsScreen() {
                 />
               </View>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   📄 Description
                 </Text>
                 <TextInput
@@ -571,8 +571,8 @@ export default function ProductsScreen() {
               </View>
 
               {/* Category Selection */}
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   📦 Catégorie *
                 </Text>
                 <TouchableOpacity
@@ -586,7 +586,7 @@ export default function ProductsScreen() {
                 </TouchableOpacity>
                 
                 {showCategoryDropdown && (
-                  <View style={[commonStyles.card, { marginTop: 4, maxHeight: 200 }]}>
+                  <View style={[commonStyles.card, { marginTop: spacing.xs, maxHeight: 200 }]}>
                     <ScrollView>
                       {categories.filter(cat => cat.isActive).map(category => (
                         <TouchableOpacity
@@ -594,7 +594,7 @@ export default function ProductsScreen() {
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            padding: 12,
+                            padding: spacing.sm,
                             borderBottomWidth: 1,
                             borderBottomColor: colors.border,
                           }}
@@ -608,7 +608,7 @@ export default function ProductsScreen() {
                             height: 12,
                             borderRadius: 6,
                             backgroundColor: category.color,
-                            marginRight: 12
+                            marginRight: spacing.sm
                           }} />
                           <Text style={commonStyles.text}>{category.name}</Text>
                         </TouchableOpacity>
@@ -619,12 +619,12 @@ export default function ProductsScreen() {
               </View>
 
               {/* Pricing Section */}
-              <Text style={[commonStyles.text, { marginBottom: 12, fontWeight: '600', fontSize: 16 }]}>
+              <Text style={[commonStyles.text, { marginBottom: spacing.sm, fontWeight: '600', fontSize: fontSizes.lg }]}>
                 💰 Tarification
               </Text>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   🏷️ Prix de détail *
                 </Text>
                 <TextInput
@@ -636,9 +636,9 @@ export default function ProductsScreen() {
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     📦 Prix de gros
                   </Text>
                   <TextInput
@@ -650,7 +650,7 @@ export default function ProductsScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     📊 Qté min. gros
                   </Text>
                   <TextInput
@@ -663,9 +663,9 @@ export default function ProductsScreen() {
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     🎉 Prix promotionnel
                   </Text>
                   <TextInput
@@ -677,7 +677,7 @@ export default function ProductsScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     📅 Valide jusqu'au
                   </Text>
                   <TextInput
@@ -689,8 +689,8 @@ export default function ProductsScreen() {
                 </View>
               </View>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   🏷️ Prix d'achat
                 </Text>
                 <TextInput
@@ -702,8 +702,8 @@ export default function ProductsScreen() {
                 />
               </View>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                   🏷️ Code-barres
                 </Text>
                 <TextInput
@@ -714,9 +714,9 @@ export default function ProductsScreen() {
                 />
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     📊 Stock initial
                   </Text>
                   <TextInput
@@ -728,7 +728,7 @@ export default function ProductsScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { marginBottom: 8, fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
                     ⚠️ Stock minimum
                   </Text>
                   <TextInput
@@ -742,10 +742,10 @@ export default function ProductsScreen() {
               </View>
 
               <TouchableOpacity
-                style={[buttonStyles.primary, { marginBottom: 12 }]}
+                style={[buttonStyles.primary, { marginBottom: spacing.sm }]}
                 onPress={saveProduct}
               >
-                <Text style={{ color: colors.secondary, fontSize: 16, fontWeight: '600' }}>
+                <Text style={{ color: colors.secondary, fontSize: fontSizes.md, fontWeight: '600' }}>
                   {editingProduct ? '✅ Modifier le produit' : '➕ Ajouter le produit'}
                 </Text>
               </TouchableOpacity>
@@ -754,7 +754,7 @@ export default function ProductsScreen() {
                 style={buttonStyles.outline}
                 onPress={() => setShowAddModal(false)}
               >
-                <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
+                <Text style={{ color: colors.primary, fontSize: fontSizes.md, fontWeight: '600' }}>
                   ❌ Annuler
                 </Text>
               </TouchableOpacity>

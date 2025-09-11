@@ -3,24 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { commonStyles, colors, buttonStyles } from '../../styles/commonStyles';
+import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
+import Icon from '../../components/Icon';
 import { useAuthState } from '../../hooks/useAuth';
 import { getSales, getProducts, getCustomers, getSettings } from '../../utils/storage';
 import { DashboardStats, Sale, Product, Customer, AppSettings } from '../../types';
-import Icon from '../../components/Icon';
 
 export default function DashboardScreen() {
-  const { user, logout } = useAuthState();
-  const [stats, setStats] = useState<DashboardStats>({
-    todaySales: 0,
-    todayRevenue: 0,
-    totalCustomers: 0,
-    lowStockProducts: 0,
-    creditAmount: 0,
-    topProducts: [],
-  });
+  const { user } = useAuthState();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     loadDashboardData();
@@ -29,15 +22,14 @@ export default function DashboardScreen() {
   const loadDashboardData = async () => {
     try {
       console.log('Loading dashboard data...');
-      
-      const [sales, products, customers, appSettings] = await Promise.all([
+      const [sales, products, customers, settingsData] = await Promise.all([
         getSales(),
         getProducts(),
         getCustomers(),
         getSettings(),
       ]);
 
-      setSettings(appSettings);
+      setSettings(settingsData);
 
       // Calculate today's stats
       const today = new Date();
@@ -50,40 +42,46 @@ export default function DashboardScreen() {
       });
 
       const todayRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
+      const lowStockProducts = products.filter(p => p.stock <= p.minStock && p.isActive).length;
       const creditAmount = customers.reduce((sum, customer) => sum + customer.creditBalance, 0);
-      const lowStockProducts = products.filter(product => product.stock <= product.minStock).length;
 
       // Calculate top products
-      const productSales = new Map<string, { quantity: number; revenue: number }>();
+      const productSales = new Map<string, { quantity: number; revenue: number; product: Product }>();
+      
       sales.forEach(sale => {
         sale.items.forEach(item => {
-          const existing = productSales.get(item.productId) || { quantity: 0, revenue: 0 };
-          productSales.set(item.productId, {
-            quantity: existing.quantity + item.quantity,
-            revenue: existing.revenue + item.subtotal,
-          });
+          const existing = productSales.get(item.productId);
+          const product = products.find(p => p.id === item.productId);
+          
+          if (product) {
+            if (existing) {
+              existing.quantity += item.quantity;
+              existing.revenue += item.subtotal;
+            } else {
+              productSales.set(item.productId, {
+                quantity: item.quantity,
+                revenue: item.subtotal,
+                product,
+              });
+            }
+          }
         });
       });
 
-      const topProducts = Array.from(productSales.entries())
-        .map(([productId, data]) => ({
-          product: products.find(p => p.id === productId)!,
-          quantity: data.quantity,
-          revenue: data.revenue,
-        }))
-        .filter(item => item.product)
+      const topProducts = Array.from(productSales.values())
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 5);
 
-      setStats({
+      const dashboardStats: DashboardStats = {
         todaySales: todaySales.length,
         todayRevenue,
         totalCustomers: customers.length,
         lowStockProducts,
         creditAmount,
         topProducts,
-      });
+      };
 
+      setStats(dashboardStats);
       console.log('Dashboard data loaded successfully');
     } catch (error) {
       console.error('Error loading dashboard data:', error);
@@ -91,13 +89,12 @@ export default function DashboardScreen() {
   };
 
   const onRefresh = async () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     await loadDashboardData();
-    setIsRefreshing(false);
+    setRefreshing(false);
   };
 
   const formatCurrency = (amount: number | undefined | null): string => {
-    // Handle undefined, null, or invalid numbers
     if (amount === undefined || amount === null || isNaN(amount)) {
       console.log('formatCurrency called with invalid amount:', amount);
       amount = 0;
@@ -108,146 +105,182 @@ export default function DashboardScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  const handleLogout = async () => {
-    await logout();
+  const handleLogout = () => {
     router.replace('/(auth)/login');
   };
+
+  if (!stats) {
+    return (
+      <SafeAreaView style={commonStyles.container}>
+        <View style={[commonStyles.content, commonStyles.center]}>
+          <Text style={commonStyles.text}>Chargement...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={commonStyles.container}>
       <ScrollView
         style={commonStyles.content}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={{ paddingBottom: spacing.xl }}
       >
         {/* Header */}
-        <View style={[commonStyles.section, commonStyles.row]}>
-          <View>
-            <Text style={commonStyles.title}>ALKD-POS</Text>
-            <Text style={commonStyles.textLight}>
-              Bonjour, {user?.username}
+        <View style={[commonStyles.section, commonStyles.header]}>
+          <View style={{ flex: 1 }}>
+            <Text style={commonStyles.title}>Tableau de bord</Text>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+              Bonjour {user?.username} • {new Date().toLocaleDateString('fr-FR')}
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity onPress={() => router.push('/settings')}>
-              <Icon name="settings" size={24} color={colors.textLight} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleLogout}>
-              <Icon name="log-out" size={24} color={colors.textLight} />
-            </TouchableOpacity>
+          <TouchableOpacity
+            style={[buttonStyles.outline, buttonStyles.small, { borderColor: colors.danger }]}
+            onPress={handleLogout}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              <Icon name="log-out" size={16} color={colors.danger} />
+              {!isSmallScreen && <Text style={{ color: colors.danger, fontSize: fontSizes.sm }}>Déconnexion</Text>}
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Quick Stats */}
+        <View style={commonStyles.gridContainer}>
+          <View style={[commonStyles.gridItem, commonStyles.card]}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[commonStyles.text, { fontSize: fontSizes.xl, fontWeight: '600', color: colors.primary }]}>
+                {stats.todaySales}
+              </Text>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+                Ventes aujourd'hui
+              </Text>
+            </View>
           </View>
+
+          <View style={[commonStyles.gridItem, commonStyles.card]}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[commonStyles.text, { fontSize: fontSizes.lg, fontWeight: '600', color: colors.success }]}>
+                {formatCurrency(stats.todayRevenue)}
+              </Text>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+                Chiffre d'affaires
+              </Text>
+            </View>
+          </View>
+
+          <View style={[commonStyles.gridItem, commonStyles.card]}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[commonStyles.text, { fontSize: fontSizes.xl, fontWeight: '600', color: colors.info }]}>
+                {stats.totalCustomers}
+              </Text>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+                Clients
+              </Text>
+            </View>
+          </View>
+
+          {stats.lowStockProducts > 0 && (
+            <View style={[commonStyles.gridItem, commonStyles.card]}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[commonStyles.text, { fontSize: fontSizes.xl, fontWeight: '600', color: colors.warning }]}>
+                  {stats.lowStockProducts}
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+                  Stock bas
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {stats.creditAmount > 0 && (
+            <View style={[commonStyles.gridItem, commonStyles.card]}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[commonStyles.text, { fontSize: fontSizes.lg, fontWeight: '600', color: colors.danger }]}>
+                  {formatCurrency(stats.creditAmount)}
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+                  Créances
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Quick Actions */}
         <View style={commonStyles.section}>
-          <Text style={[commonStyles.subtitle, { marginBottom: 16 }]}>
+          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
             Actions rapides
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+          <View style={commonStyles.gridContainer}>
             <TouchableOpacity
-              style={[buttonStyles.primary, { flex: 1, minWidth: 150 }]}
+              style={[commonStyles.gridItem, commonStyles.card]}
               onPress={() => router.push('/(tabs)/pos')}
             >
-              <Icon name="calculator" size={20} color={colors.secondary} style={{ marginBottom: 4 }} />
-              <Text style={{ color: colors.secondary, fontSize: 14, fontWeight: '600' }}>
-                Nouvelle vente
-              </Text>
+              <View style={{ alignItems: 'center' }}>
+                <Icon name="card" size={32} color={colors.primary} />
+                <Text style={[commonStyles.text, { marginTop: spacing.xs, textAlign: 'center' }]}>
+                  Nouvelle vente
+                </Text>
+              </View>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
-              style={[buttonStyles.outline, { flex: 1, minWidth: 150 }]}
+              style={[commonStyles.gridItem, commonStyles.card]}
               onPress={() => router.push('/(tabs)/products')}
             >
-              <Icon name="add" size={20} color={colors.primary} style={{ marginBottom: 4 }} />
-              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '600' }}>
-                Ajouter produit
-              </Text>
+              <View style={{ alignItems: 'center' }}>
+                <Icon name="cube" size={32} color={colors.info} />
+                <Text style={[commonStyles.text, { marginTop: spacing.xs, textAlign: 'center' }]}>
+                  Gérer produits
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[commonStyles.gridItem, commonStyles.card]}
+              onPress={() => router.push('/(tabs)/customers')}
+            >
+              <View style={{ alignItems: 'center' }}>
+                <Icon name="people" size={32} color={colors.success} />
+                <Text style={[commonStyles.text, { marginTop: spacing.xs, textAlign: 'center' }]}>
+                  Clients
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[commonStyles.gridItem, commonStyles.card]}
+              onPress={() => router.push('/(tabs)/reports')}
+            >
+              <View style={{ alignItems: 'center' }}>
+                <Icon name="bar-chart" size={32} color={colors.warning} />
+                <Text style={[commonStyles.text, { marginTop: spacing.xs, textAlign: 'center' }]}>
+                  Rapports
+                </Text>
+              </View>
             </TouchableOpacity>
           </View>
-        </View>
-
-        {/* Statistics Cards */}
-        <View style={commonStyles.section}>
-          <Text style={[commonStyles.subtitle, { marginBottom: 16 }]}>
-            Statistiques du jour
-          </Text>
-          
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-            <View style={[commonStyles.card, { flex: 1, minWidth: 150 }]}>
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                <Icon name="trending-up" size={20} color={colors.success} />
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>VENTES</Text>
-              </View>
-              <Text style={[commonStyles.title, { fontSize: 24, color: colors.success }]}>
-                {stats.todaySales}
-              </Text>
-            </View>
-
-            <View style={[commonStyles.card, { flex: 1, minWidth: 150 }]}>
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                <Icon name="cash" size={20} color={colors.primary} />
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>REVENUS</Text>
-              </View>
-              <Text style={[commonStyles.title, { fontSize: 18, color: colors.primary }]}>
-                {formatCurrency(stats.todayRevenue)}
-              </Text>
-            </View>
-          </View>
-
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
-            <View style={[commonStyles.card, { flex: 1, minWidth: 150 }]}>
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                <Icon name="people" size={20} color={colors.info} />
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>CLIENTS</Text>
-              </View>
-              <Text style={[commonStyles.title, { fontSize: 24, color: colors.info }]}>
-                {stats.totalCustomers}
-              </Text>
-            </View>
-
-            <View style={[commonStyles.card, { flex: 1, minWidth: 150 }]}>
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                <Icon name="warning" size={20} color={colors.danger} />
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>STOCK BAS</Text>
-              </View>
-              <Text style={[commonStyles.title, { fontSize: 24, color: colors.danger }]}>
-                {stats.lowStockProducts}
-              </Text>
-            </View>
-          </View>
-
-          {stats.creditAmount > 0 && (
-            <View style={[commonStyles.card, { marginTop: 12 }]}>
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
-                <Icon name="card" size={20} color={colors.warning} />
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>CRÉDIT TOTAL</Text>
-              </View>
-              <Text style={[commonStyles.title, { fontSize: 20, color: colors.warning }]}>
-                {formatCurrency(stats.creditAmount)}
-              </Text>
-            </View>
-          )}
         </View>
 
         {/* Top Products */}
         {stats.topProducts.length > 0 && (
           <View style={commonStyles.section}>
-            <Text style={[commonStyles.subtitle, { marginBottom: 16 }]}>
+            <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
               Produits les plus vendus
             </Text>
             {stats.topProducts.map((item, index) => (
-              <View key={item.product.id} style={[commonStyles.card, { marginBottom: 8 }]}>
+              <View key={item.product.id} style={[commonStyles.card, commonStyles.cardSmall, { marginBottom: spacing.xs }]}>
                 <View style={commonStyles.row}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600' }]}>
-                      {item.product.name}
+                    <Text style={[commonStyles.text, { fontWeight: '600', fontSize: fontSizes.sm }]}>
+                      #{index + 1} {item.product.name}
                     </Text>
-                    <Text style={commonStyles.textLight}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                       {item.quantity} unités vendues
                     </Text>
                   </View>
-                  <Text style={[commonStyles.text, { fontWeight: '600', color: colors.success }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', color: colors.primary }]}>
                     {formatCurrency(item.revenue)}
                   </Text>
                 </View>

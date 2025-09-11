@@ -2,10 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { commonStyles, colors, buttonStyles } from '../../styles/commonStyles';
+import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
+import Icon from '../../components/Icon';
 import { getCustomers, storeCustomers, getSettings } from '../../utils/storage';
 import { Customer, AppSettings } from '../../types';
-import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 
 export default function CustomersScreen() {
@@ -27,12 +27,14 @@ export default function CustomersScreen() {
 
   const loadData = async () => {
     try {
+      console.log('Loading customers data...');
       const [customersData, settingsData] = await Promise.all([
         getCustomers(),
         getSettings(),
       ]);
       setCustomers(customersData);
       setSettings(settingsData);
+      console.log(`Loaded ${customersData.length} customers`);
     } catch (error) {
       console.error('Error loading customers data:', error);
     }
@@ -55,11 +57,13 @@ export default function CustomersScreen() {
   };
 
   const openAddModal = () => {
+    console.log('Opening add customer modal');
     resetForm();
     setShowAddModal(true);
   };
 
   const openEditModal = (customer: Customer) => {
+    console.log('Opening edit modal for customer:', customer.name);
     setFormData({
       name: customer.name,
       phone: customer.phone || '',
@@ -80,7 +84,7 @@ export default function CustomersScreen() {
       let updatedCustomers: Customer[];
 
       if (editingCustomer) {
-        // Update existing customer
+        console.log('Updating existing customer:', editingCustomer.id);
         const updatedCustomer: Customer = {
           ...editingCustomer,
           name: formData.name.trim(),
@@ -94,7 +98,7 @@ export default function CustomersScreen() {
           c.id === editingCustomer.id ? updatedCustomer : c
         );
       } else {
-        // Add new customer
+        console.log('Adding new customer');
         const newCustomer: Customer = {
           id: uuid.v4() as string,
           name: formData.name.trim(),
@@ -126,7 +130,6 @@ export default function CustomersScreen() {
   };
 
   const formatCurrency = (amount: number | undefined | null): string => {
-    // Handle undefined, null, or invalid numbers
     if (amount === undefined || amount === null || isNaN(amount)) {
       console.log('formatCurrency called with invalid amount:', amount);
       amount = 0;
@@ -141,13 +144,23 @@ export default function CustomersScreen() {
     <SafeAreaView style={commonStyles.container}>
       <View style={commonStyles.content}>
         {/* Header */}
-        <View style={[commonStyles.section, commonStyles.row]}>
-          <Text style={commonStyles.title}>Clients</Text>
+        <View style={[commonStyles.section, commonStyles.header]}>
+          <View style={{ flex: 1 }}>
+            <Text style={commonStyles.title}>Gestion des Clients</Text>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+              {filteredCustomers.length} client(s)
+            </Text>
+          </View>
           <TouchableOpacity
-            style={[buttonStyles.primary, { paddingHorizontal: 16, paddingVertical: 8 }]}
+            style={[buttonStyles.primary, isSmallScreen ? buttonStyles.small : {}]}
             onPress={openAddModal}
           >
-            <Icon name="add" size={20} color={colors.secondary} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+              <Icon name="person-add" size={20} color={colors.secondary} />
+              <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
+                {isSmallScreen ? 'Ajouter' : 'Ajouter client'}
+              </Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -155,70 +168,77 @@ export default function CustomersScreen() {
         <View style={commonStyles.section}>
           <TextInput
             style={commonStyles.input}
-            placeholder="Rechercher un client..."
+            placeholder="Rechercher par nom, téléphone ou email..."
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
         {/* Customers List */}
-        <ScrollView style={{ flex: 1, paddingHorizontal: 20 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}>
           {filteredCustomers.map(customer => (
-            <TouchableOpacity
-              key={customer.id}
-              style={[commonStyles.card, { marginBottom: 12 }]}
-              onPress={() => openEditModal(customer)}
-            >
-              <View style={[commonStyles.row, { marginBottom: 8 }]}>
+            <View key={customer.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
+              {/* Customer Header */}
+              <View style={[commonStyles.row, { marginBottom: spacing.xs, alignItems: 'flex-start' }]}>
                 <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: 4 }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
                     {customer.name}
                   </Text>
-                  {customer.phone && (
-                    <Text style={[commonStyles.textLight, { marginBottom: 2 }]}>
-                      📞 {customer.phone}
-                    </Text>
-                  )}
-                  {customer.email && (
-                    <Text style={[commonStyles.textLight, { marginBottom: 2 }]}>
-                      ✉️ {customer.email}
-                    </Text>
-                  )}
-                  {customer.address && (
-                    <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
-                      📍 {customer.address}
-                    </Text>
-                  )}
+                  <View style={{ gap: 2 }}>
+                    {customer.phone && (
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                        📞 {customer.phone}
+                      </Text>
+                    )}
+                    {customer.email && (
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                        ✉️ {customer.email}
+                      </Text>
+                    )}
+                    {customer.address && (
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                        📍 {customer.address}
+                      </Text>
+                    )}
+                  </View>
                 </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={[commonStyles.textLight, { fontSize: 12, marginBottom: 4 }]}>
-                    Achats totaux
-                  </Text>
-                  <Text style={[commonStyles.text, { fontWeight: '600', color: colors.success }]}>
-                    {formatCurrency(customer.totalPurchases)}
-                  </Text>
-                  {customer.creditBalance > 0 && (
-                    <Text style={[commonStyles.text, { fontSize: 12, color: colors.warning, marginTop: 4 }]}>
-                      Crédit: {formatCurrency(customer.creditBalance)}
-                    </Text>
-                  )}
-                </View>
+                <TouchableOpacity
+                  style={[buttonStyles.outline, buttonStyles.small]}
+                  onPress={() => openEditModal(customer)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                    <Icon name="create" size={14} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontSize: fontSizes.xs }}>Modifier</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
 
-              <View style={[commonStyles.row, { marginTop: 8 }]}>
-                <Text style={[commonStyles.textLight, { fontSize: 12 }]}>
-                  Client depuis: {new Date(customer.createdAt).toLocaleDateString()}
+              {/* Customer Stats */}
+              <View style={[commonStyles.row, { paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                    💰 Total achats: {formatCurrency(customer.totalPurchases)}
+                  </Text>
+                  {customer.creditBalance > 0 && (
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.danger }]}>
+                      📋 Crédit: {formatCurrency(customer.creditBalance)}
+                    </Text>
+                  )}
+                </View>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                  Client depuis {new Date(customer.createdAt).toLocaleDateString('fr-FR')}
                 </Text>
-                <Icon name="chevron-forward" size={16} color={colors.textLight} />
               </View>
-            </TouchableOpacity>
+            </View>
           ))}
 
           {filteredCustomers.length === 0 && (
-            <View style={[commonStyles.center, { marginTop: 50 }]}>
-              <Icon name="people" size={48} color={colors.textLight} style={{ marginBottom: 16 }} />
-              <Text style={[commonStyles.textLight, { textAlign: 'center' }]}>
-                {searchQuery ? 'Aucun client trouvé' : 'Aucun client enregistré'}
+            <View style={{ alignItems: 'center', marginTop: 40 }}>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
+                Aucun client trouvé
+              </Text>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
+                {searchQuery ? 'Essayez un autre terme de recherche' : 'Commencez par ajouter votre premier client'}
               </Text>
             </View>
           )}
@@ -232,68 +252,76 @@ export default function CustomersScreen() {
         transparent={true}
         onRequestClose={() => setShowAddModal(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={[commonStyles.card, { width: '90%', maxWidth: 400, maxHeight: '80%' }]}>
-            <View style={[commonStyles.row, { marginBottom: 20 }]}>
+        <View style={commonStyles.modalOverlay}>
+          <View style={commonStyles.modalContent}>
+            <View style={[commonStyles.row, { marginBottom: spacing.lg }]}>
               <Text style={commonStyles.subtitle}>
-                {editingCustomer ? 'Modifier le client' : 'Ajouter un client'}
+                {editingCustomer ? '✏️ Modifier le client' : '👤 Ajouter un client'}
               </Text>
               <TouchableOpacity onPress={() => setShowAddModal(false)}>
                 <Icon name="close" size={24} color={colors.textLight} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView>
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8 }]}>Nom complet *</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  👤 Nom complet *
+                </Text>
                 <TextInput
                   style={commonStyles.input}
                   value={formData.name}
                   onChangeText={(text) => setFormData({ ...formData, name: text })}
-                  placeholder="Nom complet du client"
+                  placeholder="Ex: Jean Dupont"
                 />
               </View>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8 }]}>Téléphone</Text>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  📞 Téléphone
+                </Text>
                 <TextInput
                   style={commonStyles.input}
                   value={formData.phone}
                   onChangeText={(text) => setFormData({ ...formData, phone: text })}
-                  placeholder="Numéro de téléphone"
+                  placeholder="Ex: +225 01 02 03 04 05"
                   keyboardType="phone-pad"
                 />
               </View>
 
-              <View style={{ marginBottom: 16 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8 }]}>Email</Text>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  ✉️ Email
+                </Text>
                 <TextInput
                   style={commonStyles.input}
                   value={formData.email}
                   onChangeText={(text) => setFormData({ ...formData, email: text })}
-                  placeholder="Adresse email"
+                  placeholder="Ex: jean.dupont@email.com"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
               </View>
 
-              <View style={{ marginBottom: 20 }}>
-                <Text style={[commonStyles.text, { marginBottom: 8 }]}>Adresse</Text>
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  📍 Adresse
+                </Text>
                 <TextInput
                   style={[commonStyles.input, { height: 80, textAlignVertical: 'top' }]}
                   value={formData.address}
                   onChangeText={(text) => setFormData({ ...formData, address: text })}
-                  placeholder="Adresse complète"
+                  placeholder="Adresse complète du client..."
                   multiline
                 />
               </View>
 
               <TouchableOpacity
-                style={[buttonStyles.primary, { marginBottom: 12 }]}
+                style={[buttonStyles.primary, { marginBottom: spacing.sm }]}
                 onPress={saveCustomer}
               >
-                <Text style={{ color: colors.secondary, fontSize: 16, fontWeight: '600' }}>
-                  {editingCustomer ? 'Modifier' : 'Ajouter'}
+                <Text style={{ color: colors.secondary, fontSize: fontSizes.md, fontWeight: '600' }}>
+                  {editingCustomer ? '✅ Modifier le client' : '➕ Ajouter le client'}
                 </Text>
               </TouchableOpacity>
 
@@ -301,8 +329,8 @@ export default function CustomersScreen() {
                 style={buttonStyles.outline}
                 onPress={() => setShowAddModal(false)}
               >
-                <Text style={{ color: colors.primary, fontSize: 16, fontWeight: '600' }}>
-                  Annuler
+                <Text style={{ color: colors.primary, fontSize: fontSizes.md, fontWeight: '600' }}>
+                  ❌ Annuler
                 </Text>
               </TouchableOpacity>
             </ScrollView>

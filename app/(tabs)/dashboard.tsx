@@ -168,29 +168,29 @@ export default function DashboardScreen() {
     {
       id: 'new-sale',
       title: 'Nouvelle Vente',
-      icon: 'plus-circle',
-      color: colors.success,
+      icon: 'cart' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
+      color: '#FFD700', // Gold/Yellow color for cart
       route: '/pos',
     },
     {
       id: 'add-product',
       title: 'Ajouter Produit',
-      icon: 'package',
-      color: colors.info,
+      icon: 'cube' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
+      color: '#4A90E2', // Blue color for product/box
       route: '/products',
     },
     {
       id: 'customers',
       title: 'Clients',
-      icon: 'users',
-      color: colors.warning,
+      icon: 'people' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
+      color: '#FF8C00', // Orange color for people
       route: '/customers',
     },
     {
       id: 'reports',
       title: 'Rapports',
-      icon: 'bar-chart',
-      color: colors.primary,
+      icon: 'stats-chart' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
+      color: '#32CD32', // Green color for charts/statistics
       route: '/reports',
     },
   ], []);
@@ -244,21 +244,35 @@ export default function DashboardScreen() {
         marginHorizontal: spacing.xs,
         alignItems: 'center',
         paddingVertical: spacing.lg,
+        backgroundColor: colors.background,
+        borderWidth: 1,
+        borderColor: `${action.color}30`,
+        shadowColor: action.color,
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
       }]}
       onPress={() => router.push(action.route as any)}
     >
       <View style={{
-        backgroundColor: `${action.color}20`,
-        padding: spacing.md,
+        backgroundColor: `${action.color}15`,
+        padding: spacing.lg,
         borderRadius: 50,
-        marginBottom: spacing.sm,
+        marginBottom: spacing.md,
+        borderWidth: 2,
+        borderColor: `${action.color}30`,
       }}>
-        <Icon name={action.icon} size={28} color={action.color} />
+        <Icon name={action.icon} size={32} color={action.color} />
       </View>
       <Text style={[commonStyles.text, { 
         textAlign: 'center',
         fontSize: fontSizes.sm,
         fontWeight: '600',
+        color: colors.text,
       }]}>
         {action.title}
       </Text>

@@ -71,6 +71,12 @@ export default function MoreScreen() {
           router.push('/licenses');
         } else if (item.id === 'reports') {
           router.push('/reports');
+        } else if (item.id === 'categories') {
+          router.push('/categories');
+        } else if (item.id === 'settings') {
+          router.push('/settings');
+        } else if (item.id === 'customers') {
+          router.push('/(tabs)/customers');
         } else {
           console.warn('No fallback route available for:', item.id);
         }
@@ -129,7 +135,7 @@ export default function MoreScreen() {
           </View>
           <View style={styles.futureItem}>
             <Icon name="analytics" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Analyses prédictives</Text>
+            <Text style={styles.futureItemText}>Analyses prédictives avancées</Text>
           </View>
           <View style={styles.futureItem}>
             <Icon name="notifications" size={24} color={colors.textLight} />

@@ -55,10 +55,12 @@ export default function TransactionSuccessScreen() {
       
       customerSales.forEach(sale => {
         if (sale.paymentStatus === 'credit') {
-          currentBalance += sale.total; // Debt increases balance
-        } else if (sale.paymentStatus === 'paid') {
-          currentBalance -= sale.total; // Payment decreases balance
+          currentBalance += sale.total; // Credit sale adds to debt
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          currentBalance += unpaidAmount; // Only unpaid portion adds to debt
         }
+        // Fully paid sales don't affect balance (payment = purchase amount)
       });
 
       // Create a new sale record for this transaction

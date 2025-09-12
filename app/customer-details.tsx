@@ -64,7 +64,7 @@ export default function CustomerDetailsScreen() {
       const customerSales = salesData.filter(sale => sale.customerId === customerId);
       const generatedTransactions: CustomerTransaction[] = [];
 
-      // Add sales as transactions
+      // Add sales as transactions - ONLY credit sales and partial payments create transactions
       customerSales.forEach(sale => {
         if (sale.paymentStatus === 'credit') {
           // Credit sale = "J'ai donné" (debt)
@@ -74,36 +74,71 @@ export default function CustomerDetailsScreen() {
             amount: sale.total,
             type: 'gave',
             paymentMethod: 'credit',
-            description: sale.notes || `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+            description: sale.notes || `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
             balance: 0, // Will be calculated later
           });
-        } else if (sale.paymentStatus === 'paid') {
-          // Paid sale = "J'ai pris" (payment)
-          generatedTransactions.push({
-            id: `sale-${sale.id}`,
-            date: new Date(sale.createdAt),
-            amount: sale.total,
-            type: 'took',
-            paymentMethod: sale.paymentMethod,
-            description: sale.notes || `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
-            balance: 0, // Will be calculated later
-          });
+        } else if (sale.paymentStatus === 'partial') {
+          // Partial payment = both "J'ai donné" for unpaid amount and "J'ai pris" for paid amount
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          const paidAmount = sale.amountPaid || 0;
+          
+          if (unpaidAmount > 0) {
+            generatedTransactions.push({
+              id: `sale-debt-${sale.id}`,
+              date: new Date(sale.createdAt),
+              amount: unpaidAmount,
+              type: 'gave',
+              paymentMethod: 'credit',
+              description: sale.notes || `Vente partielle ${sale.receiptNumber} - Reste à payer`,
+              balance: 0, // Will be calculated later
+            });
+          }
+          
+          if (paidAmount > 0) {
+            generatedTransactions.push({
+              id: `sale-payment-${sale.id}`,
+              date: new Date(sale.createdAt),
+              amount: paidAmount,
+              type: 'took',
+              paymentMethod: sale.paymentMethod,
+              description: sale.notes || `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
+              balance: 0, // Will be calculated later
+            });
+          }
         }
+        // NOTE: Fully paid sales (paymentStatus === 'paid') do NOT create transactions
+        // because they result in zero balance change (payment = purchase amount)
       });
 
       // Sort by date (newest first)
       generatedTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-      // Calculate running balance
+      // Calculate running balance from sales data directly (more accurate)
       let runningBalance = 0;
+      
+      // Calculate balance from all sales for this customer
+      customerSales.forEach(sale => {
+        if (sale.paymentStatus === 'credit') {
+          runningBalance += sale.total; // Credit sale adds to debt
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          runningBalance += unpaidAmount; // Only unpaid portion adds to debt
+        }
+        // Fully paid sales don't affect balance (payment = purchase amount)
+      });
+      
+      // Apply balance to transactions (for display purposes)
+      let tempBalance = runningBalance;
       for (let i = generatedTransactions.length - 1; i >= 0; i--) {
         const transaction = generatedTransactions[i];
+        transaction.balance = tempBalance;
+        
+        // This is just for display - actual balance is calculated from sales above
         if (transaction.type === 'gave') {
-          runningBalance += transaction.amount; // Debt increases balance
+          tempBalance -= transaction.amount;
         } else {
-          runningBalance -= transaction.amount; // Payment decreases balance
+          tempBalance += transaction.amount;
         }
-        transaction.balance = runningBalance;
       }
 
       setTransactions(generatedTransactions);

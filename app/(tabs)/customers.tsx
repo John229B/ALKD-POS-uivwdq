@@ -71,16 +71,18 @@ export default function CustomersScreen() {
     
     customerSales.forEach(sale => {
       if (sale.paymentStatus === 'credit') {
-        balance += sale.total; // Debt increases balance (J'ai donné)
-      } else if (sale.paymentStatus === 'paid') {
-        balance -= sale.total; // Payment decreases balance (J'ai pris)
+        balance += sale.total; // Credit sale adds to debt
+      } else if (sale.paymentStatus === 'partial') {
+        const unpaidAmount = sale.total - (sale.amountPaid || 0);
+        balance += unpaidAmount; // Only unpaid portion adds to debt
       }
+      // Fully paid sales don't affect balance (payment = purchase amount)
     });
     
     console.log(`Customer ${customer.name} balance:`, { 
       balance, 
       salesCount: customerSales.length,
-      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total }))
+      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total, amountPaid: s.amountPaid }))
     });
     
     return balance;
@@ -174,16 +176,7 @@ export default function CustomersScreen() {
 
     // Calculate from each customer's balance
     customers.forEach(customer => {
-      const customerSales = sales.filter(sale => sale.customerId === customer.id);
-      let customerBalance = 0;
-      
-      customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          customerBalance += sale.total; // Debt increases balance
-        } else if (sale.paymentStatus === 'paid') {
-          customerBalance -= sale.total; // Payment decreases balance
-        }
-      });
+      const customerBalance = getCustomerBalance(customer);
 
       // Sum up the totals for general balance
       if (customerBalance > 0) {

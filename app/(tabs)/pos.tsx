@@ -422,20 +422,40 @@ export default function POSScreen() {
           if (customer.id === selectedCustomer.id) {
             let newCreditBalance = customer.creditBalance;
             
+            console.log('POS: Processing payment for customer:', customer.name);
+            console.log('POS: Payment method:', paymentMethod);
+            console.log('POS: Total amount:', total);
+            console.log('POS: Paid amount:', paidAmount);
+            console.log('POS: Current credit balance:', customer.creditBalance);
+            
             // CORRECTION DU PROBLÈME : Gestion correcte des paiements
+            // 
+            // LOGIQUE CORRIGÉE :
+            // - Paiement total (paidAmount === total) → Aucune écriture, solde inchangé
+            // - Paiement partiel (paidAmount < total) → "J'ai donné" pour le reste non payé
+            // - Paiement supérieur (paidAmount > total) → "J'ai pris" pour l'excédent
+            // - Vente à crédit → "J'ai donné" pour le montant total
+            //
             if (paymentMethod === 'credit') {
               // Vente à crédit : ajouter le montant total à la dette
               newCreditBalance += total;
+              console.log('POS: Credit sale - adding total to debt. New balance:', newCreditBalance);
             } else if (paidAmount < total) {
               // Paiement partiel : ajouter le reste non payé à la dette
               const unpaidAmount = total - paidAmount;
               newCreditBalance += unpaidAmount;
+              console.log('POS: Partial payment - adding unpaid amount to debt:', unpaidAmount, 'New balance:', newCreditBalance);
             } else if (paidAmount > total) {
               // Paiement supérieur : déduire l'excédent de la dette (avance)
               const overpayment = paidAmount - total;
               newCreditBalance = Math.max(0, newCreditBalance - overpayment);
+              console.log('POS: Overpayment - deducting excess from debt:', overpayment, 'New balance:', newCreditBalance);
+            } else {
+              // Paiement total exact (paidAmount === total) : pas de changement de balance
+              // C'est ici que le bug était : le système n'enregistrait pas automatiquement
+              // une transaction "J'ai pris" pour les paiements totaux
+              console.log('POS: Full payment - no balance change. Balance remains:', newCreditBalance);
             }
-            // Si paiement total (paidAmount === total), pas de changement de balance
 
             return {
               ...customer,

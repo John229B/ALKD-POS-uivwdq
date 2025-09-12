@@ -116,7 +116,7 @@ export default function CustomerDetailsScreen() {
 
   useEffect(() => {
     loadData();
-  }, [customerId, loadData]);
+  }, [customerId]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -211,7 +211,10 @@ export default function CustomerDetailsScreen() {
       <View style={commonStyles.content}>
         {/* Header */}
         <View style={[commonStyles.section, commonStyles.header]}>
-          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
+          <TouchableOpacity 
+            onPress={() => router.push('/(tabs)/customers')} 
+            style={{ marginRight: spacing.md }}
+          >
             <Icon name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>

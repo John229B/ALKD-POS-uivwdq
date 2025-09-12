@@ -49,6 +49,18 @@ export default function TransactionSuccessScreen() {
       const numAmount = parseFloat(amount);
       const transactionDate = new Date(date);
 
+      // Calculate current balance from all sales
+      const customerSales = salesData.filter(sale => sale.customerId === customerId);
+      let currentBalance = 0;
+      
+      customerSales.forEach(sale => {
+        if (sale.paymentStatus === 'credit') {
+          currentBalance += sale.total; // Debt increases balance
+        } else if (sale.paymentStatus === 'paid') {
+          currentBalance -= sale.total; // Payment decreases balance
+        }
+      });
+
       // Create a new sale record for this transaction
       const newSale: Sale = {
         id: uuid.v4() as string,
@@ -69,14 +81,14 @@ export default function TransactionSuccessScreen() {
         receiptNumber: `TXN-${Date.now()}`,
       };
 
-      // Calculate new balance
+      // Calculate new balance after this transaction
       const balanceChange = type === 'gave' ? numAmount : -numAmount;
-      const calculatedNewBalance = foundCustomer.creditBalance + balanceChange;
+      const calculatedNewBalance = currentBalance + balanceChange;
 
-      // Update customer
+      // Update customer - don't use creditBalance field, calculate from sales
       const updatedCustomer: Customer = {
         ...foundCustomer,
-        creditBalance: Math.max(0, calculatedNewBalance),
+        creditBalance: Math.max(0, calculatedNewBalance), // Keep for compatibility but calculate from sales
         totalPurchases: type === 'gave' 
           ? foundCustomer.totalPurchases + numAmount 
           : foundCustomer.totalPurchases,
@@ -96,10 +108,10 @@ export default function TransactionSuccessScreen() {
 
       setCustomer(updatedCustomer);
       setSettings(settingsData);
-      setNewBalance(updatedCustomer.creditBalance);
+      setNewBalance(calculatedNewBalance);
       setIsProcessing(false);
 
-      console.log('Transaction processed successfully');
+      console.log('Transaction processed successfully. New balance:', calculatedNewBalance);
     } catch (error) {
       console.error('Error processing transaction:', error);
       Alert.alert('Erreur', 'Erreur lors du traitement de la transaction');
@@ -109,7 +121,7 @@ export default function TransactionSuccessScreen() {
 
   useEffect(() => {
     processTransaction();
-  }, [processTransaction]);
+  }, []);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -129,7 +141,13 @@ export default function TransactionSuccessScreen() {
   const getBalanceColor = (balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt
     if (balance === 0) return colors.success; // Green for zero balance
-    return colors.text;
+    return colors.success; // Green for credit (negative balance)
+  };
+
+  const getBalanceStatus = (balance: number): string => {
+    if (balance > 0) return 'Dette';
+    if (balance === 0) return 'Équilibré';
+    return 'Crédit';
   };
 
   const handleShare = async () => {
@@ -186,6 +204,7 @@ export default function TransactionSuccessScreen() {
   const handleTextShare = async () => {
     try {
       // Fallback to text sharing if image capture fails
+      const balanceStatus = getBalanceStatus(newBalance);
       const receiptText = [
         '=== RECU DE TRANSACTION ===',
         '',
@@ -197,20 +216,19 @@ export default function TransactionSuccessScreen() {
         `Mode: ${getPaymentMethodLabel(paymentMethod)}`,
         note ? `Note: ${note}` : '',
         '',
-        `Nouveau solde: ${formatCurrency(Math.abs(newBalance))}`,
-        newBalance > 0 ? '(Dette)' : newBalance === 0 ? '(Equilibre)' : '(Credit)',
+        `Nouveau solde: ${newBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(newBalance))}`,
+        `(${balanceStatus})`,
         '',
         'Merci pour votre confiance!',
         '=========================='
       ].filter(line => line !== '').join('\n');
 
       const fileName = `recu_${customer?.name?.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`;
-      const dir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
+      const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory;
       const fileUri = `${dir}${fileName}`;
 
-      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
       await FileSystem.writeAsStringAsync(fileUri, receiptText, {
-        encoding: encodingType,
+        encoding: FileSystem.EncodingType?.UTF8 || 'utf8',
       });
 
       if (await Sharing.isAvailableAsync()) {
@@ -397,10 +415,14 @@ export default function TransactionSuccessScreen() {
                 fontSize: fontSizes.lg,
                 fontWeight: 'bold'
               }]}>
-                {formatCurrency(Math.abs(newBalance))}
-                {newBalance > 0 && ' (Dette)'}
-                {newBalance === 0 && ' (Equilibre)'}
-                {newBalance < 0 && ' (Credit)'}
+                {newBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(newBalance))}
+              </Text>
+              <Text style={[commonStyles.textLight, { 
+                fontSize: fontSizes.sm,
+                color: getBalanceColor(newBalance),
+                fontWeight: '600'
+              }]}>
+                ({getBalanceStatus(newBalance)})
               </Text>
             </View>
           </View>

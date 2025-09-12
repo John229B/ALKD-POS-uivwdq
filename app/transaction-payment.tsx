@@ -9,19 +9,20 @@ import { getCustomers, getSettings } from '../utils/storage';
 import { Customer, AppSettings } from '../types';
 
 export default function TransactionPaymentScreen() {
-  const params = useLocalSearchParams();
-  const customerId = Array.isArray(params.customerId) ? decodeURIComponent(params.customerId[0]) : decodeURIComponent(params.customerId || '');
-  const type = Array.isArray(params.type) ? decodeURIComponent(params.type[0]) : decodeURIComponent(params.type || '');
-  const amount = Array.isArray(params.amount) ? decodeURIComponent(params.amount[0]) : decodeURIComponent(params.amount || '');
-  const date = Array.isArray(params.date) ? decodeURIComponent(params.date[0]) : decodeURIComponent(params.date || '');
-  const note = Array.isArray(params.note) ? decodeURIComponent(params.note[0]) : decodeURIComponent(params.note || '');
+  const { customerId, type, amount, date, note } = useLocalSearchParams<{
+    customerId: string;
+    type: 'gave' | 'took';
+    amount: string;
+    date: string;
+    note: string;
+  }>();
   
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
 
-  const loadData = async () => {
+  const loadData = React.useCallback(async () => {
     try {
+      console.log('Loading transaction payment data for:', customerId, type);
       const [customersData, settingsData] = await Promise.all([
         getCustomers(),
         getSettings(),
@@ -37,14 +38,14 @@ export default function TransactionPaymentScreen() {
       setCustomer(foundCustomer);
       setSettings(settingsData);
     } catch (error) {
-      console.error('Error loading data:', error);
+      console.error('Error loading transaction payment data:', error);
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
     }
-  };
+  }, [customerId, type]);
 
   useEffect(() => {
     loadData();
-  }, [customerId, loadData]);
+  }, [loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -52,34 +53,16 @@ export default function TransactionPaymentScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  const paymentMethods = [
-    {
-      id: 'cash',
-      name: 'Espèces',
-      icon: 'cash-outline',
-      description: 'Paiement en liquide',
-    },
-    {
-      id: 'mobile_money',
-      name: 'Paiement mobile',
-      icon: 'phone-portrait-outline',
-      description: 'Mobile Money, Orange Money, etc.',
-    },
-  ];
-
   const handlePaymentMethodSelect = (methodId: string) => {
-    setSelectedPaymentMethod(methodId);
-    
-    // Navigate to success screen
     router.push({
       pathname: '/transaction-success',
       params: {
-        customerId: encodeURIComponent(customerId),
-        type: encodeURIComponent(type),
-        amount: encodeURIComponent(amount),
-        date: encodeURIComponent(date),
-        note: encodeURIComponent(note),
-        paymentMethod: encodeURIComponent(methodId),
+        customerId,
+        type,
+        amount,
+        date,
+        note,
+        paymentMethod: methodId,
       },
     });
   };
@@ -95,6 +78,29 @@ export default function TransactionPaymentScreen() {
   }
 
   const numAmount = parseFloat(amount);
+  const paymentMethods = [
+    {
+      id: 'cash',
+      name: 'Espèces',
+      icon: 'cash',
+      description: 'Paiement en liquide',
+      color: colors.success,
+    },
+    {
+      id: 'mobile_money',
+      name: 'Mobile Money',
+      icon: 'phone-portrait',
+      description: 'Orange Money, MTN Money, etc.',
+      color: colors.primary,
+    },
+    {
+      id: 'credit',
+      name: 'Crédit',
+      icon: 'card',
+      description: 'Paiement à crédit',
+      color: colors.danger,
+    },
+  ];
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -104,141 +110,95 @@ export default function TransactionPaymentScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
             <Icon name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[commonStyles.title, { color: colors.text, fontSize: fontSizes.lg }]}>
-              Modes de paiement
+          <View style={{ flex: 1 }}>
+            <Text style={[commonStyles.title, { color: colors.primary, textAlign: 'center' }]}>
+              MODE DE PAIEMENT
+            </Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {/* Transaction Summary */}
+        <View style={[commonStyles.section, { backgroundColor: colors.background, padding: spacing.lg }]}>
+          <Text style={[commonStyles.text, { color: colors.primary, fontSize: fontSizes.md, marginBottom: spacing.sm }]}>
+            Résumé de la transaction
+          </Text>
+          <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+            <Text style={[commonStyles.text, { flex: 1 }]}>Client:</Text>
+            <Text style={[commonStyles.text, { fontWeight: 'bold' }]}>{customer.name}</Text>
+          </View>
+          <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+            <Text style={[commonStyles.text, { flex: 1 }]}>Type:</Text>
+            <Text style={[commonStyles.text, { 
+              fontWeight: 'bold',
+              color: type === 'gave' ? colors.danger : colors.success
+            }]}>
+              {type === 'gave' ? "J'ai donné" : "J'ai pris"}
+            </Text>
+          </View>
+          <View style={[commonStyles.row]}>
+            <Text style={[commonStyles.text, { flex: 1 }]}>Montant:</Text>
+            <Text style={[commonStyles.title, { 
+              fontSize: fontSizes.lg,
+              fontWeight: 'bold',
+              color: type === 'gave' ? colors.danger : colors.success
+            }]}>
+              {formatCurrency(numAmount)}
             </Text>
           </View>
         </View>
 
-        {/* Amount to Pay */}
-        <View style={[commonStyles.section, { alignItems: 'center', paddingVertical: spacing.xl }]}>
+        {/* Payment Methods */}
+        <View style={[commonStyles.section, { flex: 1, paddingHorizontal: spacing.lg }]}>
           <Text style={[commonStyles.text, { 
-            color: colors.textLight,
-            fontSize: fontSizes.md,
-            marginBottom: spacing.sm
+            color: colors.primary, 
+            fontSize: fontSizes.md, 
+            marginBottom: spacing.lg 
           }]}>
-            Montant à régler
-          </Text>
-          <Text style={[commonStyles.title, { 
-            color: colors.primary,
-            fontSize: 48,
-            fontWeight: 'bold'
-          }]}>
-            {formatCurrency(numAmount)}
-          </Text>
-        </View>
-
-        {/* Payment Method Selection */}
-        <View style={[commonStyles.section, { paddingHorizontal: spacing.lg, flex: 1 }]}>
-          <Text style={[commonStyles.text, { 
-            color: colors.primary,
-            fontSize: fontSizes.md,
-            marginBottom: spacing.lg,
-            fontWeight: '600'
-          }]}>
-            Sélectionnez mode de paiement
+            Choisissez le mode de paiement
           </Text>
 
-          {paymentMethods.map((method) => (
+          {paymentMethods.map(method => (
             <TouchableOpacity
               key={method.id}
-              style={[
-                {
-                  marginBottom: spacing.md,
-                  paddingVertical: spacing.lg,
-                  paddingHorizontal: spacing.lg,
-                  borderWidth: 1,
-                  borderColor: '#E5E5E5',
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 15,
-                  shadowColor: '#000000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.1,
-                  shadowRadius: 4,
-                  elevation: 3,
-                }
-              ]}
+              style={[commonStyles.card, { 
+                marginBottom: spacing.md,
+                borderWidth: 2,
+                borderColor: 'transparent',
+                backgroundColor: colors.secondary,
+              }]}
               onPress={() => handlePaymentMethodSelect(method.id)}
-              activeOpacity={0.8}
             >
               <View style={[commonStyles.row, { alignItems: 'center' }]}>
                 <View style={{
-                  backgroundColor: colors.primary,
+                  width: 50,
+                  height: 50,
                   borderRadius: 25,
-                  padding: spacing.md,
+                  backgroundColor: method.color + '20',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   marginRight: spacing.md,
                 }}>
-                  <Icon name={method.icon} size={24} color="#000000" />
+                  <Icon name={method.icon} size={24} color={method.color} />
                 </View>
-                
+
                 <View style={{ flex: 1 }}>
                   <Text style={[commonStyles.text, { 
-                    fontSize: fontSizes.lg,
-                    fontWeight: '600',
-                    marginBottom: spacing.xs,
-                    color: '#000000'
+                    fontSize: fontSizes.md,
+                    fontWeight: 'bold',
+                    marginBottom: spacing.xs
                   }]}>
                     {method.name}
                   </Text>
-                  <Text style={[commonStyles.textLight, { 
-                    fontSize: fontSizes.sm,
-                    color: '#666666'
-                  }]}>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                     {method.description}
                   </Text>
                 </View>
 
-                <Icon 
-                  name="chevron-forward" 
-                  size={20} 
-                  color="#000000" 
-                />
+                <Icon name="chevron-forward" size={20} color={colors.textLight} />
               </View>
             </TouchableOpacity>
           ))}
-
-          {/* Future payment methods placeholder */}
-          <View style={[
-            {
-              marginBottom: spacing.md,
-              paddingVertical: spacing.lg,
-              paddingHorizontal: spacing.lg,
-              borderWidth: 1,
-              borderColor: '#E5E5E5',
-              borderStyle: 'dashed',
-              backgroundColor: '#FFFFFF',
-              borderRadius: 15,
-              opacity: 0.6,
-            }
-          ]}>
-            <View style={[commonStyles.row, { alignItems: 'center' }]}>
-              <View style={{
-                backgroundColor: colors.textLight + '20',
-                borderRadius: 25,
-                padding: spacing.md,
-                marginRight: spacing.md,
-              }}>
-                <Icon name="add" size={24} color={colors.textLight} />
-              </View>
-              
-              <View style={{ flex: 1 }}>
-                <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.lg,
-                  fontWeight: '600',
-                  marginBottom: spacing.xs,
-                  color: colors.textLight
-                }]}>
-                  Autres modes
-                </Text>
-                <Text style={[commonStyles.textLight, { 
-                  fontSize: fontSizes.sm,
-                }]}>
-                  Bientôt disponible...
-                </Text>
-              </View>
-            </View>
-          </View>
         </View>
       </View>
     </SafeAreaView>

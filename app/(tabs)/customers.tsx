@@ -58,21 +58,18 @@ export default function CustomersScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  // Calculate summary statistics
+  // Calculate summary statistics based on actual transactions
   const calculateSummary = () => {
     let totalGave = 0; // J'ai donné (debts)
     let totalTook = 0; // J'ai pris (payments)
 
-    customers.forEach(customer => {
-      const customerSales = sales.filter(sale => sale.customerId === customer.id);
-      
-      customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          totalGave += sale.total; // Debt
-        } else if (sale.paymentStatus === 'paid') {
-          totalTook += sale.total; // Payment
-        }
-      });
+    // Calculate from all sales transactions
+    sales.forEach(sale => {
+      if (sale.paymentStatus === 'credit') {
+        totalGave += sale.total; // "J'ai donné" - debt
+      } else if (sale.paymentStatus === 'paid') {
+        totalTook += sale.total; // "J'ai pris" - payment
+      }
     });
 
     return { totalGave, totalTook };
@@ -112,7 +109,7 @@ export default function CustomersScreen() {
 
   const getBalanceLabel = (balance: number): string => {
     if (balance > 0) return "J'ai donné";
-    if (balance === 0) return "J'ai pris"; // Show as "J'ai pris" when balanced
+    if (balance === 0) return "Équilibré";
     return "J'ai pris";
   };
 
@@ -200,6 +197,7 @@ export default function CustomersScreen() {
   };
 
   const { totalGave, totalTook } = calculateSummary();
+  const generalBalance = totalGave - totalTook; // Positive = debt, Negative = credit, Zero = balanced
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -224,17 +222,21 @@ export default function CustomersScreen() {
             fontSize: fontSizes.md, 
             marginBottom: spacing.md 
           }]}>
-            J'ai donné
+            Solde général
           </Text>
           <Text style={[commonStyles.title, { 
-            color: totalGave === 0 ? colors.success : colors.danger, 
+            color: generalBalance > 0 ? colors.danger : generalBalance === 0 ? colors.success : colors.success, 
             fontSize: fontSizes.xl,
             fontWeight: 'bold',
             marginBottom: spacing.sm
           }]}>
-            {formatCurrency(totalGave)}
+            {generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(generalBalance))}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+            J'ai donné: <Text style={{ color: totalGave === 0 ? colors.success : colors.danger }}>
+              {formatCurrency(totalGave)}
+            </Text>
+            {' • '}
             J'ai pris: <Text style={{ color: totalTook === 0 ? colors.success : colors.success }}>
               {formatCurrency(totalTook)}
             </Text>

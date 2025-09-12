@@ -1,8 +1,8 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import { getCustomers, storeCustomers, getSettings, getSales } from '../../utils/storage';
@@ -25,11 +25,7 @@ export default function CustomersScreen() {
     address: '',
   });
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       console.log('Loading customers data...');
       const [customersData, salesData, settingsData] = await Promise.all([
@@ -40,11 +36,23 @@ export default function CustomersScreen() {
       setCustomers(customersData);
       setSales(salesData);
       setSettings(settingsData);
-      console.log(`Loaded ${customersData.length} customers`);
+      console.log(`Loaded ${customersData.length} customers and ${salesData.length} sales`);
     } catch (error) {
       console.error('Error loading customers data:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Refresh data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('Customers screen focused, refreshing data...');
+      loadData();
+    }, [loadData])
+  );
 
   const filteredCustomers = customers.filter(customer =>
     customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -72,6 +80,7 @@ export default function CustomersScreen() {
       }
     });
 
+    console.log('Summary calculation:', { totalGave, totalTook, salesCount: sales.length });
     return { totalGave, totalTook };
   };
 
@@ -92,10 +101,16 @@ export default function CustomersScreen() {
     
     customerSales.forEach(sale => {
       if (sale.paymentStatus === 'credit') {
-        balance += sale.total; // Debt increases balance
+        balance += sale.total; // Debt increases balance (J'ai donné)
       } else if (sale.paymentStatus === 'paid') {
-        balance -= sale.total; // Payment decreases balance
+        balance -= sale.total; // Payment decreases balance (J'ai pris)
       }
+    });
+    
+    console.log(`Customer ${customer.name} balance:`, { 
+      balance, 
+      salesCount: customerSales.length,
+      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total }))
     });
     
     return balance;
@@ -198,6 +213,14 @@ export default function CustomersScreen() {
 
   const { totalGave, totalTook } = calculateSummary();
   const generalBalance = totalGave - totalTook; // Positive = debt, Negative = credit, Zero = balanced
+  
+  console.log('General balance calculation:', { 
+    totalGave, 
+    totalTook, 
+    generalBalance,
+    customersCount: customers.length,
+    salesCount: sales.length 
+  });
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -230,7 +253,7 @@ export default function CustomersScreen() {
             fontWeight: 'bold',
             marginBottom: spacing.sm
           }]}>
-            {generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(generalBalance))}
+            {formatCurrency(generalBalance === 0 ? 0 : Math.abs(generalBalance))}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
             J'ai donné: <Text style={{ color: totalGave === 0 ? colors.success : colors.danger }}>

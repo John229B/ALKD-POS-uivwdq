@@ -6,7 +6,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import CustomerFilterModal from '../../components/CustomerFilterModal';
-import { getCustomers, storeCustomers, getSettings, getSales, storeSales } from '../../utils/storage';
+import { getCustomers, storeCustomers, getSettings, getSales, storeSales, deleteCustomer } from '../../utils/storage';
 import { Customer, AppSettings, Sale } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -169,32 +169,19 @@ export default function CustomersScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  // Calculate summary statistics based on actual customer balances - FIXED CALCULATION
+  // FIXED: Calculate summary statistics based on actual customer balances
   const calculateSummary = () => {
-    let totalGave = 0; // J'ai donné (total debts)
-    let totalTook = 0; // J'ai pris (total payments)
+    let totalDebt = 0; // Total amount customers owe
 
-    // Calculate from all sales, not just customer balances
     customers.forEach(customer => {
-      const customerSales = sales.filter(sale => sale.customerId === customer.id);
-      
-      customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          totalGave += sale.total; // Credit sale = gave goods
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          const paidAmount = sale.amountPaid || 0;
-          totalGave += unpaidAmount; // Gave goods for unpaid portion
-          totalTook += paidAmount; // Took payment for paid portion
-        } else if (sale.paymentStatus === 'paid') {
-          totalGave += sale.total; // Gave goods
-          totalTook += sale.total; // Took payment
-        }
-      });
+      const customerBalance = getCustomerBalance(customer);
+      if (customerBalance > 0) {
+        totalDebt += customerBalance;
+      }
     });
 
-    console.log('Summary calculation:', { totalGave, totalTook, customersCount: customers.length, salesCount: sales.length });
-    return { totalGave, totalTook };
+    console.log('Summary calculation:', { totalDebt, customersCount: customers.length, salesCount: sales.length });
+    return { totalDebt };
   };
 
   const getBalanceColor = (balance: number): string => {
@@ -237,7 +224,7 @@ export default function CustomersScreen() {
     setShowAddModal(true);
   };
 
-  const deleteCustomer = (customer: Customer) => {
+  const handleDeleteCustomer = (customer: Customer) => {
     Alert.alert(
       'Supprimer le client',
       `Êtes-vous sûr de vouloir supprimer définitivement ${customer.name} ?\n\nCette action est irréversible et supprimera également toutes les transactions associées.`,
@@ -253,21 +240,11 @@ export default function CustomersScreen() {
             try {
               console.log('Deleting customer:', customer.id);
               
-              // Remove customer from customers list
-              const updatedCustomers = customers.filter(c => c.id !== customer.id);
+              // Use the deleteCustomer function from storage
+              await deleteCustomer(customer.id);
               
-              // Remove all sales associated with this customer
-              const updatedSales = sales.filter(sale => sale.customerId !== customer.id);
-              
-              // Save updated data
-              await Promise.all([
-                storeCustomers(updatedCustomers),
-                storeSales(updatedSales),
-              ]);
-              
-              // Update local state
-              setCustomers(updatedCustomers);
-              setSales(updatedSales);
+              // Refresh data
+              await loadData();
               
               Alert.alert('Succès', 'Client supprimé avec succès');
             } catch (error) {
@@ -340,13 +317,10 @@ export default function CustomersScreen() {
     setFilters(newFilters);
   };
 
-  const { totalGave, totalTook } = calculateSummary();
-  const generalBalance = totalGave - totalTook; // Positive = overall debt, Negative = overall credit, Zero = balanced
+  const { totalDebt } = calculateSummary();
   
   console.log('General balance calculation:', { 
-    totalGave, 
-    totalTook, 
-    generalBalance,
+    totalDebt,
     customersCount: customers.length,
     salesCount: sales.length 
   });
@@ -377,24 +351,15 @@ export default function CustomersScreen() {
             Balance générale
           </Text>
           <Text style={[commonStyles.title, { 
-            color: generalBalance > 0 ? colors.danger : generalBalance === 0 ? colors.success : colors.success, 
+            color: totalDebt > 0 ? colors.danger : colors.success, 
             fontSize: fontSizes.xl,
             fontWeight: 'bold',
             marginBottom: spacing.sm
           }]}>
-            {formatCurrency(generalBalance === 0 ? 0 : Math.abs(generalBalance))}
+            {formatCurrency(totalDebt)}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-            J'ai donné: <Text style={{ color: colors.danger, fontWeight: '600' }}>
-              {formatCurrency(totalGave)}
-            </Text>
-            {' • '}
-            J'ai pris: <Text style={{ color: colors.success, fontWeight: '600' }}>
-              {formatCurrency(totalTook)}
-            </Text>
-          </Text>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.xs }]}>
-            {generalBalance > 0 ? 'Dette générale' : generalBalance === 0 ? 'Comptes équilibrés' : 'Crédit général'}
+            {totalDebt > 0 ? `Montant total des dettes clients` : 'Tous les comptes sont équilibrés'}
           </Text>
         </View>
 
@@ -458,7 +423,7 @@ export default function CustomersScreen() {
                         {
                           text: 'Supprimer',
                           style: 'destructive',
-                          onPress: () => deleteCustomer(customer),
+                          onPress: () => handleDeleteCustomer(customer),
                         },
                         {
                           text: 'Annuler',

@@ -19,7 +19,7 @@ interface DashboardStats {
   totalCustomers: number;
   lowStockProducts: number;
   creditAmount: number;
-  generalBalance: number; // Added general balance
+  generalBalance: number;
   topProducts: {
     name: string;
     quantity: number;
@@ -86,10 +86,9 @@ export default function DashboardScreen() {
       const weekRevenue = weekSales.reduce((sum, sale) => sum + sale.total, 0);
       const monthRevenue = monthSales.reduce((sum, sale) => sum + sale.total, 0);
 
-      // Calculate credit amount and general balance - FIXED CALCULATION
-      let totalGave = 0; // J'ai donné (total debts)
-      let totalTook = 0; // J'ai pris (total payments received)
-      let creditAmount = 0; // Current outstanding credit
+      // FIXED: Calculate general balance correctly
+      let totalCustomerDebts = 0; // Total amount customers owe
+      let totalOutstandingCredit = 0; // Total credit given to customers
 
       customers.forEach(customer => {
         const customerSales = sales.filter(sale => sale.customerId === customer.id);
@@ -97,31 +96,28 @@ export default function DashboardScreen() {
         
         customerSales.forEach(sale => {
           if (sale.paymentStatus === 'credit') {
-            customerBalance += sale.total; // Credit sale adds to debt
-            totalGave += sale.total;
+            customerBalance += sale.total; // Full amount is debt
           } else if (sale.paymentStatus === 'partial') {
             const unpaidAmount = sale.total - (sale.amountPaid || 0);
-            const paidAmount = sale.amountPaid || 0;
-            customerBalance += unpaidAmount; // Only unpaid portion adds to debt
-            totalGave += unpaidAmount;
-            totalTook += paidAmount;
-          } else if (sale.paymentStatus === 'paid') {
-            // Fully paid sales: gave the goods, took the payment
-            totalGave += sale.total;
-            totalTook += sale.total;
+            customerBalance += unpaidAmount; // Only unpaid portion is debt
           }
+          // Fully paid sales don't contribute to debt
         });
         
-        creditAmount += Math.max(0, customerBalance); // Only positive balances are credit
+        if (customerBalance > 0) {
+          totalCustomerDebts += customerBalance;
+          totalOutstandingCredit += customerBalance;
+        }
       });
 
-      const generalBalance = totalGave - totalTook; // Positive = overall debt, Negative = overall credit
+      // General balance = total amount owed by all customers
+      // If positive: customers owe money (we gave more than we received)
+      // If zero: all accounts are balanced
+      const generalBalance = totalCustomerDebts;
 
       console.log('Dashboard balance calculation:', {
-        totalGave,
-        totalTook,
+        totalCustomerDebts,
         generalBalance,
-        creditAmount,
         customersCount: customers.length,
         salesCount: sales.length
       });
@@ -165,7 +161,7 @@ export default function DashboardScreen() {
         monthRevenue,
         totalCustomers: customers.length,
         lowStockProducts,
-        creditAmount,
+        creditAmount: totalOutstandingCredit,
         generalBalance,
         topProducts,
         recentSales,
@@ -193,7 +189,7 @@ export default function DashboardScreen() {
     if (!settings) return `${amount.toLocaleString()}`;
     
     const currencySymbols = {
-      XOF: 'FCFA',
+      XOF: 'F CFA',
       USD: '$',
       EUR: '€',
     };
@@ -209,28 +205,28 @@ export default function DashboardScreen() {
       id: 'new-sale',
       title: 'Nouvelle Vente',
       icon: 'cart' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
-      color: '#FFD700', // Gold/Yellow color for cart
+      color: '#FFD700',
       route: '/pos',
     },
     {
       id: 'add-product',
       title: 'Ajouter Produit',
       icon: 'cube' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
-      color: '#4A90E2', // Blue color for product/box
+      color: '#4A90E2',
       route: '/products',
     },
     {
       id: 'customers',
       title: 'Clients',
       icon: 'people' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
-      color: '#FF8C00', // Orange color for people
+      color: '#FF8C00',
       route: '/customers',
     },
     {
       id: 'reports',
       title: 'Rapports',
       icon: 'stats-chart' as keyof typeof import('@expo/vector-icons').Ionicons.glyphMap,
-      color: '#32CD32', // Green color for charts/statistics
+      color: '#32CD32',
       route: '/reports',
     },
   ], []);
@@ -363,7 +359,7 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* General Balance Section - NEW */}
+        {/* General Balance Section - FIXED */}
         <View style={[commonStyles.section, { backgroundColor: colors.background, marginBottom: spacing.md }]}>
           <Text style={[commonStyles.subtitle, { 
             fontSize: fontSizes.lg,
@@ -375,45 +371,25 @@ export default function DashboardScreen() {
           <View style={[commonStyles.card, { backgroundColor: colors.backgroundAlt, padding: spacing.lg }]}>
             <View style={{ alignItems: 'center', marginBottom: spacing.md }}>
               <Text style={[commonStyles.text, { 
-                color: stats.generalBalance > 0 ? colors.danger : stats.generalBalance === 0 ? colors.success : colors.success, 
+                color: stats.generalBalance > 0 ? colors.danger : colors.success, 
                 fontSize: fontSizes.xl,
                 fontWeight: 'bold',
                 marginBottom: spacing.xs
               }]}>
-                {stats.generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(stats.generalBalance))}
+                {formatCurrency(stats.generalBalance)}
               </Text>
               <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                {stats.generalBalance > 0 ? 'Dette générale' : stats.generalBalance === 0 ? 'Équilibré' : 'Crédit général'}
+                {stats.generalBalance > 0 ? 'Montant total des dettes clients' : 'Tous les comptes sont équilibrés'}
               </Text>
             </View>
             
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <View style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
-                  J'ai donné
-                </Text>
-                <Text style={[commonStyles.text, { 
-                  color: colors.danger,
-                  fontSize: fontSizes.md,
-                  fontWeight: '600'
-                }]}>
-                  {formatCurrency(stats.generalBalance > 0 ? Math.abs(stats.generalBalance) : 0)}
+            {stats.generalBalance > 0 && (
+              <View style={{ alignItems: 'center' }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                  {stats.totalCustomers} client(s) • {stats.creditAmount > 0 ? `${formatCurrency(stats.creditAmount)} en crédit` : 'Aucun crédit en cours'}
                 </Text>
               </View>
-              
-              <View style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
-                  J'ai pris
-                </Text>
-                <Text style={[commonStyles.text, { 
-                  color: colors.success,
-                  fontSize: fontSizes.md,
-                  fontWeight: '600'
-                }]}>
-                  {formatCurrency(stats.generalBalance < 0 ? Math.abs(stats.generalBalance) : 0)}
-                </Text>
-              </View>
-            </View>
+            )}
           </View>
         </View>
 

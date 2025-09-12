@@ -466,7 +466,7 @@ export default function CustomerDetailsScreen() {
                 textAlign: 'center',
                 opacity: 0.8
               }]}>
-                Paiement reçu
+                Paiement reçu / Réduire dette
               </Text>
             </TouchableOpacity>
 
@@ -493,7 +493,7 @@ export default function CustomerDetailsScreen() {
                 textAlign: 'center',
                 opacity: 0.8
               }]}>
-                Crédit accordé
+                Crédit accordé / Monnaie rendue
               </Text>
             </TouchableOpacity>
           </View>

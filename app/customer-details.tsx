@@ -1,15 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../styles/commonStyles';
 import Icon from '../components/Icon';
-import { getCustomers, getSales, storeCustomers, storeSales, getSettings } from '../utils/storage';
+import { getCustomers, getSales, getSettings } from '../utils/storage';
 import { Customer, Sale, AppSettings } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import uuid from 'react-native-uuid';
 
 interface CustomerTransaction {
   id: string;
@@ -26,13 +25,6 @@ export default function CustomerDetailsScreen() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [transactionType, setTransactionType] = useState<'gave' | 'took'>('took');
-  const [formData, setFormData] = useState({
-    amount: '',
-    paymentMethod: 'cash',
-    description: '',
-  });
 
   useEffect(() => {
     loadData();
@@ -71,7 +63,7 @@ export default function CustomerDetailsScreen() {
             amount: sale.total,
             type: 'gave',
             paymentMethod: 'credit',
-            description: `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+            description: sale.notes || `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
             balance: 0, // Will be calculated later
           });
         } else if (sale.paymentStatus === 'paid') {
@@ -82,7 +74,7 @@ export default function CustomerDetailsScreen() {
             amount: sale.total,
             type: 'took',
             paymentMethod: sale.paymentMethod,
-            description: `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+            description: sale.notes || `Vente ${sale.receiptNumber} - ${sale.items.length} article(s)`,
             balance: 0, // Will be calculated later
           });
         }
@@ -129,90 +121,14 @@ export default function CustomerDetailsScreen() {
     return "Équilibré";
   };
 
-  const openAddModal = (type: 'gave' | 'took') => {
-    setTransactionType(type);
-    setFormData({
-      amount: '',
-      paymentMethod: 'cash',
-      description: '',
+  const openTransactionFlow = (type: 'gave' | 'took') => {
+    router.push({
+      pathname: '/transaction-amount',
+      params: {
+        customerId,
+        type,
+      },
     });
-    setShowAddModal(true);
-  };
-
-  const addTransaction = async () => {
-    if (!formData.amount.trim() || !customer) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant');
-      return;
-    }
-
-    const amount = parseFloat(formData.amount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Erreur', 'Veuillez saisir un montant valide');
-      return;
-    }
-
-    try {
-      console.log('Adding new transaction:', { type: transactionType, amount });
-
-      // Create a new sale record for this transaction
-      const newSale: Sale = {
-        id: uuid.v4() as string,
-        customerId: customer.id,
-        customer: customer,
-        items: [],
-        subtotal: amount,
-        discount: 0,
-        tax: 0,
-        total: amount,
-        paymentMethod: formData.paymentMethod as any,
-        paymentStatus: transactionType === 'gave' ? 'credit' : 'paid',
-        amountPaid: transactionType === 'took' ? amount : 0,
-        change: 0,
-        notes: formData.description,
-        cashierId: 'admin-001', // TODO: Get from auth context
-        createdAt: new Date(),
-        receiptNumber: `TXN-${Date.now()}`,
-      };
-
-      // Update customer balance
-      const updatedCustomer: Customer = {
-        ...customer,
-        creditBalance: transactionType === 'gave' 
-          ? customer.creditBalance + amount 
-          : Math.max(0, customer.creditBalance - amount),
-        totalPurchases: transactionType === 'gave' 
-          ? customer.totalPurchases + amount 
-          : customer.totalPurchases,
-        updatedAt: new Date(),
-      };
-
-      // Save to storage
-      const [customers, sales] = await Promise.all([
-        getCustomers(),
-        getSales(),
-      ]);
-
-      const updatedCustomers = customers.map(c => 
-        c.id === customer.id ? updatedCustomer : c
-      );
-      const updatedSales = [...sales, newSale];
-
-      await Promise.all([
-        storeCustomers(updatedCustomers),
-        storeSales(updatedSales),
-      ]);
-
-      setShowAddModal(false);
-      await loadData(); // Reload data
-
-      Alert.alert(
-        'Succès',
-        `Transaction "${transactionType === 'gave' ? "J'ai donné" : "J'ai pris"}" ajoutée avec succès`
-      );
-    } catch (error) {
-      console.error('Error adding transaction:', error);
-      Alert.alert('Erreur', 'Erreur lors de l\'ajout de la transaction');
-    }
   };
 
   const getPaymentMethodLabel = (method: string): string => {
@@ -389,7 +305,7 @@ export default function CustomerDetailsScreen() {
                 borderRadius: 15,
                 paddingVertical: spacing.lg
               }]}
-              onPress={() => openAddModal('took')}
+              onPress={() => openTransactionFlow('took')}
             >
               <Text style={[commonStyles.text, { 
                 color: colors.secondary, 
@@ -408,7 +324,7 @@ export default function CustomerDetailsScreen() {
                 borderRadius: 15,
                 paddingVertical: spacing.lg
               }]}
-              onPress={() => openAddModal('gave')}
+              onPress={() => openTransactionFlow('gave')}
             >
               <Text style={[commonStyles.text, { 
                 color: colors.secondary, 
@@ -422,107 +338,6 @@ export default function CustomerDetailsScreen() {
           </View>
         </View>
       </View>
-
-      {/* Add Transaction Modal */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <View style={commonStyles.modalOverlay}>
-          <View style={commonStyles.modalContent}>
-            <View style={[commonStyles.row, { marginBottom: spacing.lg }]}>
-              <Text style={commonStyles.subtitle}>
-                {transactionType === 'gave' ? "💸 J'ai donné" : "💰 J'ai pris"}
-              </Text>
-              <TouchableOpacity onPress={() => setShowAddModal(false)}>
-                <Icon name="close" size={24} color={colors.textLight} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={{ marginBottom: spacing.md }}>
-                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                  💰 Montant *
-                </Text>
-                <TextInput
-                  style={commonStyles.input}
-                  value={formData.amount}
-                  onChangeText={(text) => setFormData({ ...formData, amount: text })}
-                  placeholder="Ex: 5000"
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <View style={{ marginBottom: spacing.md }}>
-                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                  💳 Moyen de paiement
-                </Text>
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                  {[
-                    { key: 'cash', label: 'Espèces' },
-                    { key: 'mobile_money', label: 'Mobile Money' },
-                    { key: 'credit', label: 'Crédit' },
-                  ].map(method => (
-                    <TouchableOpacity
-                      key={method.key}
-                      style={[
-                        buttonStyles.outline,
-                        { flex: 1 },
-                        formData.paymentMethod === method.key && { backgroundColor: colors.primary }
-                      ]}
-                      onPress={() => setFormData({ ...formData, paymentMethod: method.key })}
-                    >
-                      <Text style={[
-                        commonStyles.text,
-                        { textAlign: 'center', fontSize: fontSizes.sm },
-                        formData.paymentMethod === method.key && { color: colors.secondary }
-                      ]}>
-                        {method.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={{ marginBottom: spacing.lg }}>
-                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                  📝 Description
-                </Text>
-                <TextInput
-                  style={[commonStyles.input, { height: 80, textAlignVertical: 'top' }]}
-                  value={formData.description}
-                  onChangeText={(text) => setFormData({ ...formData, description: text })}
-                  placeholder="Détails de la transaction..."
-                  multiline
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[buttonStyles.primary, { 
-                  marginBottom: spacing.sm,
-                  backgroundColor: transactionType === 'gave' ? colors.danger : colors.success
-                }]}
-                onPress={addTransaction}
-              >
-                <Text style={{ color: colors.secondary, fontSize: fontSizes.md, fontWeight: '600' }}>
-                  ✅ Ajouter la transaction
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={buttonStyles.outline}
-                onPress={() => setShowAddModal(false)}
-              >
-                <Text style={{ color: colors.primary, fontSize: fontSizes.md, fontWeight: '600' }}>
-                  ❌ Annuler
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

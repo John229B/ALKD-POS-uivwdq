@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
@@ -9,6 +9,50 @@ import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNext
 import { useAuthState } from '../../hooks/useAuth';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
+
+// Floating Action Button styles
+const fabStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 24,
+    right: 16,
+    zIndex: 1000,
+  },
+  button: {
+    backgroundColor: colors.primary,
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 60,
+    minWidth: 140,
+    borderWidth: 2,
+    borderColor: colors.secondary,
+    boxShadow: '0px 6px 20px rgba(255, 215, 0, 0.5)',
+    elevation: 12,
+  },
+  badge: {
+    backgroundColor: colors.secondary,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: colors.primary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  buttonText: {
+    color: colors.secondary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+});
 
 export default function POSScreen() {
   const { user } = useAuthState();
@@ -447,22 +491,23 @@ export default function POSScreen() {
                 </View>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={[
-                buttonStyles.primary,
-                isSmallScreen ? buttonStyles.small : {},
-                (cart.length === 0 || isProcessing) && { opacity: 0.5 }
-              ]}
-              onPress={() => setShowCheckoutModal(true)}
-              disabled={cart.length === 0 || isProcessing}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Icon name="card" size={20} color={colors.secondary} />
-                <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
-                  {isProcessing ? 'Traitement...' : (isSmallScreen ? 'Payer' : 'Finaliser')}
-                </Text>
-              </View>
-            </TouchableOpacity>
+            {!isSmallScreen && (
+              <TouchableOpacity
+                style={[
+                  buttonStyles.outline,
+                  (cart.length === 0 || isProcessing) && { opacity: 0.5 }
+                ]}
+                onPress={() => setShowCheckoutModal(true)}
+                disabled={cart.length === 0 || isProcessing}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                  <Icon name="card" size={20} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '600', fontSize: fontSizes.md }}>
+                    {isProcessing ? 'Traitement...' : 'Finaliser'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -530,7 +575,13 @@ export default function POSScreen() {
             </View>
 
             {/* Products Grid */}
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}>
+            <ScrollView 
+              style={{ flex: 1 }} 
+              contentContainerStyle={{ 
+                paddingHorizontal: spacing.lg, 
+                paddingBottom: cart.length > 0 ? spacing.xl + 80 : spacing.xl 
+              }}
+            >
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
                 {filteredProducts.map(product => {
                   const unitInfo = getUnitInfo(product.unit);
@@ -665,7 +716,12 @@ export default function POSScreen() {
                 </View>
               )}
 
-              <ScrollView style={{ flex: 1, marginBottom: spacing.md }}>
+              <ScrollView 
+                style={{ flex: 1, marginBottom: spacing.md }}
+                contentContainerStyle={{ 
+                  paddingBottom: cart.length > 0 ? 80 : 0 
+                }}
+              >
                 {cart.map(item => {
                   const unitInfo = getUnitInfo(item.product.unit);
                   return (
@@ -1192,6 +1248,34 @@ export default function POSScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Floating Action Button - Payer */}
+      {cart.length > 0 && (
+        <View style={[
+          fabStyles.container,
+          { bottom: spacing.xl + (isSmallScreen ? 20 : 0) }
+        ]}>
+          <TouchableOpacity
+            style={[
+              fabStyles.button,
+              { opacity: isProcessing ? 0.7 : 1 }
+            ]}
+            onPress={() => setShowCheckoutModal(true)}
+            disabled={isProcessing}
+            activeOpacity={0.8}
+          >
+            <Icon name="card" size={24} color={colors.secondary} />
+            <Text style={fabStyles.buttonText}>
+              Payer
+            </Text>
+            <View style={fabStyles.badge}>
+              <Text style={fabStyles.badgeText}>
+                {cart.length}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

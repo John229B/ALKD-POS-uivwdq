@@ -13,21 +13,13 @@ import uuid from 'react-native-uuid';
 import * as Sharing from 'expo-sharing';
 
 export default function TransactionSuccessScreen() {
-  const { 
-    customerId, 
-    type, 
-    amount, 
-    date, 
-    note, 
-    paymentMethod 
-  } = useLocalSearchParams<{ 
-    customerId: string; 
-    type: 'gave' | 'took'; 
-    amount: string; 
-    date: string; 
-    note: string; 
-    paymentMethod: string; 
-  }>();
+  const params = useLocalSearchParams();
+  const customerId = Array.isArray(params.customerId) ? decodeURIComponent(params.customerId[0]) : decodeURIComponent(params.customerId || '');
+  const type = Array.isArray(params.type) ? decodeURIComponent(params.type[0]) : decodeURIComponent(params.type || '');
+  const amount = Array.isArray(params.amount) ? decodeURIComponent(params.amount[0]) : decodeURIComponent(params.amount || '');
+  const date = Array.isArray(params.date) ? decodeURIComponent(params.date[0]) : decodeURIComponent(params.date || '');
+  const note = Array.isArray(params.note) ? decodeURIComponent(params.note[0]) : decodeURIComponent(params.note || '');
+  const paymentMethod = Array.isArray(params.paymentMethod) ? decodeURIComponent(params.paymentMethod[0]) : decodeURIComponent(params.paymentMethod || '');
   
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -175,7 +167,7 @@ Merci pour votre confiance!
     // Return to customer details
     router.replace({
       pathname: '/customer-details',
-      params: { customerId },
+      params: { customerId: encodeURIComponent(customerId) },
     });
   };
 
@@ -253,7 +245,7 @@ Merci pour votre confiance!
                 FILS
               </Text>
               <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                {format(transactionDate, "Aujourd'hui à HH:mm", { locale: fr })}
+                {format(transactionDate, "dd/MM/yyyy à HH:mm", { locale: fr })}
               </Text>
             </View>
 

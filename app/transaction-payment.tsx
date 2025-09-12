@@ -9,19 +9,12 @@ import { getCustomers, getSettings } from '../utils/storage';
 import { Customer, AppSettings } from '../types';
 
 export default function TransactionPaymentScreen() {
-  const { 
-    customerId, 
-    type, 
-    amount, 
-    date, 
-    note 
-  } = useLocalSearchParams<{ 
-    customerId: string; 
-    type: 'gave' | 'took'; 
-    amount: string; 
-    date: string; 
-    note: string; 
-  }>();
+  const params = useLocalSearchParams();
+  const customerId = Array.isArray(params.customerId) ? decodeURIComponent(params.customerId[0]) : decodeURIComponent(params.customerId || '');
+  const type = Array.isArray(params.type) ? decodeURIComponent(params.type[0]) : decodeURIComponent(params.type || '');
+  const amount = Array.isArray(params.amount) ? decodeURIComponent(params.amount[0]) : decodeURIComponent(params.amount || '');
+  const date = Array.isArray(params.date) ? decodeURIComponent(params.date[0]) : decodeURIComponent(params.date || '');
+  const note = Array.isArray(params.note) ? decodeURIComponent(params.note[0]) : decodeURIComponent(params.note || '');
   
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -81,12 +74,12 @@ export default function TransactionPaymentScreen() {
     router.push({
       pathname: '/transaction-success',
       params: {
-        customerId,
-        type,
-        amount,
-        date,
-        note,
-        paymentMethod: methodId,
+        customerId: encodeURIComponent(customerId),
+        type: encodeURIComponent(type),
+        amount: encodeURIComponent(amount),
+        date: encodeURIComponent(date),
+        note: encodeURIComponent(note),
+        paymentMethod: encodeURIComponent(methodId),
       },
     });
   };
@@ -112,8 +105,8 @@ export default function TransactionPaymentScreen() {
             <Icon name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[commonStyles.title, { color: colors.primary, fontSize: fontSizes.lg }]}>
-              MODES DE PAIEMENT
+            <Text style={[commonStyles.title, { color: colors.text, fontSize: fontSizes.lg }]}>
+              Modes de paiement
             </Text>
           </View>
         </View>
@@ -158,19 +151,26 @@ export default function TransactionPaymentScreen() {
                   paddingHorizontal: spacing.lg,
                   borderWidth: 2,
                   borderColor: selectedPaymentMethod === method.id ? colors.primary : colors.border,
-                  backgroundColor: selectedPaymentMethod === method.id ? colors.primary + '10' : colors.secondary,
+                  backgroundColor: colors.secondary,
+                  borderRadius: 15,
+                  shadowColor: colors.text,
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 4,
+                  elevation: 3,
                 }
               ]}
               onPress={() => handlePaymentMethodSelect(method.id)}
+              activeOpacity={0.8}
             >
               <View style={[commonStyles.row, { alignItems: 'center' }]}>
                 <View style={{
-                  backgroundColor: colors.primary + '20',
+                  backgroundColor: colors.primary,
                   borderRadius: 25,
                   padding: spacing.md,
                   marginRight: spacing.md,
                 }}>
-                  <Icon name={method.icon} size={24} color={colors.primary} />
+                  <Icon name={method.icon} size={24} color={colors.secondary} />
                 </View>
                 
                 <View style={{ flex: 1 }}>
@@ -178,13 +178,13 @@ export default function TransactionPaymentScreen() {
                     fontSize: fontSizes.lg,
                     fontWeight: '600',
                     marginBottom: spacing.xs,
-                    color: selectedPaymentMethod === method.id ? colors.primary : colors.text
+                    color: colors.text
                   }]}>
                     {method.name}
                   </Text>
                   <Text style={[commonStyles.textLight, { 
                     fontSize: fontSizes.sm,
-                    color: selectedPaymentMethod === method.id ? colors.primary + '80' : colors.textLight
+                    color: colors.textLight
                   }]}>
                     {method.description}
                   </Text>
@@ -193,7 +193,7 @@ export default function TransactionPaymentScreen() {
                 <Icon 
                   name="chevron-forward" 
                   size={20} 
-                  color={selectedPaymentMethod === method.id ? colors.primary : colors.textLight} 
+                  color={colors.text} 
                 />
               </View>
             </TouchableOpacity>
@@ -210,6 +210,7 @@ export default function TransactionPaymentScreen() {
               borderColor: colors.border,
               borderStyle: 'dashed',
               backgroundColor: colors.background,
+              borderRadius: 15,
               opacity: 0.6,
             }
           ]}>

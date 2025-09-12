@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../styles/commonStyles';
 import Icon from '../components/Icon';
-import { getCustomers, getSales, getSettings } from '../utils/storage';
+import { getCustomers, getSales, getSettings, storeCustomers } from '../utils/storage';
 import { Customer, Sale, AppSettings } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -25,6 +25,13 @@ export default function CustomerDetailsScreen() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    address: '',
+  });
 
   useEffect(() => {
     loadData();
@@ -48,6 +55,14 @@ export default function CustomerDetailsScreen() {
 
       setCustomer(foundCustomer);
       setSettings(settingsData);
+
+      // Set form data for editing
+      setFormData({
+        name: foundCustomer.name,
+        phone: foundCustomer.phone || '',
+        email: foundCustomer.email || '',
+        address: foundCustomer.address || '',
+      });
 
       // Generate transactions from sales and manual entries
       const customerSales = salesData.filter(sale => sale.customerId === customerId);
@@ -111,14 +126,14 @@ export default function CustomerDetailsScreen() {
 
   const getBalanceColor = (balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt (J'ai donné)
-    if (balance < 0) return colors.success; // Green for credit (J'ai pris)
-    return colors.text;
+    if (balance === 0) return colors.success; // Green for zero balance
+    return colors.success; // Green for credit (J'ai pris)
   };
 
   const getBalanceLabel = (balance: number): string => {
     if (balance > 0) return "J'ai donné";
-    if (balance < 0) return "J'ai pris";
-    return "Équilibré";
+    if (balance === 0) return "Équilibré";
+    return "J'ai pris";
   };
 
   const openTransactionFlow = (type: 'gave' | 'took') => {
@@ -138,6 +153,45 @@ export default function CustomerDetailsScreen() {
       credit: 'Crédit',
     };
     return labels[method] || method;
+  };
+
+  const openEditModal = () => {
+    console.log('Opening edit modal for customer:', customer?.name);
+    setShowEditModal(true);
+  };
+
+  const saveCustomer = async () => {
+    if (!formData.name.trim()) {
+      Alert.alert('Erreur', 'Le nom du client est obligatoire');
+      return;
+    }
+
+    try {
+      console.log('Updating customer:', customer?.id);
+      const customersData = await getCustomers();
+      
+      const updatedCustomer: Customer = {
+        ...customer!,
+        name: formData.name.trim(),
+        phone: formData.phone.trim() || undefined,
+        email: formData.email.trim() || undefined,
+        address: formData.address.trim() || undefined,
+        updatedAt: new Date(),
+      };
+
+      const updatedCustomers = customersData.map(c => 
+        c.id === customer!.id ? updatedCustomer : c
+      );
+
+      await storeCustomers(updatedCustomers);
+      setCustomer(updatedCustomer);
+      setShowEditModal(false);
+
+      Alert.alert('Succès', 'Informations du client mises à jour avec succès');
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      Alert.alert('Erreur', 'Erreur lors de la mise à jour du client');
+    }
   };
 
   if (!customer) {
@@ -160,12 +214,17 @@ export default function CustomerDetailsScreen() {
           <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
             <Icon name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[commonStyles.title, { color: colors.primary }]}>
+          <View style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={[commonStyles.title, { 
+              color: colors.primary,
+              fontSize: fontSizes.lg,
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }]}>
               {customer.name.toUpperCase()}
             </Text>
           </View>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={openEditModal}>
             <Icon name="person" size={24} color={colors.primary} />
           </TouchableOpacity>
         </View>
@@ -183,7 +242,7 @@ export default function CustomerDetailsScreen() {
             fontSize: fontSizes.xl,
             fontWeight: 'bold'
           }]}>
-            {formatCurrency(Math.abs(currentBalance))}
+            {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
           </Text>
           <TouchableOpacity style={{ position: 'absolute', right: spacing.lg, top: spacing.lg }}>
             <View style={{
@@ -231,7 +290,7 @@ export default function CustomerDetailsScreen() {
                       {format(transaction.date, 'd MMMM à HH:mm', { locale: fr })}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.xs }]}>
-                      Solde {formatCurrency(Math.abs(transaction.balance))}
+                      Solde {transaction.balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(transaction.balance))}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                       {transaction.description}
@@ -338,6 +397,99 @@ export default function CustomerDetailsScreen() {
           </View>
         </View>
       </View>
+
+      {/* Edit Customer Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={commonStyles.modalOverlay}>
+          <View style={commonStyles.modalContent}>
+            <View style={[commonStyles.row, { marginBottom: spacing.lg }]}>
+              <Text style={commonStyles.subtitle}>
+                ✏️ Modifier le client
+              </Text>
+              <TouchableOpacity onPress={() => setShowEditModal(false)}>
+                <Icon name="close" size={24} color={colors.textLight} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  👤 Nom complet *
+                </Text>
+                <TextInput
+                  style={commonStyles.input}
+                  value={formData.name}
+                  onChangeText={(text) => setFormData({ ...formData, name: text })}
+                  placeholder="Ex: Jean Dupont"
+                />
+              </View>
+
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  📞 Téléphone
+                </Text>
+                <TextInput
+                  style={commonStyles.input}
+                  value={formData.phone}
+                  onChangeText={(text) => setFormData({ ...formData, phone: text })}
+                  placeholder="Ex: +225 01 02 03 04 05"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={{ marginBottom: spacing.md }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  ✉️ Email
+                </Text>
+                <TextInput
+                  style={commonStyles.input}
+                  value={formData.email}
+                  onChangeText={(text) => setFormData({ ...formData, email: text })}
+                  placeholder="Ex: jean.dupont@email.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <View style={{ marginBottom: spacing.lg }}>
+                <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
+                  📍 Adresse
+                </Text>
+                <TextInput
+                  style={[commonStyles.input, { height: 80, textAlignVertical: 'top' }]}
+                  value={formData.address}
+                  onChangeText={(text) => setFormData({ ...formData, address: text })}
+                  placeholder="Adresse complète du client..."
+                  multiline
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[buttonStyles.primary, { marginBottom: spacing.sm }]}
+                onPress={saveCustomer}
+              >
+                <Text style={{ color: colors.secondary, fontSize: fontSizes.md, fontWeight: '600' }}>
+                  ✅ Sauvegarder les modifications
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={buttonStyles.outline}
+                onPress={() => setShowEditModal(false)}
+              >
+                <Text style={{ color: colors.primary, fontSize: fontSizes.md, fontWeight: '600' }}>
+                  ❌ Annuler
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

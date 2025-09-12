@@ -106,13 +106,13 @@ export default function CustomersScreen() {
 
   const getBalanceColor = (balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt
-    if (balance < 0) return colors.success; // Green for credit
-    return colors.text;
+    if (balance === 0) return colors.success; // Green for zero balance
+    return colors.success; // Green for credit (negative balance)
   };
 
   const getBalanceLabel = (balance: number): string => {
     if (balance > 0) return "J'ai donné";
-    if (balance < 0) return "J'ai pris";
+    if (balance === 0) return "J'ai pris"; // Show as "J'ai pris" when balanced
     return "J'ai pris";
   };
 
@@ -227,7 +227,7 @@ export default function CustomersScreen() {
             J'ai donné
           </Text>
           <Text style={[commonStyles.title, { 
-            color: colors.danger, 
+            color: totalGave === 0 ? colors.success : colors.danger, 
             fontSize: fontSizes.xl,
             fontWeight: 'bold',
             marginBottom: spacing.sm
@@ -235,7 +235,9 @@ export default function CustomersScreen() {
             {formatCurrency(totalGave)}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-            J'ai pris: {formatCurrency(totalTook)}
+            J'ai pris: <Text style={{ color: totalTook === 0 ? colors.success : colors.success }}>
+              {formatCurrency(totalTook)}
+            </Text>
           </Text>
         </View>
 
@@ -326,7 +328,7 @@ export default function CustomersScreen() {
                         fontWeight: 'bold',
                         marginBottom: spacing.xs
                       }]}>
-                        {formatCurrency(Math.abs(balance))}
+                        {balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(balance))}
                       </Text>
                       <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                         {getBalanceLabel(balance)}

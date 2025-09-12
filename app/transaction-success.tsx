@@ -12,6 +12,7 @@ import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import { captureRef } from 'react-native-view-shot';
 
 export default function TransactionSuccessScreen() {
   const params = useLocalSearchParams();
@@ -26,6 +27,7 @@ export default function TransactionSuccessScreen() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [newBalance, setNewBalance] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(true);
+  const receiptRef = React.useRef<View>(null);
 
   useEffect(() => {
     processTransaction();
@@ -126,15 +128,64 @@ export default function TransactionSuccessScreen() {
 
   const getBalanceColor = (balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt
-    if (balance < 0) return colors.success; // Green for credit
+    if (balance === 0) return colors.success; // Green for zero balance
     return colors.text;
   };
 
   const handleShare = async () => {
     try {
-      console.log('Starting receipt sharing process...');
+      console.log('Starting receipt sharing as image...');
       
-      // Create a clean receipt text without special characters that could cause encoding issues
+      if (!receiptRef.current) {
+        Alert.alert('Erreur', 'Impossible de capturer le reçu');
+        return;
+      }
+
+      // Import captureRef dynamically since it might not be available on all platforms
+      let captureRef: any;
+      try {
+        const viewShot = await import('react-native-view-shot');
+        captureRef = viewShot.captureRef;
+      } catch (importError) {
+        console.log('react-native-view-shot not available, falling back to text sharing');
+        await handleTextShare();
+        return;
+      }
+
+      // Capture the receipt as an image
+      const uri = await captureRef(receiptRef.current, {
+        format: 'png',
+        quality: 1.0,
+        result: 'tmpfile',
+      });
+
+      console.log('Receipt captured as image:', uri);
+
+      // Check if sharing is available
+      if (await Sharing.isAvailableAsync()) {
+        console.log('Sharing receipt image...');
+        
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Partager le reçu',
+        });
+
+        console.log('Receipt image shared successfully');
+      } else {
+        console.log('Sharing not available on this device');
+        Alert.alert('Information', 'Le partage n\'est pas disponible sur cet appareil');
+      }
+
+    } catch (error) {
+      console.error('Error sharing receipt as image:', error);
+      console.log('Falling back to text sharing...');
+      await handleTextShare();
+    }
+  };
+
+  const handleTextShare = async () => {
+    try {
+      // Fallback to text sharing if image capture fails
       const receiptText = [
         '=== RECU DE TRANSACTION ===',
         '',
@@ -147,53 +198,35 @@ export default function TransactionSuccessScreen() {
         note ? `Note: ${note}` : '',
         '',
         `Nouveau solde: ${formatCurrency(Math.abs(newBalance))}`,
-        newBalance > 0 ? '(Dette)' : newBalance < 0 ? '(Credit)' : '(Equilibre)',
+        newBalance > 0 ? '(Dette)' : newBalance === 0 ? '(Equilibre)' : '(Credit)',
         '',
         'Merci pour votre confiance!',
         '=========================='
       ].filter(line => line !== '').join('\n');
 
-      console.log('Receipt text prepared:', receiptText);
-
-      // Try to create a temporary file for sharing
       const fileName = `recu_${customer?.name?.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      console.log('Creating file at:', fileUri);
-
-      // Write the file with UTF-8 encoding
       await FileSystem.writeAsStringAsync(fileUri, receiptText, {
         encoding: FileSystem.EncodingType.UTF8,
       });
 
-      console.log('File created successfully');
-
-      // Check if sharing is available
       if (await Sharing.isAvailableAsync()) {
-        console.log('Sharing is available, attempting to share...');
-        
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/plain',
           dialogTitle: 'Partager le recu',
-          UTI: 'public.plain-text',
         });
-
-        console.log('Sharing completed successfully');
-      } else {
-        console.log('Sharing not available on this device');
-        Alert.alert('Information', 'Le partage n\'est pas disponible sur cet appareil');
       }
 
-      // Clean up the temporary file
+      // Clean up
       try {
         await FileSystem.deleteAsync(fileUri, { idempotent: true });
-        console.log('Temporary file cleaned up');
       } catch (cleanupError) {
         console.log('Could not clean up temporary file:', cleanupError);
       }
 
     } catch (error) {
-      console.error('Error sharing receipt:', error);
+      console.error('Error sharing receipt as text:', error);
       Alert.alert('Erreur', `Erreur lors du partage du recu: ${error.message || 'Erreur inconnue'}`);
     }
   };
@@ -244,23 +277,26 @@ export default function TransactionSuccessScreen() {
           </Text>
         </View>
 
-        {/* Receipt Card */}
+        {/* Receipt Card - This will be captured as image */}
         <View style={[commonStyles.section, { paddingHorizontal: spacing.lg, flex: 1 }]}>
-          <View style={[
-            commonStyles.card,
-            {
-              backgroundColor: colors.secondary,
-              borderRadius: 20,
-              padding: spacing.xl,
-              borderWidth: 1,
-              borderColor: colors.border,
-              shadowColor: colors.text,
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
-              elevation: 4,
-            }
-          ]}>
+          <View 
+            ref={receiptRef}
+            style={[
+              commonStyles.card,
+              {
+                backgroundColor: colors.secondary,
+                borderRadius: 20,
+                padding: spacing.xl,
+                borderWidth: 1,
+                borderColor: colors.border,
+                shadowColor: colors.text,
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.1,
+                shadowRadius: 8,
+                elevation: 4,
+              }
+            ]}
+          >
             {/* Company Header */}
             <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
               <Text style={[commonStyles.text, { 
@@ -361,8 +397,8 @@ export default function TransactionSuccessScreen() {
               }]}>
                 {formatCurrency(Math.abs(newBalance))}
                 {newBalance > 0 && ' (Dette)'}
-                {newBalance < 0 && ' (Credit)'}
                 {newBalance === 0 && ' (Equilibre)'}
+                {newBalance < 0 && ' (Credit)'}
               </Text>
             </View>
           </View>

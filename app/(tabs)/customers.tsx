@@ -169,21 +169,28 @@ export default function CustomersScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  // Calculate summary statistics based on actual customer balances
+  // Calculate summary statistics based on actual customer balances - FIXED CALCULATION
   const calculateSummary = () => {
     let totalGave = 0; // J'ai donné (total debts)
     let totalTook = 0; // J'ai pris (total payments)
 
-    // Calculate from each customer's balance
+    // Calculate from all sales, not just customer balances
     customers.forEach(customer => {
-      const customerBalance = getCustomerBalance(customer);
-
-      // Sum up the totals for general balance
-      if (customerBalance > 0) {
-        totalGave += customerBalance; // Customer owes money (J'ai donné)
-      } else if (customerBalance < 0) {
-        totalTook += Math.abs(customerBalance); // Customer has credit (J'ai pris)
-      }
+      const customerSales = sales.filter(sale => sale.customerId === customer.id);
+      
+      customerSales.forEach(sale => {
+        if (sale.paymentStatus === 'credit') {
+          totalGave += sale.total; // Credit sale = gave goods
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          const paidAmount = sale.amountPaid || 0;
+          totalGave += unpaidAmount; // Gave goods for unpaid portion
+          totalTook += paidAmount; // Took payment for paid portion
+        } else if (sale.paymentStatus === 'paid') {
+          totalGave += sale.total; // Gave goods
+          totalTook += sale.total; // Took payment
+        }
+      });
     });
 
     console.log('Summary calculation:', { totalGave, totalTook, customersCount: customers.length, salesCount: sales.length });
@@ -360,14 +367,14 @@ export default function CustomersScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Summary Section */}
+        {/* Summary Section - FIXED DISPLAY */}
         <View style={[commonStyles.section, { backgroundColor: colors.background, padding: spacing.lg }]}>
           <Text style={[commonStyles.text, { 
             color: colors.primary, 
             fontSize: fontSizes.md, 
             marginBottom: spacing.md 
           }]}>
-            Solde général
+            Balance générale
           </Text>
           <Text style={[commonStyles.title, { 
             color: generalBalance > 0 ? colors.danger : generalBalance === 0 ? colors.success : colors.success, 
@@ -378,13 +385,16 @@ export default function CustomersScreen() {
             {formatCurrency(generalBalance === 0 ? 0 : Math.abs(generalBalance))}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-            J'ai donné: <Text style={{ color: totalGave === 0 ? colors.success : colors.danger }}>
+            J'ai donné: <Text style={{ color: colors.danger, fontWeight: '600' }}>
               {formatCurrency(totalGave)}
             </Text>
             {' • '}
-            J'ai pris: <Text style={{ color: totalTook === 0 ? colors.success : colors.success }}>
+            J'ai pris: <Text style={{ color: colors.success, fontWeight: '600' }}>
               {formatCurrency(totalTook)}
             </Text>
+          </Text>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.xs }]}>
+            {generalBalance > 0 ? 'Dette générale' : generalBalance === 0 ? 'Comptes équilibrés' : 'Crédit général'}
           </Text>
         </View>
 

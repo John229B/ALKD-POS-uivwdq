@@ -19,6 +19,7 @@ interface DashboardStats {
   totalCustomers: number;
   lowStockProducts: number;
   creditAmount: number;
+  generalBalance: number; // Added general balance
   topProducts: {
     name: string;
     quantity: number;
@@ -37,6 +38,7 @@ export default function DashboardScreen() {
     totalCustomers: 0,
     lowStockProducts: 0,
     creditAmount: 0,
+    generalBalance: 0,
     topProducts: [],
     recentSales: [],
   });
@@ -84,8 +86,45 @@ export default function DashboardScreen() {
       const weekRevenue = weekSales.reduce((sum, sale) => sum + sale.total, 0);
       const monthRevenue = monthSales.reduce((sum, sale) => sum + sale.total, 0);
 
-      // Calculate credit amount
-      const creditAmount = customers.reduce((sum, customer) => sum + customer.creditBalance, 0);
+      // Calculate credit amount and general balance - FIXED CALCULATION
+      let totalGave = 0; // J'ai donné (total debts)
+      let totalTook = 0; // J'ai pris (total payments received)
+      let creditAmount = 0; // Current outstanding credit
+
+      customers.forEach(customer => {
+        const customerSales = sales.filter(sale => sale.customerId === customer.id);
+        let customerBalance = 0;
+        
+        customerSales.forEach(sale => {
+          if (sale.paymentStatus === 'credit') {
+            customerBalance += sale.total; // Credit sale adds to debt
+            totalGave += sale.total;
+          } else if (sale.paymentStatus === 'partial') {
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            const paidAmount = sale.amountPaid || 0;
+            customerBalance += unpaidAmount; // Only unpaid portion adds to debt
+            totalGave += unpaidAmount;
+            totalTook += paidAmount;
+          } else if (sale.paymentStatus === 'paid') {
+            // Fully paid sales: gave the goods, took the payment
+            totalGave += sale.total;
+            totalTook += sale.total;
+          }
+        });
+        
+        creditAmount += Math.max(0, customerBalance); // Only positive balances are credit
+      });
+
+      const generalBalance = totalGave - totalTook; // Positive = overall debt, Negative = overall credit
+
+      console.log('Dashboard balance calculation:', {
+        totalGave,
+        totalTook,
+        generalBalance,
+        creditAmount,
+        customersCount: customers.length,
+        salesCount: sales.length
+      });
 
       // Find low stock products
       const lowStockProducts = products.filter(product => 
@@ -127,6 +166,7 @@ export default function DashboardScreen() {
         totalCustomers: customers.length,
         lowStockProducts,
         creditAmount,
+        generalBalance,
         topProducts,
         recentSales,
       });
@@ -323,6 +363,60 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* General Balance Section - NEW */}
+        <View style={[commonStyles.section, { backgroundColor: colors.background, marginBottom: spacing.md }]}>
+          <Text style={[commonStyles.subtitle, { 
+            fontSize: fontSizes.lg,
+            marginBottom: spacing.md,
+          }]}>
+            Balance Générale
+          </Text>
+          
+          <View style={[commonStyles.card, { backgroundColor: colors.backgroundAlt, padding: spacing.lg }]}>
+            <View style={{ alignItems: 'center', marginBottom: spacing.md }}>
+              <Text style={[commonStyles.text, { 
+                color: stats.generalBalance > 0 ? colors.danger : stats.generalBalance === 0 ? colors.success : colors.success, 
+                fontSize: fontSizes.xl,
+                fontWeight: 'bold',
+                marginBottom: spacing.xs
+              }]}>
+                {stats.generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(stats.generalBalance))}
+              </Text>
+              <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                {stats.generalBalance > 0 ? 'Dette générale' : stats.generalBalance === 0 ? 'Équilibré' : 'Crédit général'}
+              </Text>
+            </View>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
+                  J'ai donné
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.danger,
+                  fontSize: fontSizes.md,
+                  fontWeight: '600'
+                }]}>
+                  {formatCurrency(stats.generalBalance > 0 ? Math.abs(stats.generalBalance) : 0)}
+                </Text>
+              </View>
+              
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
+                  J'ai pris
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.md,
+                  fontWeight: '600'
+                }]}>
+                  {formatCurrency(stats.generalBalance < 0 ? Math.abs(stats.generalBalance) : 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
         {/* Quick Actions */}
         <View style={[commonStyles.section, { paddingTop: 0 }]}>
           <Text style={[commonStyles.subtitle, { 
@@ -401,7 +495,7 @@ export default function DashboardScreen() {
               <StatCard
                 title="Crédits en Cours"
                 value={formatCurrency(stats.creditAmount)}
-                subtitle="Montant total des dettes"
+                subtitle="Montant total des dettes clients"
                 icon="credit-card"
                 color={colors.danger}
               />
@@ -511,7 +605,8 @@ export default function DashboardScreen() {
                             : colors.warning,
                           fontWeight: '600',
                         }}>
-                          {sale.paymentStatus === 'paid' ? 'Payé' : 'Crédit'}
+                          {sale.paymentStatus === 'paid' ? 'Payé' : 
+                           sale.paymentStatus === 'partial' ? 'Partiel' : 'Crédit'}
                         </Text>
                       </View>
                     </View>

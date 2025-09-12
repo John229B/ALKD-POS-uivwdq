@@ -60,27 +60,37 @@ export default function CustomerDetailsScreen() {
         address: foundCustomer.address || '',
       });
 
-      // Generate transactions from sales and manual entries
+      // Generate transactions from sales - FIXED LOGIC
       const customerSales = salesData.filter(sale => sale.customerId === customerId);
       const generatedTransactions: CustomerTransaction[] = [];
 
-      // Add sales as transactions - ONLY credit sales and partial payments create transactions
+      console.log(`Found ${customerSales.length} sales for customer ${foundCustomer.name}`);
+
+      // Process each sale to generate appropriate transactions
       customerSales.forEach(sale => {
+        console.log('Processing sale:', {
+          id: sale.id,
+          receiptNumber: sale.receiptNumber,
+          total: sale.total,
+          paymentStatus: sale.paymentStatus,
+          amountPaid: sale.amountPaid,
+          paymentMethod: sale.paymentMethod
+        });
+
         if (sale.paymentStatus === 'credit') {
-          // Credit sale = "J'ai donné" (debt)
+          // Credit sale = "J'ai donné" (debt) - customer owes the full amount
           generatedTransactions.push({
             id: `sale-${sale.id}`,
             date: new Date(sale.createdAt),
             amount: sale.total,
             type: 'gave',
             paymentMethod: 'credit',
-            description: sale.notes || `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+            description: `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
             balance: 0, // Will be calculated later
           });
         } else if (sale.paymentStatus === 'partial') {
-          // Partial payment = both "J'ai donné" for unpaid amount and "J'ai pris" for paid amount
+          // Partial payment = "J'ai donné" for unpaid amount
           const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          const paidAmount = sale.amountPaid || 0;
           
           if (unpaidAmount > 0) {
             generatedTransactions.push({
@@ -89,11 +99,13 @@ export default function CustomerDetailsScreen() {
               amount: unpaidAmount,
               type: 'gave',
               paymentMethod: 'credit',
-              description: sale.notes || `Vente partielle ${sale.receiptNumber} - Reste à payer`,
+              description: `Vente partielle ${sale.receiptNumber} - Reste à payer`,
               balance: 0, // Will be calculated later
             });
           }
           
+          // Also show the payment received
+          const paidAmount = sale.amountPaid || 0;
           if (paidAmount > 0) {
             generatedTransactions.push({
               id: `sale-payment-${sale.id}`,
@@ -101,19 +113,40 @@ export default function CustomerDetailsScreen() {
               amount: paidAmount,
               type: 'took',
               paymentMethod: sale.paymentMethod,
-              description: sale.notes || `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
+              description: `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
               balance: 0, // Will be calculated later
             });
           }
+        } else if (sale.paymentStatus === 'paid') {
+          // Fully paid sale - show both the purchase and the payment
+          // First, the purchase (what was given)
+          generatedTransactions.push({
+            id: `sale-purchase-${sale.id}`,
+            date: new Date(sale.createdAt),
+            amount: sale.total,
+            type: 'gave',
+            paymentMethod: 'credit',
+            description: `Achat ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+            balance: 0, // Will be calculated later
+          });
+          
+          // Then, the payment (what was received)
+          generatedTransactions.push({
+            id: `sale-fullpayment-${sale.id}`,
+            date: new Date(sale.createdAt),
+            amount: sale.total,
+            type: 'took',
+            paymentMethod: sale.paymentMethod,
+            description: `Paiement complet ${sale.receiptNumber}`,
+            balance: 0, // Will be calculated later
+          });
         }
-        // NOTE: Fully paid sales (paymentStatus === 'paid') do NOT create transactions
-        // because they result in zero balance change (payment = purchase amount)
       });
 
       // Sort by date (newest first)
       generatedTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-      // Calculate running balance from sales data directly (more accurate)
+      // Calculate running balance - CORRECTED CALCULATION
       let runningBalance = 0;
       
       // Calculate balance from all sales for this customer
@@ -124,25 +157,27 @@ export default function CustomerDetailsScreen() {
           const unpaidAmount = sale.total - (sale.amountPaid || 0);
           runningBalance += unpaidAmount; // Only unpaid portion adds to debt
         }
-        // Fully paid sales don't affect balance (payment = purchase amount)
+        // Fully paid sales don't affect final balance (payment = purchase amount)
       });
       
-      // Apply balance to transactions (for display purposes)
+      // Apply balance to transactions for display (working backwards from current balance)
       let tempBalance = runningBalance;
-      for (let i = generatedTransactions.length - 1; i >= 0; i--) {
+      for (let i = 0; i < generatedTransactions.length; i++) {
         const transaction = generatedTransactions[i];
         transaction.balance = tempBalance;
         
         // This is just for display - actual balance is calculated from sales above
-        if (transaction.type === 'gave') {
-          tempBalance -= transaction.amount;
-        } else {
-          tempBalance += transaction.amount;
+        if (i < generatedTransactions.length - 1) {
+          if (transaction.type === 'gave') {
+            tempBalance -= transaction.amount;
+          } else {
+            tempBalance += transaction.amount;
+          }
         }
       }
 
       setTransactions(generatedTransactions);
-      console.log(`Loaded ${generatedTransactions.length} transactions for customer`);
+      console.log(`Generated ${generatedTransactions.length} transactions for customer. Current balance: ${runningBalance}`);
     } catch (error) {
       console.error('Error loading customer details:', error);
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
@@ -314,7 +349,7 @@ export default function CustomerDetailsScreen() {
             marginBottom: spacing.md,
             paddingHorizontal: spacing.lg 
           }]}>
-            Opérations ({transactions.length})
+            Historique des opérations ({transactions.length})
           </Text>
 
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 120 }}>
@@ -341,7 +376,7 @@ export default function CustomerDetailsScreen() {
                       {format(transaction.date, 'd MMMM à HH:mm', { locale: fr })}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.xs }]}>
-                      Solde {transaction.balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(transaction.balance))}
+                      Solde après: {transaction.balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(transaction.balance))}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                       {transaction.description}
@@ -372,7 +407,7 @@ export default function CustomerDetailsScreen() {
                   Aucune opération
                 </Text>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
-                  Commencez par ajouter une transaction
+                  Commencez par effectuer une vente ou ajouter une transaction
                 </Text>
               </View>
             )}

@@ -131,9 +131,9 @@ export default function CustomerDetailsScreen() {
   };
 
   const getBalanceLabel = (balance: number): string => {
-    if (balance > 0) return "J'ai donné";
+    if (balance > 0) return "Dette";
     if (balance === 0) return "Équilibré";
-    return "J'ai pris";
+    return "Crédit";
   };
 
   const openTransactionFlow = (type: 'gave' | 'took') => {
@@ -358,7 +358,7 @@ export default function CustomerDetailsScreen() {
             </View>
           </TouchableOpacity>
 
-          {/* Action Buttons */}
+          {/* Action Buttons with improved functionality descriptions */}
           <View style={{ flexDirection: 'row', gap: spacing.md }}>
             <TouchableOpacity
               style={[buttonStyles.primary, { 
@@ -376,6 +376,14 @@ export default function CustomerDetailsScreen() {
                 textAlign: 'center'
               }]}>
                 J'AI PRIS
+              </Text>
+              <Text style={[commonStyles.text, { 
+                color: colors.secondary, 
+                fontSize: fontSizes.xs, 
+                textAlign: 'center',
+                opacity: 0.8
+              }]}>
+                Paiement reçu
               </Text>
             </TouchableOpacity>
 
@@ -395,6 +403,14 @@ export default function CustomerDetailsScreen() {
                 textAlign: 'center'
               }]}>
                 J'AI DONNÉ
+              </Text>
+              <Text style={[commonStyles.text, { 
+                color: colors.secondary, 
+                fontSize: fontSizes.xs, 
+                textAlign: 'center',
+                opacity: 0.8
+              }]}>
+                Crédit accordé
               </Text>
             </TouchableOpacity>
           </View>

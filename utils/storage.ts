@@ -126,6 +126,36 @@ export const getCustomers = async (): Promise<Customer[]> => {
   return customers || [];
 };
 
+// New function to delete a customer permanently
+export const deleteCustomer = async (customerId: string): Promise<void> => {
+  try {
+    console.log('Deleting customer permanently:', customerId);
+    
+    // Get current data
+    const [customers, sales] = await Promise.all([
+      getCustomers(),
+      getSales(),
+    ]);
+    
+    // Remove customer from customers list
+    const updatedCustomers = customers.filter(c => c.id !== customerId);
+    
+    // Remove all sales associated with this customer
+    const updatedSales = sales.filter(sale => sale.customerId !== customerId);
+    
+    // Save updated data
+    await Promise.all([
+      storeCustomers(updatedCustomers),
+      storeSales(updatedSales),
+    ]);
+    
+    console.log('Customer and associated sales deleted successfully');
+  } catch (error) {
+    console.error('Error deleting customer:', error);
+    throw error;
+  }
+};
+
 // Sales management
 export const storeSales = async (sales: Sale[]): Promise<void> => {
   await storeData(STORAGE_KEYS.SALES, sales);

@@ -402,7 +402,7 @@ export default function TransactionSuccessScreen() {
               </View>
             </View>
 
-            {/* New Balance */}
+            {/* New Balance - Fixed to show correct status */}
             <View style={{
               backgroundColor: colors.background,
               borderRadius: 15,

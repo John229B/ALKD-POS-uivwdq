@@ -81,24 +81,27 @@ export default function TransactionPaymentScreen() {
   const paymentMethods = [
     {
       id: 'cash',
-      name: 'Espèces',
+      name: 'Paiement en liquide',
       icon: 'cash',
-      description: 'Paiement en liquide',
+      description: 'Espèces',
       color: colors.success,
+      backgroundColor: '#2ecc71',
     },
     {
       id: 'mobile_money',
       name: 'Mobile Money',
       icon: 'phone-portrait',
       description: 'Orange Money, MTN Money, etc.',
-      color: colors.primary,
+      color: '#f39c12',
+      backgroundColor: '#f39c12',
     },
     {
       id: 'credit',
-      name: 'Crédit',
+      name: 'Paiement à crédit',
       icon: 'card',
-      description: 'Paiement à crédit',
+      description: 'À crédit',
       color: colors.danger,
+      backgroundColor: '#e74c3c',
     },
   ];
 
@@ -148,7 +151,7 @@ export default function TransactionPaymentScreen() {
           </View>
         </View>
 
-        {/* Payment Methods */}
+        {/* Payment Methods with contrasting colors */}
         <View style={[commonStyles.section, { flex: 1, paddingHorizontal: spacing.lg }]}>
           <Text style={[commonStyles.text, { 
             color: colors.primary, 
@@ -161,11 +164,16 @@ export default function TransactionPaymentScreen() {
           {paymentMethods.map(method => (
             <TouchableOpacity
               key={method.id}
-              style={[commonStyles.card, { 
+              style={[{
                 marginBottom: spacing.md,
-                borderWidth: 2,
-                borderColor: 'transparent',
-                backgroundColor: colors.secondary,
+                borderRadius: 15,
+                padding: spacing.lg,
+                backgroundColor: method.backgroundColor,
+                shadowColor: colors.text,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3,
               }]}
               onPress={() => handlePaymentMethodSelect(method.id)}
             >
@@ -174,28 +182,32 @@ export default function TransactionPaymentScreen() {
                   width: 50,
                   height: 50,
                   borderRadius: 25,
-                  backgroundColor: method.color + '20',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
                   alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: spacing.md,
                 }}>
-                  <Icon name={method.icon} size={24} color={method.color} />
+                  <Icon name={method.icon} size={24} color={colors.secondary} />
                 </View>
 
                 <View style={{ flex: 1 }}>
                   <Text style={[commonStyles.text, { 
                     fontSize: fontSizes.md,
                     fontWeight: 'bold',
+                    color: colors.secondary,
                     marginBottom: spacing.xs
                   }]}>
                     {method.name}
                   </Text>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                  <Text style={[commonStyles.textLight, { 
+                    fontSize: fontSizes.sm,
+                    color: 'rgba(255, 255, 255, 0.8)'
+                  }]}>
                     {method.description}
                   </Text>
                 </View>
 
-                <Icon name="chevron-forward" size={20} color={colors.textLight} />
+                <Icon name="chevron-forward" size={20} color={colors.secondary} />
               </View>
             </TouchableOpacity>
           ))}

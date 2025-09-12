@@ -85,7 +85,7 @@ export default function TransactionAmountScreen() {
   const getButtonStyle = (button: string) => {
     if (button === '0' || button === 'clear' || button === 'backspace') {
       return [commonStyles.card, {
-        backgroundColor: colors.background,
+        backgroundColor: colors.secondary, // White background
         borderColor: colors.border,
         borderWidth: 1,
         padding: spacing.lg,
@@ -95,8 +95,8 @@ export default function TransactionAmountScreen() {
       }];
     }
     return [commonStyles.card, {
-      backgroundColor: colors.primary + '10',
-      borderColor: colors.primary + '30',
+      backgroundColor: colors.secondary, // White background
+      borderColor: colors.border,
       borderWidth: 1,
       padding: spacing.lg,
       alignItems: 'center',
@@ -106,13 +106,10 @@ export default function TransactionAmountScreen() {
   };
 
   const getButtonTextStyle = (button: string) => {
-    if (button === '0' || button === 'clear' || button === 'backspace') {
-      return [commonStyles.text, { fontSize: fontSizes.lg, fontWeight: 'bold' }];
-    }
     return [commonStyles.text, { 
       fontSize: fontSizes.lg, 
       fontWeight: 'bold',
-      color: colors.primary 
+      color: colors.text // Black text for better readability
     }];
   };
 
@@ -209,7 +206,7 @@ export default function TransactionAmountScreen() {
             />
           </View>
 
-          {/* Number Pad */}
+          {/* Number Pad with improved styling */}
           <View style={[commonStyles.section, { paddingHorizontal: spacing.lg, flex: 1 }]}>
             <View style={{ 
               flexDirection: 'row', 

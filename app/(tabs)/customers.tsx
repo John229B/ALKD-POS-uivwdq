@@ -66,21 +66,33 @@ export default function CustomersScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
-  // Calculate summary statistics based on actual transactions
+  // Calculate summary statistics based on actual customer balances
   const calculateSummary = () => {
-    let totalGave = 0; // J'ai donné (debts)
-    let totalTook = 0; // J'ai pris (payments)
+    let totalGave = 0; // J'ai donné (total debts)
+    let totalTook = 0; // J'ai pris (total payments)
 
-    // Calculate from all sales transactions
-    sales.forEach(sale => {
-      if (sale.paymentStatus === 'credit') {
-        totalGave += sale.total; // "J'ai donné" - debt
-      } else if (sale.paymentStatus === 'paid') {
-        totalTook += sale.total; // "J'ai pris" - payment
+    // Calculate from each customer's balance
+    customers.forEach(customer => {
+      const customerSales = sales.filter(sale => sale.customerId === customer.id);
+      let customerBalance = 0;
+      
+      customerSales.forEach(sale => {
+        if (sale.paymentStatus === 'credit') {
+          customerBalance += sale.total; // Debt increases balance
+        } else if (sale.paymentStatus === 'paid') {
+          customerBalance -= sale.total; // Payment decreases balance
+        }
+      });
+
+      // Sum up the totals for general balance
+      if (customerBalance > 0) {
+        totalGave += customerBalance; // Customer owes money (J'ai donné)
+      } else if (customerBalance < 0) {
+        totalTook += Math.abs(customerBalance); // Customer has credit (J'ai pris)
       }
     });
 
-    console.log('Summary calculation:', { totalGave, totalTook, salesCount: sales.length });
+    console.log('Summary calculation:', { totalGave, totalTook, customersCount: customers.length, salesCount: sales.length });
     return { totalGave, totalTook };
   };
 
@@ -123,9 +135,9 @@ export default function CustomersScreen() {
   };
 
   const getBalanceLabel = (balance: number): string => {
-    if (balance > 0) return "J'ai donné";
+    if (balance > 0) return "Dette";
     if (balance === 0) return "Équilibré";
-    return "J'ai pris";
+    return "Crédit";
   };
 
   const resetForm = () => {
@@ -154,6 +166,49 @@ export default function CustomersScreen() {
     });
     setEditingCustomer(customer);
     setShowAddModal(true);
+  };
+
+  const deleteCustomer = (customer: Customer) => {
+    Alert.alert(
+      'Supprimer le client',
+      `Êtes-vous sûr de vouloir supprimer définitivement ${customer.name} ?\n\nCette action est irréversible et supprimera également toutes les transactions associées.`,
+      [
+        {
+          text: 'Annuler',
+          style: 'cancel',
+        },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('Deleting customer:', customer.id);
+              
+              // Remove customer from customers list
+              const updatedCustomers = customers.filter(c => c.id !== customer.id);
+              
+              // Remove all sales associated with this customer
+              const updatedSales = sales.filter(sale => sale.customerId !== customer.id);
+              
+              // Save updated data
+              await Promise.all([
+                storeCustomers(updatedCustomers),
+                require('../../utils/storage').storeSales(updatedSales),
+              ]);
+              
+              // Update local state
+              setCustomers(updatedCustomers);
+              setSales(updatedSales);
+              
+              Alert.alert('Succès', 'Client supprimé avec succès');
+            } catch (error) {
+              console.error('Error deleting customer:', error);
+              Alert.alert('Erreur', 'Erreur lors de la suppression du client');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const saveCustomer = async () => {
@@ -212,7 +267,7 @@ export default function CustomersScreen() {
   };
 
   const { totalGave, totalTook } = calculateSummary();
-  const generalBalance = totalGave - totalTook; // Positive = debt, Negative = credit, Zero = balanced
+  const generalBalance = totalGave - totalTook; // Positive = overall debt, Negative = overall credit, Zero = balanced
   
   console.log('General balance calculation:', { 
     totalGave, 
@@ -311,6 +366,27 @@ export default function CustomersScreen() {
                   key={customer.id}
                   style={[commonStyles.card, { marginBottom: spacing.sm }]}
                   onPress={() => router.push(`/customer-details?customerId=${customer.id}`)}
+                  onLongPress={() => {
+                    Alert.alert(
+                      'Options du client',
+                      `Que voulez-vous faire avec ${customer.name} ?`,
+                      [
+                        {
+                          text: 'Modifier',
+                          onPress: () => openEditModal(customer),
+                        },
+                        {
+                          text: 'Supprimer',
+                          style: 'destructive',
+                          onPress: () => deleteCustomer(customer),
+                        },
+                        {
+                          text: 'Annuler',
+                          style: 'cancel',
+                        },
+                      ]
+                    );
+                  }}
                 >
                   <View style={[commonStyles.row, { alignItems: 'center' }]}>
                     {/* Customer Initial */}

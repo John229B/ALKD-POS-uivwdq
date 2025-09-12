@@ -366,6 +366,16 @@ export default function POSScreen() {
         subtotal: item.subtotal,
       }));
 
+      // Determine payment status based on payment method and amount
+      let paymentStatus: 'paid' | 'partial' | 'credit';
+      if (paymentMethod === 'credit') {
+        paymentStatus = 'credit';
+      } else if (paidAmount >= total) {
+        paymentStatus = 'paid';
+      } else {
+        paymentStatus = 'partial';
+      }
+
       // Create sale
       const sale: Sale = {
         id: uuid.v4() as string,
@@ -377,7 +387,7 @@ export default function POSScreen() {
         tax: cartTotals.taxAmount,
         total: cartTotals.total,
         paymentMethod,
-        paymentStatus: paymentMethod === 'credit' ? 'credit' : (paidAmount >= total ? 'paid' : 'partial'),
+        paymentStatus,
         amountPaid: paidAmount,
         change: Math.max(0, paidAmount - total),
         notes,
@@ -406,27 +416,30 @@ export default function POSScreen() {
       await storeProducts(updatedProducts);
       setProducts(updatedProducts.filter(p => p.isActive));
 
-      // Update customer credit balance if applicable
-      if (selectedCustomer && paymentMethod === 'credit') {
+      // Update customer balance based on payment scenario
+      if (selectedCustomer) {
         const updatedCustomers = customers.map(customer => {
           if (customer.id === selectedCustomer.id) {
+            let newCreditBalance = customer.creditBalance;
+            
+            // CORRECTION DU PROBLÈME : Gestion correcte des paiements
+            if (paymentMethod === 'credit') {
+              // Vente à crédit : ajouter le montant total à la dette
+              newCreditBalance += total;
+            } else if (paidAmount < total) {
+              // Paiement partiel : ajouter le reste non payé à la dette
+              const unpaidAmount = total - paidAmount;
+              newCreditBalance += unpaidAmount;
+            } else if (paidAmount > total) {
+              // Paiement supérieur : déduire l'excédent de la dette (avance)
+              const overpayment = paidAmount - total;
+              newCreditBalance = Math.max(0, newCreditBalance - overpayment);
+            }
+            // Si paiement total (paidAmount === total), pas de changement de balance
+
             return {
               ...customer,
-              creditBalance: customer.creditBalance + total,
-              totalPurchases: customer.totalPurchases + total,
-              updatedAt: new Date(),
-            };
-          }
-          return customer;
-        });
-        await storeCustomers(updatedCustomers);
-        setCustomers(updatedCustomers);
-      } else if (selectedCustomer) {
-        // Update total purchases for non-credit sales
-        const updatedCustomers = customers.map(customer => {
-          if (customer.id === selectedCustomer.id) {
-            return {
-              ...customer,
+              creditBalance: newCreditBalance,
               totalPurchases: customer.totalPurchases + total,
               updatedAt: new Date(),
             };

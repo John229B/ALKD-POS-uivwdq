@@ -332,8 +332,10 @@ export default function ReportsScreen() {
 
   const getFileSystemDirectory = useCallback(async (): Promise<string | null> => {
     try {
-      // Try documentDirectory first
-      const dir = FileSystem.documentDirectory || FileSystem.cacheDirectory;
+      // Safely access FileSystem properties with fallback
+      const documentDir = (FileSystem as any).documentDirectory;
+      const cacheDir = (FileSystem as any).cacheDirectory;
+      const dir = documentDir || cacheDir;
       
       if (!dir) {
         console.warn('Neither documentDirectory nor cacheDirectory is available');
@@ -408,8 +410,12 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       const fileUri = `${dir}${fileName}`;
       
       console.log('Writing report to file:', fileUri);
+      
+      // Safely access EncodingType with fallback
+      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
+      
       await FileSystem.writeAsStringAsync(fileUri, reportContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: encodingType,
       });
       
       console.log('Report file written successfully');
@@ -484,8 +490,12 @@ Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
       const fileUri = `${dir}${fileName}`;
       
       console.log('Writing Excel file to:', fileUri);
+      
+      // Safely access EncodingType with fallback
+      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
+      
       await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: encodingType,
       });
       
       console.log('Excel file written successfully');

@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, Category, UNITS_OF_MEASUREMENT } from '../../types';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers, formatQuantityWithUnit } from '../../utils/storage';
@@ -29,6 +30,7 @@ export default function POSScreen() {
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [customQuantity, setCustomQuantity] = useState('1');
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -257,6 +259,11 @@ export default function POSScreen() {
   }, []);
 
   const processCheckout = useCallback(async () => {
+    if (isProcessing) {
+      console.log('POS: Checkout already in progress, ignoring duplicate request');
+      return;
+    }
+
     if (cart.length === 0) {
       Alert.alert('Erreur', 'Le panier est vide');
       return;
@@ -271,6 +278,7 @@ export default function POSScreen() {
           { text: 'OK', onPress: () => {
             // Redirect to login
             console.log('User not authenticated, redirecting to login');
+            router.replace('/(auth)/login');
           }}
         ]
       );
@@ -294,6 +302,8 @@ export default function POSScreen() {
       Alert.alert('Erreur', 'Le montant payé est insuffisant');
       return;
     }
+
+    setIsProcessing(true);
 
     try {
       console.log('POS: Processing checkout...');
@@ -393,26 +403,26 @@ export default function POSScreen() {
       setNotes('');
       setShowCheckoutModal(false);
 
-      // Redirect to ticket page instead of showing alert
+      console.log('POS: Checkout completed successfully, redirecting to ticket page');
+
+      // Redirect to ticket page
       router.push({
         pathname: '/sale-ticket',
         params: {
           saleId: sale.id,
-          receiptNumber: sale.receiptNumber,
-          total: sale.total.toString(),
-          change: sale.change.toString(),
-          paymentMethod: sale.paymentMethod,
-          customerId: selectedCustomer?.id || '',
-          customerName: selectedCustomer?.name || '',
         },
       });
 
-      console.log('POS: Checkout completed successfully, redirecting to ticket page');
-    } catch (error) {
+    } catch (error: any) {
       console.error('POS: Error processing checkout:', error);
-      Alert.alert('Erreur', 'Erreur lors du traitement de la vente');
+      Alert.alert(
+        'Erreur lors du traitement de la vente',
+        `Une erreur est survenue: ${error.message || 'Erreur inconnue'}. Veuillez réessayer.`
+      );
+    } finally {
+      setIsProcessing(false);
     }
-  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, formatCurrency]);
+  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, isProcessing]);
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -441,15 +451,15 @@ export default function POSScreen() {
               style={[
                 buttonStyles.primary,
                 isSmallScreen ? buttonStyles.small : {},
-                cart.length === 0 && { opacity: 0.5 }
+                (cart.length === 0 || isProcessing) && { opacity: 0.5 }
               ]}
               onPress={() => setShowCheckoutModal(true)}
-              disabled={cart.length === 0}
+              disabled={cart.length === 0 || isProcessing}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <Icon name="card" size={20} color={colors.secondary} />
                 <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
-                  {isSmallScreen ? 'Payer' : 'Finaliser'}
+                  {isProcessing ? 'Traitement...' : (isSmallScreen ? 'Payer' : 'Finaliser')}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1064,17 +1074,23 @@ export default function POSScreen() {
               </View>
 
               <TouchableOpacity
-                style={[buttonStyles.primary, { marginBottom: spacing.sm }]}
+                style={[
+                  buttonStyles.primary, 
+                  { marginBottom: spacing.sm },
+                  isProcessing && { opacity: 0.5 }
+                ]}
                 onPress={processCheckout}
+                disabled={isProcessing}
               >
                 <Text style={{ color: colors.secondary, fontSize: fontSizes.md, fontWeight: '600' }}>
-                  ✅ Confirmer la vente - {formatCurrency(cartTotals.total)}
+                  {isProcessing ? '⏳ Traitement en cours...' : `✅ Confirmer la vente - ${formatCurrency(cartTotals.total)}`}
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={buttonStyles.outline}
+                style={[buttonStyles.outline, isProcessing && { opacity: 0.5 }]}
                 onPress={() => setShowCheckoutModal(false)}
+                disabled={isProcessing}
               >
                 <Text style={{ color: colors.primary, fontSize: fontSizes.md, fontWeight: '600' }}>
                   ❌ Annuler

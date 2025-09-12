@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Image, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../styles/commonStyles';
@@ -16,12 +16,6 @@ import { captureRef } from 'react-native-view-shot';
 export default function SaleTicketScreen() {
   const params = useLocalSearchParams();
   const saleId = Array.isArray(params.saleId) ? params.saleId[0] : params.saleId;
-  const receiptNumber = Array.isArray(params.receiptNumber) ? params.receiptNumber[0] : params.receiptNumber;
-  const total = Array.isArray(params.total) ? params.total[0] : params.total;
-  const change = Array.isArray(params.change) ? params.change[0] : params.change;
-  const paymentMethod = Array.isArray(params.paymentMethod) ? params.paymentMethod[0] : params.paymentMethod;
-  const customerId = Array.isArray(params.customerId) ? params.customerId[0] : params.customerId;
-  const customerName = Array.isArray(params.customerName) ? params.customerName[0] : params.customerName;
 
   const [sale, setSale] = useState<Sale | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -32,6 +26,14 @@ export default function SaleTicketScreen() {
   const loadData = useCallback(async () => {
     try {
       console.log('Loading sale ticket data for sale:', saleId);
+      
+      if (!saleId) {
+        console.error('No sale ID provided');
+        Alert.alert('Erreur', 'ID de vente manquant');
+        router.back();
+        return;
+      }
+
       const [salesData, settingsData, printersData] = await Promise.all([
         getSales(),
         getSettings(),
@@ -40,6 +42,7 @@ export default function SaleTicketScreen() {
 
       const foundSale = salesData.find(s => s.id === saleId);
       if (!foundSale) {
+        console.error('Sale not found:', saleId);
         Alert.alert('Erreur', 'Vente non trouvée');
         router.back();
         return;
@@ -117,7 +120,6 @@ export default function SaleTicketScreen() {
       // Use react-native-print for printing
       await Print.print({
         html: htmlContent,
-        printerUrl: defaultPrinter.address, // This might not work with Bluetooth printers
       });
 
       console.log('Ticket printed successfully');
@@ -193,7 +195,7 @@ export default function SaleTicketScreen() {
         ${ticketSettings.showReceiptNumber ? `<div class="center bold">Ticket N°: ${sale.receiptNumber}</div>` : ''}
         ${ticketSettings.showDateTime ? `<div class="center">${format(new Date(sale.createdAt), 'dd/MM/yyyy HH:mm', { locale: fr })}</div>` : ''}
         ${ticketSettings.showEmployeeName && sale.cashier ? `<div class="center">Employé: ${sale.cashier.username}</div>` : ''}
-        ${customerName ? `<div class="center">Client: ${customerName}</div>` : ''}
+        ${sale.customer ? `<div class="center">Client: ${sale.customer.name}</div>` : ''}
         
         <div class="separator"></div>
         
@@ -295,7 +297,7 @@ export default function SaleTicketScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Ticket de vente</Text>
-          <Text style={styles.headerSubtitle}>Reçu N° {receiptNumber}</Text>
+          <Text style={styles.headerSubtitle}>Reçu N° {sale.receiptNumber}</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={handlePrint} style={styles.headerButton}>
@@ -313,11 +315,11 @@ export default function SaleTicketScreen() {
           <Icon name="checkmark-circle" size={32} color={colors.success} />
           <Text style={styles.successTitle}>Vente réussie !</Text>
           <Text style={styles.successSubtitle}>
-            Total: {formatCurrency(parseFloat(total))}
+            Total: {formatCurrency(sale.total)}
           </Text>
-          {parseFloat(change) > 0 && (
+          {sale.change > 0 && (
             <Text style={styles.changeText}>
-              Monnaie: {formatCurrency(parseFloat(change))}
+              Monnaie: {formatCurrency(sale.change)}
             </Text>
           )}
         </View>
@@ -375,8 +377,8 @@ export default function SaleTicketScreen() {
             )}
 
             {/* Customer Name */}
-            {customerName && (
-              <Text style={styles.customerName}>Client: {customerName}</Text>
+            {sale.customer && (
+              <Text style={styles.customerName}>Client: {sale.customer.name}</Text>
             )}
 
             <View style={styles.separator} />
@@ -490,10 +492,10 @@ export default function SaleTicketScreen() {
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
   header: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
@@ -509,7 +511,7 @@ const styles = {
   },
   headerTitle: {
     fontSize: fontSizes.xl,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     color: colors.text,
   },
   headerSubtitle: {
@@ -518,7 +520,7 @@ const styles = {
     marginTop: 2,
   },
   headerActions: {
-    flexDirection: 'row' as const,
+    flexDirection: 'row',
     gap: spacing.sm,
   },
   headerButton: {
@@ -528,7 +530,7 @@ const styles = {
     flex: 1,
   },
   successBanner: {
-    alignItems: 'center' as const,
+    alignItems: 'center',
     backgroundColor: colors.success + '10',
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
@@ -540,14 +542,14 @@ const styles = {
   },
   successTitle: {
     fontSize: fontSizes.xl,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     color: colors.success,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
   },
   successSubtitle: {
     fontSize: fontSizes.lg,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.text,
   },
   changeText: {
@@ -569,7 +571,7 @@ const styles = {
     elevation: 4,
   },
   ticketContent: {
-    alignItems: 'center' as const,
+    alignItems: 'center',
     backgroundColor: colors.secondary,
     padding: spacing.lg,
     borderRadius: 8,
@@ -585,15 +587,15 @@ const styles = {
   },
   companyName: {
     fontSize: fontSizes.lg,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     color: colors.text,
-    textAlign: 'center' as const,
+    textAlign: 'center',
     marginBottom: spacing.sm,
   },
   companyInfo: {
     fontSize: fontSizes.sm,
     color: colors.textLight,
-    textAlign: 'center' as const,
+    textAlign: 'center',
     marginBottom: spacing.xs,
   },
   separator: {
@@ -604,7 +606,7 @@ const styles = {
   },
   receiptNumber: {
     fontSize: fontSizes.md,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.text,
     marginBottom: spacing.xs,
   },
@@ -624,14 +626,14 @@ const styles = {
   },
   sectionTitle: {
     fontSize: fontSizes.md,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.text,
-    textAlign: 'center' as const,
+    textAlign: 'center',
   },
   itemRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'flex-start' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: spacing.sm,
     width: '100%',
   },
@@ -641,7 +643,7 @@ const styles = {
   },
   itemName: {
     fontSize: fontSizes.sm,
-    fontWeight: '500' as const,
+    fontWeight: '500',
     color: colors.text,
     marginBottom: 2,
   },
@@ -651,13 +653,13 @@ const styles = {
   },
   itemTotal: {
     fontSize: fontSizes.sm,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.text,
   },
   totalRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.xs,
     width: '100%',
   },
@@ -667,23 +669,23 @@ const styles = {
   },
   totalValue: {
     fontSize: fontSizes.sm,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.text,
   },
   grandTotalLabel: {
     fontSize: fontSizes.md,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     color: colors.text,
   },
   grandTotalValue: {
     fontSize: fontSizes.md,
-    fontWeight: '700' as const,
+    fontWeight: '700',
     color: colors.primary,
   },
   paymentRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.xs,
     width: '100%',
   },
@@ -693,18 +695,18 @@ const styles = {
   },
   paymentValue: {
     fontSize: fontSizes.sm,
-    fontWeight: '500' as const,
+    fontWeight: '500',
     color: colors.text,
   },
   thankYouMessage: {
     fontSize: fontSizes.sm,
     color: colors.text,
-    textAlign: 'center' as const,
-    fontStyle: 'italic' as const,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   actionButtons: {
-    flexDirection: 'row' as const,
-    flexWrap: 'wrap' as const,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.md,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xl,
@@ -712,15 +714,15 @@ const styles = {
   actionButton: {
     flex: 1,
     minWidth: '45%',
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: spacing.md,
     gap: spacing.sm,
   },
   actionButtonText: {
     fontSize: fontSizes.md,
-    fontWeight: '600' as const,
+    fontWeight: '600',
     color: colors.secondary,
   },
-};
+});

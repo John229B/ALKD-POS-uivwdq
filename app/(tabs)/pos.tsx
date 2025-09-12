@@ -23,7 +23,8 @@ export default function POSScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
-  const [discount, setDiscount] = useState(0);
+  const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [discountValue, setDiscountValue] = useState('0');
   const [notes, setNotes] = useState('');
   const [showQuantityModal, setShowQuantityModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -84,12 +85,14 @@ export default function POSScreen() {
     });
   }, [products, searchQuery, selectedCategoryId]);
 
-  // Calculate cart totals
+  // Calculate cart totals with improved discount system
   const cartTotals = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-    const discountAmount = (subtotal * discount) / 100;
+    const discountAmount = discountType === 'percentage' 
+      ? (subtotal * parseFloat(discountValue || '0')) / 100
+      : parseFloat(discountValue || '0');
     const taxAmount = settings ? (subtotal - discountAmount) * (settings.taxRate / 100) : 0;
-    const total = subtotal - discountAmount + taxAmount;
+    const total = Math.max(0, subtotal - discountAmount + taxAmount);
 
     return {
       subtotal,
@@ -97,7 +100,7 @@ export default function POSScreen() {
       taxAmount,
       total,
     };
-  }, [cart, discount, settings]);
+  }, [cart, discountType, discountValue, settings]);
 
   const openQuantityModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -259,8 +262,28 @@ export default function POSScreen() {
       return;
     }
 
+    // Check if user is authenticated
     if (!user) {
-      Alert.alert('Erreur', 'Utilisateur non connecté');
+      Alert.alert(
+        'Erreur – Utilisateur non connecté',
+        'Vous devez être connecté pour finaliser une vente. Veuillez vous reconnecter.',
+        [
+          { text: 'OK', onPress: () => {
+            // Redirect to login
+            console.log('User not authenticated, redirecting to login');
+          }}
+        ]
+      );
+      return;
+    }
+
+    // Check if credit sale requires a customer
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      Alert.alert(
+        'Client requis',
+        'Veuillez sélectionner un client pour effectuer une vente à crédit.',
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -365,7 +388,8 @@ export default function POSScreen() {
       setSelectedCustomer(null);
       setPaymentMethod('cash');
       setAmountPaid('');
-      setDiscount(0);
+      setDiscountType('percentage');
+      setDiscountValue('0');
       setNotes('');
       setShowCheckoutModal(false);
 
@@ -565,6 +589,64 @@ export default function POSScreen() {
                 🛒 Panier ({cart.length})
               </Text>
 
+              {/* Discount Section in Cart */}
+              {cart.length > 0 && (
+                <View style={[commonStyles.card, { marginBottom: spacing.md, backgroundColor: colors.background }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
+                    🎯 Remise
+                  </Text>
+                  
+                  <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+                    <TouchableOpacity
+                      style={[
+                        buttonStyles.outline,
+                        buttonStyles.small,
+                        { flex: 1 },
+                        discountType === 'percentage' && { backgroundColor: colors.primary }
+                      ]}
+                      onPress={() => setDiscountType('percentage')}
+                    >
+                      <Text style={[
+                        { color: colors.primary, fontSize: fontSizes.xs, textAlign: 'center' },
+                        discountType === 'percentage' && { color: colors.secondary }
+                      ]}>
+                        %
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        buttonStyles.outline,
+                        buttonStyles.small,
+                        { flex: 1 },
+                        discountType === 'fixed' && { backgroundColor: colors.primary }
+                      ]}
+                      onPress={() => setDiscountType('fixed')}
+                    >
+                      <Text style={[
+                        { color: colors.primary, fontSize: fontSizes.xs, textAlign: 'center' },
+                        discountType === 'fixed' && { color: colors.secondary }
+                      ]}>
+                        FCFA
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <TextInput
+                    style={[commonStyles.input, { fontSize: fontSizes.sm }]}
+                    value={discountValue}
+                    onChangeText={setDiscountValue}
+                    placeholder={discountType === 'percentage' ? '0' : '0'}
+                    keyboardType="numeric"
+                  />
+
+                  {cartTotals.discountAmount > 0 && (
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.success, marginTop: spacing.xs }]}>
+                      Économie: {formatCurrency(cartTotals.discountAmount)}
+                    </Text>
+                  )}
+                </View>
+              )}
+
               <ScrollView style={{ flex: 1, marginBottom: spacing.md }}>
                 {cart.map(item => {
                   const unitInfo = getUnitInfo(item.product.unit);
@@ -632,7 +714,9 @@ export default function POSScreen() {
                   </View>
                   {cartTotals.discountAmount > 0 && (
                     <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                      <Text style={commonStyles.text}>Remise ({discount}%):</Text>
+                      <Text style={commonStyles.text}>
+                        Remise ({discountType === 'percentage' ? `${discountValue}%` : formatCurrency(parseFloat(discountValue || '0'))}):
+                      </Text>
                       <Text style={[commonStyles.text, { color: colors.success }]}>-{formatCurrency(cartTotals.discountAmount)}</Text>
                     </View>
                   )}
@@ -904,15 +988,57 @@ export default function POSScreen() {
               {/* Discount */}
               <View style={{ marginBottom: spacing.md }}>
                 <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                  🎯 Remise (%)
+                  🎯 Remise
                 </Text>
+                
+                <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+                  <TouchableOpacity
+                    style={[
+                      buttonStyles.outline,
+                      buttonStyles.small,
+                      { flex: 1 },
+                      discountType === 'percentage' && { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => setDiscountType('percentage')}
+                  >
+                    <Text style={[
+                      { color: colors.primary, fontSize: fontSizes.sm, textAlign: 'center' },
+                      discountType === 'percentage' && { color: colors.secondary }
+                    ]}>
+                      Pourcentage (%)
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      buttonStyles.outline,
+                      buttonStyles.small,
+                      { flex: 1 },
+                      discountType === 'fixed' && { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => setDiscountType('fixed')}
+                  >
+                    <Text style={[
+                      { color: colors.primary, fontSize: fontSizes.sm, textAlign: 'center' },
+                      discountType === 'fixed' && { color: colors.secondary }
+                    ]}>
+                      Montant fixe
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
                 <TextInput
                   style={commonStyles.input}
-                  value={discount.toString()}
-                  onChangeText={(text) => setDiscount(parseFloat(text) || 0)}
-                  placeholder="0"
+                  value={discountValue}
+                  onChangeText={setDiscountValue}
+                  placeholder={discountType === 'percentage' ? '0' : '0'}
                   keyboardType="numeric"
                 />
+
+                {cartTotals.discountAmount > 0 && (
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
+                    Économie: {formatCurrency(cartTotals.discountAmount)}
+                  </Text>
+                )}
               </View>
 
               {/* Notes */}

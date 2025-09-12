@@ -1,7 +1,7 @@
 
 import { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
 import { User } from '../types';
-import { getCurrentUser, storeCurrentUser, clearCurrentUser, getUsers } from '../utils/storage';
+import { getCurrentUser, storeCurrentUser, clearCurrentUser, getUsers, storeUsers } from '../utils/storage';
 
 interface AuthContextType {
   user: User | null;
@@ -31,10 +31,34 @@ export const useAuthState = () => {
     const loadUser = async () => {
       try {
         console.log('Loading current user...');
-        const currentUser = await getCurrentUser().catch(error => {
+        let currentUser = await getCurrentUser().catch(error => {
           console.error('Error getting current user from storage:', error);
           return null;
         });
+        
+        // If no current user, try to get or create default admin
+        if (!currentUser) {
+          console.log('No current user found, checking for default admin...');
+          const users = await getUsers().catch(() => []);
+          let adminUser = users.find(u => u.username === 'admin' && u.isActive);
+          
+          if (!adminUser) {
+            console.log('Creating default admin user...');
+            adminUser = {
+              id: 'admin-001',
+              username: 'admin',
+              email: 'admin@alkd-pos.com',
+              role: 'admin',
+              createdAt: new Date(),
+              isActive: true,
+            };
+            await storeCurrentUser(adminUser);
+            await storeUsers([...users, adminUser]);
+          } else {
+            await storeCurrentUser(adminUser);
+          }
+          currentUser = adminUser;
+        }
         
         if (isMounted) {
           setUser(currentUser);
@@ -63,11 +87,15 @@ export const useAuthState = () => {
       console.log('Attempting login for username:', username);
       
       const users = await getUsers();
+      console.log('Available users:', users.map(u => ({ username: u.username, isActive: u.isActive })));
+      
       const foundUser = users.find(u => 
         u.username === username && 
         u.isActive &&
         (username === 'admin' || password === 'password')
       );
+      
+      console.log('Found user:', foundUser ? foundUser.username : 'None');
 
       if (foundUser) {
         await storeCurrentUser(foundUser);

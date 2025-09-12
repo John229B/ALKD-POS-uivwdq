@@ -20,10 +20,6 @@ export default function TransactionPaymentScreen() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
 
-  useEffect(() => {
-    loadData();
-  }, [customerId]);
-
   const loadData = async () => {
     try {
       const [customersData, settingsData] = await Promise.all([
@@ -45,6 +41,10 @@ export default function TransactionPaymentScreen() {
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, [customerId, loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';

@@ -29,10 +29,6 @@ export default function TransactionSuccessScreen() {
   const [isProcessing, setIsProcessing] = useState(true);
   const receiptRef = React.useRef<View>(null);
 
-  useEffect(() => {
-    processTransaction();
-  }, []);
-
   const processTransaction = async () => {
     try {
       console.log('Processing transaction:', { customerId, type, amount, paymentMethod });
@@ -110,6 +106,10 @@ export default function TransactionSuccessScreen() {
       router.back();
     }
   };
+
+  useEffect(() => {
+    processTransaction();
+  }, [processTransaction]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -205,10 +205,12 @@ export default function TransactionSuccessScreen() {
       ].filter(line => line !== '').join('\n');
 
       const fileName = `recu_${customer?.name?.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      const dir = (FileSystem as any).documentDirectory || (FileSystem as any).cacheDirectory;
+      const fileUri = `${dir}${fileName}`;
 
+      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
       await FileSystem.writeAsStringAsync(fileUri, receiptText, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: encodingType,
       });
 
       if (await Sharing.isAvailableAsync()) {

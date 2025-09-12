@@ -33,10 +33,6 @@ export default function CustomerDetailsScreen() {
     address: '',
   });
 
-  useEffect(() => {
-    loadData();
-  }, [customerId]);
-
   const loadData = async () => {
     try {
       console.log('Loading customer details for:', customerId);
@@ -117,6 +113,10 @@ export default function CustomerDetailsScreen() {
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, [customerId, loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';

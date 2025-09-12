@@ -23,10 +23,6 @@ export default function TransactionAmountScreen() {
   const [note, setNote] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [customerId]);
-
   const loadData = async () => {
     try {
       const [customersData, settingsData] = await Promise.all([
@@ -48,6 +44,10 @@ export default function TransactionAmountScreen() {
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
     }
   };
+
+  useEffect(() => {
+    loadData();
+  }, [customerId, loadData]);
 
   const handleNumberPress = (num: string) => {
     if (num === '.') {

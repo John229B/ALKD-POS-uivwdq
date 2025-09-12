@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -29,7 +29,7 @@ export default function TransactionSuccessScreen() {
   const [isProcessing, setIsProcessing] = useState(true);
   const receiptRef = React.useRef<View>(null);
 
-  const processTransaction = async () => {
+  const processTransaction = useCallback(async () => {
     try {
       console.log('Processing transaction:', { customerId, type, amount, paymentMethod });
       
@@ -117,11 +117,11 @@ export default function TransactionSuccessScreen() {
       Alert.alert('Erreur', 'Erreur lors du traitement de la transaction');
       router.back();
     }
-  };
+  }, [customerId, type, amount, paymentMethod, date, note]);
 
   useEffect(() => {
     processTransaction();
-  }, []);
+  }, [processTransaction]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -224,11 +224,16 @@ export default function TransactionSuccessScreen() {
       ].filter(line => line !== '').join('\n');
 
       const fileName = `recu_${customer?.name?.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`;
-      const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory;
+      
+      // Use safe property access with fallback values
+      const dir = (FileSystem as any).cacheDirectory || (FileSystem as any).documentDirectory || '';
       const fileUri = `${dir}${fileName}`;
 
+      // Use safe encoding type access
+      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
+
       await FileSystem.writeAsStringAsync(fileUri, receiptText, {
-        encoding: FileSystem.EncodingType?.UTF8 || 'utf8',
+        encoding: encodingType,
       });
 
       if (await Sharing.isAvailableAsync()) {

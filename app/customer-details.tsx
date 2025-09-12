@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -33,7 +33,7 @@ export default function CustomerDetailsScreen() {
     address: '',
   });
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       console.log('Loading customer details for:', customerId);
       const [customersData, salesData, settingsData] = await Promise.all([
@@ -112,11 +112,11 @@ export default function CustomerDetailsScreen() {
       console.error('Error loading customer details:', error);
       Alert.alert('Erreur', 'Erreur lors du chargement des données');
     }
-  };
+  }, [customerId]);
 
   useEffect(() => {
     loadData();
-  }, [customerId]);
+  }, [loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';

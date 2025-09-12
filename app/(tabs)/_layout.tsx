@@ -2,9 +2,12 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { colors } from '../../styles/commonStyles';
+import { useAuthState } from '../../hooks/useAuth';
 import Icon from '../../components/Icon';
 
 export default function TabLayout() {
+  const { hasPermission } = useAuthState();
+
   return (
     <Tabs
       screenOptions={{
@@ -12,28 +15,15 @@ export default function TabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.text,
         tabBarStyle: {
-          backgroundColor: colors.surface,
+          backgroundColor: colors.background,
           borderTopColor: colors.border,
-          borderTopWidth: 1,
+          height: 60,
           paddingBottom: 8,
           paddingTop: 8,
-          height: 70,
-          shadowColor: colors.text,
-          shadowOffset: {
-            width: 0,
-            height: -2,
-          },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          elevation: 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          marginTop: 4,
-        },
-        tabBarIconStyle: {
-          marginBottom: 2,
+          fontSize: 12,
+          fontWeight: '500',
         },
       }}
     >
@@ -42,17 +32,19 @@ export default function TabLayout() {
         options={{
           title: 'Tableau de bord',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="grid" size={28} color={color} />
+            <Icon name="grid" size={size} color={color} />
           ),
+          href: hasPermission('dashboard', 'view') ? '/(tabs)/dashboard' : null,
         }}
       />
       <Tabs.Screen
         name="pos"
         options={{
-          title: 'Vente / Caisse',
+          title: 'Point de vente',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="calculator" size={28} color={color} />
+            <Icon name="calculator" size={size} color={color} />
           ),
+          href: hasPermission('pos', 'view') ? '/(tabs)/pos' : null,
         }}
       />
       <Tabs.Screen
@@ -60,8 +52,29 @@ export default function TabLayout() {
         options={{
           title: 'Produits',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="cube" size={28} color={color} />
+            <Icon name="cube" size={size} color={color} />
           ),
+          href: hasPermission('products', 'view') ? '/(tabs)/products' : null,
+        }}
+      />
+      <Tabs.Screen
+        name="customers"
+        options={{
+          title: 'Clients',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="people" size={size} color={color} />
+          ),
+          href: hasPermission('customers', 'view') ? '/(tabs)/customers' : null,
+        }}
+      />
+      <Tabs.Screen
+        name="reports"
+        options={{
+          title: 'Rapports',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="bar-chart" size={size} color={color} />
+          ),
+          href: hasPermission('reports', 'view') ? '/(tabs)/reports' : null,
         }}
       />
       <Tabs.Screen
@@ -69,15 +82,8 @@ export default function TabLayout() {
         options={{
           title: 'Plus',
           tabBarIcon: ({ color, size }) => (
-            <Icon name="ellipsis-horizontal" size={28} color={color} />
+            <Icon name="ellipsis-horizontal" size={size} color={color} />
           ),
-        }}
-      />
-      {/* Masquer les autres onglets qui ne doivent pas apparaître dans la navigation principale */}
-      <Tabs.Screen
-        name="customers"
-        options={{
-          href: null, // Ceci masque l'onglet de la navigation
         }}
       />
     </Tabs>

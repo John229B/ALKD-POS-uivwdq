@@ -1,41 +1,8 @@
 
-import { useState, useEffect } from 'react';
-import { Employee, Permission } from '../types';
-import { getCurrentEmployee } from '../utils/storage';
+import { useAuthState } from './useAuth';
 
 export const usePermissions = () => {
-  const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-  const [permissions, setPermissions] = useState<Permission[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadCurrentEmployee();
-  }, []);
-
-  const loadCurrentEmployee = async () => {
-    try {
-      setLoading(true);
-      const employee = await getCurrentEmployee();
-      setCurrentEmployee(employee);
-      setPermissions(employee?.permissions || []);
-    } catch (error) {
-      console.error('Error loading current employee:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const hasPermission = (module: string, action: string): boolean => {
-    if (!currentEmployee) return false;
-    
-    // Admin has all permissions
-    if (currentEmployee.role === 'admin') return true;
-    
-    // Check specific permissions
-    return permissions.some(permission => 
-      permission.module === module && permission.actions.includes(action as any)
-    );
-  };
+  const { user, hasPermission, getAccessibleModules } = useAuthState();
 
   const canView = (module: string): boolean => hasPermission(module, 'view');
   const canCreate = (module: string): boolean => hasPermission(module, 'create');
@@ -49,25 +16,10 @@ export const usePermissions = () => {
            hasPermission(module, 'delete');
   };
 
-  const getAccessibleModules = (): string[] => {
-    if (!currentEmployee) return [];
-    
-    if (currentEmployee.role === 'admin') {
-      return ['dashboard', 'pos', 'products', 'customers', 'reports', 'settings', 'employees', 'printers', 'tickets'];
-    }
-    
-    const modules = new Set<string>();
-    permissions.forEach(permission => {
-      modules.add(permission.module);
-    });
-    
-    return Array.from(modules);
-  };
-
   return {
-    currentEmployee,
-    permissions,
-    loading,
+    currentUser: user,
+    permissions: user?.permissions || [],
+    loading: false,
     hasPermission,
     canView,
     canCreate,
@@ -75,6 +27,6 @@ export const usePermissions = () => {
     canDelete,
     canAccessModule,
     getAccessibleModules,
-    refreshPermissions: loadCurrentEmployee,
+    refreshPermissions: () => Promise.resolve(), // No-op since auth state handles this
   };
 };

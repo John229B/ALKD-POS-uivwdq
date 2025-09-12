@@ -38,6 +38,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="change-password" />
         <Stack.Screen name="employees" />
         <Stack.Screen name="printers" />
         <Stack.Screen name="tickets" />
@@ -53,6 +54,7 @@ export default function RootLayout() {
         <Stack.Screen name="transaction-amount" />
         <Stack.Screen name="transaction-payment" />
         <Stack.Screen name="transaction-success" />
+        <Stack.Screen name="sale-ticket" />
       </Stack>
     </>
   );

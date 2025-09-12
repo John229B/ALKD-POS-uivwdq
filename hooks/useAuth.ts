@@ -1,14 +1,21 @@
 
-import { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
-import { User } from '../types';
-import { getCurrentUser, storeCurrentUser, clearCurrentUser, getUsers, storeUsers } from '../utils/storage';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { AuthUser, AuthState, LoginCredentials, CreateAccountData, CreateEmployeeData } from '../types/auth';
+import { authService } from '../utils/authService';
 
-interface AuthContextType {
-  user: User | null;
-  isLoading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+interface AuthContextType extends AuthState {
+  login: (credentials: LoginCredentials) => Promise<AuthUser>;
   logout: () => Promise<void>;
-  isAuthenticated: boolean;
+  createAdminAccount: (data: CreateAccountData) => Promise<AuthUser>;
+  createEmployee: (data: CreateEmployeeData) => Promise<AuthUser>;
+  updateEmployee: (employeeId: string, updates: Partial<AuthUser>) => Promise<AuthUser>;
+  deleteEmployee: (employeeId: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  resetPassword: (employeeId: string, newPassword: string) => Promise<void>;
+  getEmployees: () => Promise<AuthUser[]>;
+  hasPermission: (module: string, action: string) => boolean;
+  getAccessibleModules: () => string[];
+  refreshAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,117 +29,183 @@ export const useAuth = () => {
 };
 
 export const useAuthState = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authState, setAuthState] = useState<AuthState>({
+    user: null,
+    isLoading: true,
+    isFirstLaunch: false,
+    isAuthenticated: false,
+  });
 
+  // Initialize auth state
   useEffect(() => {
-    let isMounted = true;
-    
-    const loadUser = async () => {
-      try {
-        console.log('Loading current user...');
-        let currentUser = await getCurrentUser().catch(error => {
-          console.error('Error getting current user from storage:', error);
-          return null;
-        });
-        
-        // If no current user, try to get or create default admin
-        if (!currentUser) {
-          console.log('No current user found, checking for default admin...');
-          const users = await getUsers().catch(() => []);
-          let adminUser = users.find(u => u.username === 'admin' && u.isActive);
-          
-          if (!adminUser) {
-            console.log('Creating default admin user...');
-            adminUser = {
-              id: 'admin-001',
-              username: 'admin',
-              email: 'admin@alkd-pos.com',
-              role: 'admin',
-              createdAt: new Date(),
-              isActive: true,
-            };
-            await storeCurrentUser(adminUser);
-            await storeUsers([...users, adminUser]);
-          } else {
-            await storeCurrentUser(adminUser);
-          }
-          currentUser = adminUser;
-        }
-        
-        if (isMounted) {
-          setUser(currentUser);
-          setIsLoading(false);
-          console.log('Current user loaded:', currentUser?.username || 'No user');
-        }
-      } catch (error) {
-        console.error('Error loading user:', error);
-        if (isMounted) {
-          setUser(null);
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadUser();
-
-    return () => {
-      isMounted = false;
-    };
+    initializeAuth();
   }, []);
 
-  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
+  const initializeAuth = async () => {
     try {
-      setIsLoading(true);
-      console.log('Attempting login for username:', username);
+      console.log('Initializing auth state...');
       
-      const users = await getUsers();
-      console.log('Available users:', users.map(u => ({ username: u.username, isActive: u.isActive })));
-      
-      const foundUser = users.find(u => 
-        u.username === username && 
-        u.isActive &&
-        (username === 'admin' || password === 'password')
-      );
-      
-      console.log('Found user:', foundUser ? foundUser.username : 'None');
+      const [currentUser, isFirstLaunch, isAdminSetupComplete] = await Promise.all([
+        authService.getCurrentUser(),
+        authService.isFirstLaunch(),
+        authService.isAdminSetupComplete(),
+      ]);
 
-      if (foundUser) {
-        await storeCurrentUser(foundUser);
-        setUser(foundUser);
-        console.log('User logged in successfully:', foundUser.username);
-        return true;
-      }
-      
-      console.log('Invalid credentials for username:', username);
-      return false;
+      setAuthState({
+        user: currentUser,
+        isLoading: false,
+        isFirstLaunch: isFirstLaunch || !isAdminSetupComplete,
+        isAuthenticated: currentUser !== null,
+      });
+
+      console.log('Auth state initialized:', {
+        hasUser: !!currentUser,
+        isFirstLaunch: isFirstLaunch || !isAdminSetupComplete,
+        username: currentUser?.username,
+      });
     } catch (error) {
-      console.error('Login error:', error);
-      return false;
-    } finally {
-      setIsLoading(false);
+      console.error('Error initializing auth:', error);
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isFirstLaunch: true,
+        isAuthenticated: false,
+      });
+    }
+  };
+
+  const login = useCallback(async (credentials: LoginCredentials): Promise<AuthUser> => {
+    try {
+      setAuthState(prev => ({ ...prev, isLoading: true }));
+      
+      const user = await authService.login(credentials);
+      
+      setAuthState({
+        user,
+        isLoading: false,
+        isFirstLaunch: false,
+        isAuthenticated: true,
+      });
+
+      return user;
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      throw error;
     }
   }, []);
 
   const logout = useCallback(async (): Promise<void> => {
     try {
-      console.log('Logging out user...');
-      await clearCurrentUser();
-      setUser(null);
-      console.log('User logged out successfully');
+      await authService.logout();
+      
+      setAuthState({
+        user: null,
+        isLoading: false,
+        isFirstLaunch: false,
+        isAuthenticated: false,
+      });
     } catch (error) {
       console.error('Logout error:', error);
+      throw error;
     }
   }, []);
 
-  const isAuthenticated = user !== null;
+  const createAdminAccount = useCallback(async (data: CreateAccountData): Promise<AuthUser> => {
+    try {
+      setAuthState(prev => ({ ...prev, isLoading: true }));
+      
+      const user = await authService.createAdminAccount(data);
+      
+      setAuthState({
+        user,
+        isLoading: false,
+        isFirstLaunch: false,
+        isAuthenticated: true,
+      });
+
+      return user;
+    } catch (error) {
+      setAuthState(prev => ({ ...prev, isLoading: false }));
+      throw error;
+    }
+  }, []);
+
+  const createEmployee = useCallback(async (data: CreateEmployeeData): Promise<AuthUser> => {
+    if (!authState.user) {
+      throw new Error('Vous devez être connecté pour créer un employé');
+    }
+
+    return await authService.createEmployee(data, authState.user.id);
+  }, [authState.user]);
+
+  const updateEmployee = useCallback(async (employeeId: string, updates: Partial<AuthUser>): Promise<AuthUser> => {
+    if (!authState.user) {
+      throw new Error('Vous devez être connecté pour modifier un employé');
+    }
+
+    return await authService.updateEmployee(employeeId, updates, authState.user.id);
+  }, [authState.user]);
+
+  const deleteEmployee = useCallback(async (employeeId: string): Promise<void> => {
+    if (!authState.user) {
+      throw new Error('Vous devez être connecté pour supprimer un employé');
+    }
+
+    await authService.deleteEmployee(employeeId, authState.user.id);
+  }, [authState.user]);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string): Promise<void> => {
+    if (!authState.user) {
+      throw new Error('Vous devez être connecté pour changer le mot de passe');
+    }
+
+    await authService.changePassword(authState.user.id, currentPassword, newPassword);
+    
+    // Update user state to mark first login as false
+    setAuthState(prev => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, isFirstLogin: false } : null,
+    }));
+  }, [authState.user]);
+
+  const resetPassword = useCallback(async (employeeId: string, newPassword: string): Promise<void> => {
+    if (!authState.user) {
+      throw new Error('Vous devez être connecté pour réinitialiser un mot de passe');
+    }
+
+    await authService.resetPassword(employeeId, newPassword, authState.user.id);
+  }, [authState.user]);
+
+  const getEmployees = useCallback(async (): Promise<AuthUser[]> => {
+    return await authService.getEmployees();
+  }, []);
+
+  const hasPermission = useCallback((module: string, action: string): boolean => {
+    return authService.hasPermission(authState.user, module, action);
+  }, [authState.user]);
+
+  const getAccessibleModules = useCallback((): string[] => {
+    return authService.getAccessibleModules(authState.user);
+  }, [authState.user]);
+
+  const refreshAuth = useCallback(async (): Promise<void> => {
+    await initializeAuth();
+  }, []);
 
   return {
-    user,
-    isLoading,
+    ...authState,
     login,
     logout,
-    isAuthenticated,
+    createAdminAccount,
+    createEmployee,
+    updateEmployee,
+    deleteEmployee,
+    changePassword,
+    resetPassword,
+    getEmployees,
+    hasPermission,
+    getAccessibleModules,
+    refreshAuth,
   };
 };
 

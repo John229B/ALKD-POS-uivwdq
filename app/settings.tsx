@@ -630,7 +630,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.optionsContainer}>
-            {(Object.keys(LANGUAGES) as Array<keyof typeof LANGUAGES>).map((lang) => (
+            {(Object.keys(LANGUAGES) as (keyof typeof LANGUAGES)[]).map((lang) => (
               <TouchableOpacity
                 key={lang}
                 onPress={() => handleLanguageChange(lang)}
@@ -672,7 +672,7 @@ export default function SettingsScreen() {
           </View>
 
           <ScrollView style={styles.optionsContainer} showsVerticalScrollIndicator={false}>
-            {(Object.keys(CURRENCIES) as Array<keyof typeof CURRENCIES>).map((currency) => (
+            {(Object.keys(CURRENCIES) as (keyof typeof CURRENCIES)[]).map((currency) => (
               <TouchableOpacity
                 key={currency}
                 onPress={() => handleCurrencyChange(currency)}

@@ -498,7 +498,7 @@ export default function SaleTicketScreen() {
 
       // Create a proper filename
       const fileName = `ticket_${sale?.receiptNumber || 'vente'}_${format(new Date(), 'ddMMyyyy_HHmm')}.pdf`;
-      const newUri = `${FileSystem.documentDirectory}${fileName}`;
+      const newUri = `${FileSystem.documentDirectory || ''}${fileName}`;
       
       // Move the file to a permanent location
       await FileSystem.moveAsync({

@@ -1,6 +1,6 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Product, Customer, Sale, AppSettings, DashboardStats, Category, Employee, ActivityLog, BluetoothPrinter, Ticket, SyncData } from '../types';
+import { User, Product, Customer, Sale, AppSettings, DashboardStats, Category, Employee, ActivityLog, BluetoothPrinter, Ticket, SyncData, TicketSettings } from '../types';
 
 const STORAGE_KEYS = {
   USERS: 'alkd_pos_users',
@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   TICKETS: 'alkd_pos_tickets',
   SYNC_QUEUE: 'alkd_pos_sync_queue',
   OFFLINE_DATA: 'alkd_pos_offline_data',
+  TICKET_SETTINGS: 'alkd_pos_ticket_settings',
 };
 
 // Generic storage functions
@@ -198,6 +199,28 @@ export const setDefaultPrinter = async (printerId: string): Promise<void> => {
     console.error('Error setting default printer:', error);
     throw error;
   }
+};
+
+// Ticket settings management
+export const getTicketSettings = async (): Promise<TicketSettings> => {
+  const settings = await getData<TicketSettings>(STORAGE_KEYS.TICKET_SETTINGS);
+  return settings || {
+    showLogo: true,
+    showCompanyName: true,
+    showAddress: true,
+    showPhone: true,
+    showEmail: false,
+    showThankYouMessage: true,
+    showReceiptNumber: true,
+    showDateTime: true,
+    showEmployeeName: true,
+    showTax: true,
+  };
+};
+
+export const storeTicketSettings = async (settings: TicketSettings): Promise<void> => {
+  await storeData(STORAGE_KEYS.TICKET_SETTINGS, settings);
+  await logActivity('admin', 'settings', 'Ticket settings updated', settings);
 };
 
 // Ticket management

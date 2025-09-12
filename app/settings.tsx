@@ -31,15 +31,35 @@ export default function SettingsScreen() {
     try {
       setLoading(true);
       const settingsData = await getSettings();
-      setSettings(settingsData);
+      console.log('Loaded settings data:', settingsData);
+      
+      // Ensure ticketSettings has default values to prevent undefined errors
+      const safeSettings = {
+        ...settingsData,
+        ticketSettings: {
+          showLogo: true,
+          showCompanyName: true,
+          showAddress: true,
+          showPhone: true,
+          showEmail: false,
+          showThankYouMessage: true,
+          showReceiptNumber: true,
+          showDateTime: true,
+          showEmployeeName: true,
+          showTax: true,
+          ...settingsData.ticketSettings, // Override with existing settings if they exist
+        }
+      };
+      
+      setSettings(safeSettings);
       setFormData({
-        companyName: settingsData.companyName,
-        companyAddress: settingsData.companyAddress,
-        companyPhone: settingsData.companyPhone,
-        companyEmail: settingsData.companyEmail,
-        receiptFooter: settingsData.receiptFooter || '',
-        customThankYouMessage: settingsData.customThankYouMessage || '',
-        taxRate: settingsData.taxRate,
+        companyName: safeSettings.companyName,
+        companyAddress: safeSettings.companyAddress,
+        companyPhone: safeSettings.companyPhone,
+        companyEmail: safeSettings.companyEmail,
+        receiptFooter: safeSettings.receiptFooter || '',
+        customThankYouMessage: safeSettings.customThankYouMessage || '',
+        taxRate: safeSettings.taxRate,
       });
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -146,7 +166,7 @@ export default function SettingsScreen() {
   };
 
   const handleTicketSettingToggle = async (setting: keyof TicketSettings) => {
-    if (!settings) return;
+    if (!settings || !settings.ticketSettings) return;
     
     const updatedTicketSettings = {
       ...settings.ticketSettings,
@@ -438,10 +458,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showLogo}
+                  value={settings.ticketSettings?.showLogo || false}
                   onValueChange={() => handleTicketSettingToggle('showLogo')}
                   trackColor={{ false: colors.border, true: colors.primary + '40' }}
-                  thumbColor={settings.ticketSettings.showLogo ? colors.primary : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showLogo ? colors.primary : colors.textLight}
                 />
               </View>
 
@@ -454,10 +474,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showCompanyName}
+                  value={settings.ticketSettings?.showCompanyName || false}
                   onValueChange={() => handleTicketSettingToggle('showCompanyName')}
                   trackColor={{ false: colors.border, true: colors.primary + '40' }}
-                  thumbColor={settings.ticketSettings.showCompanyName ? colors.primary : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showCompanyName ? colors.primary : colors.textLight}
                 />
               </View>
 
@@ -470,10 +490,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showAddress}
+                  value={settings.ticketSettings?.showAddress || false}
                   onValueChange={() => handleTicketSettingToggle('showAddress')}
                   trackColor={{ false: colors.border, true: colors.info + '40' }}
-                  thumbColor={settings.ticketSettings.showAddress ? colors.info : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showAddress ? colors.info : colors.textLight}
                 />
               </View>
 
@@ -486,10 +506,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showPhone}
+                  value={settings.ticketSettings?.showPhone || false}
                   onValueChange={() => handleTicketSettingToggle('showPhone')}
                   trackColor={{ false: colors.border, true: colors.success + '40' }}
-                  thumbColor={settings.ticketSettings.showPhone ? colors.success : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showPhone ? colors.success : colors.textLight}
                 />
               </View>
 
@@ -502,10 +522,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showEmail}
+                  value={settings.ticketSettings?.showEmail || false}
                   onValueChange={() => handleTicketSettingToggle('showEmail')}
                   trackColor={{ false: colors.border, true: colors.warning + '40' }}
-                  thumbColor={settings.ticketSettings.showEmail ? colors.warning : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showEmail ? colors.warning : colors.textLight}
                 />
               </View>
 
@@ -518,10 +538,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showThankYouMessage}
+                  value={settings.ticketSettings?.showThankYouMessage || false}
                   onValueChange={() => handleTicketSettingToggle('showThankYouMessage')}
                   trackColor={{ false: colors.border, true: colors.error + '40' }}
-                  thumbColor={settings.ticketSettings.showThankYouMessage ? colors.error : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showThankYouMessage ? colors.error : colors.textLight}
                 />
               </View>
 
@@ -534,10 +554,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showReceiptNumber}
+                  value={settings.ticketSettings?.showReceiptNumber || false}
                   onValueChange={() => handleTicketSettingToggle('showReceiptNumber')}
                   trackColor={{ false: colors.border, true: colors.textLight + '40' }}
-                  thumbColor={settings.ticketSettings.showReceiptNumber ? colors.textLight : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showReceiptNumber ? colors.textLight : colors.textLight}
                 />
               </View>
 
@@ -550,10 +570,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showDateTime}
+                  value={settings.ticketSettings?.showDateTime || false}
                   onValueChange={() => handleTicketSettingToggle('showDateTime')}
                   trackColor={{ false: colors.border, true: colors.textLight + '40' }}
-                  thumbColor={settings.ticketSettings.showDateTime ? colors.textLight : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showDateTime ? colors.textLight : colors.textLight}
                 />
               </View>
 
@@ -566,10 +586,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showEmployeeName}
+                  value={settings.ticketSettings?.showEmployeeName || false}
                   onValueChange={() => handleTicketSettingToggle('showEmployeeName')}
                   trackColor={{ false: colors.border, true: colors.textLight + '40' }}
-                  thumbColor={settings.ticketSettings.showEmployeeName ? colors.textLight : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showEmployeeName ? colors.textLight : colors.textLight}
                 />
               </View>
 
@@ -582,10 +602,10 @@ export default function SettingsScreen() {
                   </View>
                 </View>
                 <Switch
-                  value={settings.ticketSettings.showTax}
+                  value={settings.ticketSettings?.showTax || false}
                   onValueChange={() => handleTicketSettingToggle('showTax')}
                   trackColor={{ false: colors.border, true: colors.textLight + '40' }}
-                  thumbColor={settings.ticketSettings.showTax ? colors.textLight : colors.textLight}
+                  thumbColor={settings.ticketSettings?.showTax ? colors.textLight : colors.textLight}
                 />
               </View>
             </View>

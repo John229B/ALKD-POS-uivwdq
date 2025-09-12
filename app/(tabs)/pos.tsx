@@ -393,13 +393,21 @@ export default function POSScreen() {
       setNotes('');
       setShowCheckoutModal(false);
 
-      Alert.alert(
-        'Vente réussie!',
-        `Reçu N°: ${receiptNumber}\nTotal: ${formatCurrency(total)}\nMonnaie: ${formatCurrency(sale.change)}`,
-        [{ text: 'OK' }]
-      );
+      // Redirect to ticket page instead of showing alert
+      router.push({
+        pathname: '/sale-ticket',
+        params: {
+          saleId: sale.id,
+          receiptNumber: sale.receiptNumber,
+          total: sale.total.toString(),
+          change: sale.change.toString(),
+          paymentMethod: sale.paymentMethod,
+          customerId: selectedCustomer?.id || '',
+          customerName: selectedCustomer?.name || '',
+        },
+      });
 
-      console.log('POS: Checkout completed successfully');
+      console.log('POS: Checkout completed successfully, redirecting to ticket page');
     } catch (error) {
       console.error('POS: Error processing checkout:', error);
       Alert.alert('Erreur', 'Erreur lors du traitement de la vente');

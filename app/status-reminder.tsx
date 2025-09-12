@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -21,11 +21,7 @@ export default function StatusReminderScreen() {
   const [currentBalance, setCurrentBalance] = useState(0);
   const cardRef = useRef<View>(null);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       console.log('Loading data for payment reminder page');
       const [customersData, salesData, settingsData] = await Promise.all([
@@ -59,7 +55,11 @@ export default function StatusReminderScreen() {
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -94,9 +94,8 @@ Merci de régulariser votre situation dès que possible.`;
 
       // Capture the image directly to cache directory
       const fileName = `reminder_${Date.now()}.png`;
-      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
       
-      console.log('Capturing image to:', fileUri);
+      console.log('Capturing image to cache directory');
       
       // Capture directly to the cache directory
       const uri = await captureRef(cardRef.current, {
@@ -328,7 +327,7 @@ Merci de régulariser votre situation dès que possible.`;
               ENVOYER
             </Text>
           </TouchableOpacity>
-        </div>
+        </View>
       </View>
     </SafeAreaView>
   );

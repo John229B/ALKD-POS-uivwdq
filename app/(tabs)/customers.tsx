@@ -6,7 +6,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
 import CustomerFilterModal from '../../components/CustomerFilterModal';
-import { getCustomers, storeCustomers, getSettings, getSales } from '../../utils/storage';
+import { getCustomers, storeCustomers, getSettings, getSales, storeSales } from '../../utils/storage';
 import { Customer, AppSettings, Sale } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -262,7 +262,7 @@ export default function CustomersScreen() {
               // Save updated data
               await Promise.all([
                 storeCustomers(updatedCustomers),
-                require('../../utils/storage').storeSales(updatedSales),
+                storeSales(updatedSales),
               ]);
               
               // Update local state

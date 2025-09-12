@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -14,11 +14,7 @@ export default function SendStatusScreen() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [currentBalance, setCurrentBalance] = useState(0);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       console.log('Loading data for send status page');
       const [customersData, salesData, settingsData] = await Promise.all([
@@ -52,7 +48,11 @@ export default function SendStatusScreen() {
     } catch (error) {
       console.error('Error loading data:', error);
     }
-  };
+  }, [customerId]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';

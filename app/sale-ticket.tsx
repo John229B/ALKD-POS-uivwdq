@@ -498,15 +498,18 @@ export default function SaleTicketScreen() {
 
       // Create a proper filename
       const fileName = `ticket_${sale?.receiptNumber || 'vente'}_${format(new Date(), 'ddMMyyyy_HHmm')}.pdf`;
-      const newUri = `${FileSystem.documentDirectory || ''}${fileName}`;
+      const documentDir = FileSystem.documentDirectory;
+      const newUri = documentDir ? `${documentDir}${fileName}` : uri;
       
-      // Move the file to a permanent location
-      await FileSystem.moveAsync({
-        from: uri,
-        to: newUri,
-      });
+      // Move the file to a permanent location if we have a document directory
+      if (documentDir && newUri !== uri) {
+        await FileSystem.moveAsync({
+          from: uri,
+          to: newUri,
+        });
+      }
 
-      console.log('PDF moved to:', newUri);
+      console.log('PDF ready at:', newUri);
 
       // Share the PDF
       if (await Sharing.isAvailableAsync()) {

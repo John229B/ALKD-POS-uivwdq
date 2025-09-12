@@ -12,6 +12,7 @@ import { fr } from 'date-fns/locale';
 import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
 import * as FileSystem from 'expo-file-system';
+import { documentDirectory } from 'expo-file-system';
 
 export default function SaleTicketScreen() {
   const params = useLocalSearchParams();
@@ -496,18 +497,26 @@ export default function SaleTicketScreen() {
 
       console.log('PDF generated successfully:', uri);
 
+      // Check if documentDirectory is available
+      if (!documentDirectory) {
+        console.warn('documentDirectory is not available, sharing directly');
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Partager le ticket PDF',
+          UTI: 'com.adobe.pdf',
+        });
+        return;
+      }
+
       // Create a proper filename
       const fileName = `ticket_${sale?.receiptNumber || 'vente'}_${format(new Date(), 'ddMMyyyy_HHmm')}.pdf`;
-      const documentDir = FileSystem.documentDirectory;
-      const newUri = documentDir ? `${documentDir}${fileName}` : uri;
+      const newUri = `${documentDirectory}${fileName}`;
       
-      // Move the file to a permanent location if we have a document directory
-      if (documentDir && newUri !== uri) {
-        await FileSystem.moveAsync({
-          from: uri,
-          to: newUri,
-        });
-      }
+      // Move the file to a permanent location
+      await FileSystem.moveAsync({
+        from: uri,
+        to: newUri,
+      });
 
       console.log('PDF ready at:', newUri);
 

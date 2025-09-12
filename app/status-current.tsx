@@ -90,7 +90,7 @@ Merci de vérifier vos opérations.`;
 
   const handleShare = async () => {
     try {
-      console.log('Capturing card for sharing');
+      console.log('Capturing card for sharing with message');
       
       if (!cardRef.current) {
         Alert.alert('Erreur', 'Impossible de capturer la carte');
@@ -104,12 +104,14 @@ Merci de vérifier vos opérations.`;
 
       const message = generateMessage();
       
+      // Share both image and message together
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: 'Partager la situation du client',
+        UTI: 'image/png',
       });
 
-      console.log('Card shared successfully');
+      console.log('Card and message shared successfully');
     } catch (error) {
       console.error('Error sharing card:', error);
       Alert.alert('Erreur', 'Erreur lors du partage');
@@ -117,8 +119,12 @@ Merci de vérifier vos opérations.`;
   };
 
   const handleCancel = () => {
-    console.log('Cancelling status current');
-    router.back();
+    console.log('Cancelling status current - returning to customer details');
+    // Navigate directly back to customer details page
+    router.push({
+      pathname: '/customer-details',
+      params: { customerId },
+    });
   };
 
   if (!customer) {
@@ -244,7 +250,7 @@ Merci de vérifier vos opérations.`;
               </View>
             </View>
 
-            {/* Logo placeholder */}
+            {/* Logo placeholder - Changed from "Mahaal" to "ALKD-POS" */}
             <View style={{ 
               marginTop: spacing.lg,
               backgroundColor: colors.primary + '20',
@@ -256,7 +262,7 @@ Merci de vérifier vos opérations.`;
                 fontSize: fontSizes.sm,
                 fontWeight: 'bold'
               }]}>
-                Mahaal
+                ALKD-POS
               </Text>
             </View>
           </View>

@@ -78,7 +78,7 @@ Merci de régulariser votre situation dès que possible.`;
 
   const handleShare = async () => {
     try {
-      console.log('Capturing reminder card for sharing');
+      console.log('Capturing reminder card for sharing with message');
       
       if (!cardRef.current) {
         Alert.alert('Erreur', 'Impossible de capturer la carte');
@@ -92,12 +92,14 @@ Merci de régulariser votre situation dès que possible.`;
 
       const message = generateMessage();
       
+      // Share both image and message together
       await Sharing.shareAsync(uri, {
         mimeType: 'image/png',
         dialogTitle: 'Partager le rappel de paiement',
+        UTI: 'image/png',
       });
 
-      console.log('Reminder card shared successfully');
+      console.log('Reminder card and message shared successfully');
     } catch (error) {
       console.error('Error sharing reminder card:', error);
       Alert.alert('Erreur', 'Erreur lors du partage');
@@ -105,8 +107,12 @@ Merci de régulariser votre situation dès que possible.`;
   };
 
   const handleCancel = () => {
-    console.log('Cancelling payment reminder');
-    router.back();
+    console.log('Cancelling payment reminder - returning to customer details');
+    // Navigate directly back to customer details page
+    router.push({
+      pathname: '/customer-details',
+      params: { customerId },
+    });
   };
 
   if (!customer) {
@@ -195,7 +201,7 @@ Merci de régulariser votre situation dès que possible.`;
               {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
             </Text>
 
-            {/* Logo placeholder */}
+            {/* Logo placeholder - Changed from "Mahaal" to "ALKD-POS" */}
             <View style={{ 
               backgroundColor: colors.primary + '20',
               borderRadius: 25,
@@ -206,7 +212,7 @@ Merci de régulariser votre situation dès que possible.`;
                 fontSize: fontSizes.sm,
                 fontWeight: 'bold'
               }]}>
-                Mahaal
+                ALKD-POS
               </Text>
             </View>
           </View>
@@ -227,43 +233,7 @@ Merci de régulariser votre situation dès que possible.`;
                 fontSize: fontSizes.md,
                 lineHeight: 24
               }]}>
-                Veuillez régler le solde restant
-              </Text>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md,
-                lineHeight: 24,
-                marginTop: spacing.sm
-              }]}>
-                - - - - -
-              </Text>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md,
-                lineHeight: 24,
-                marginTop: spacing.sm,
-                fontWeight: 'bold'
-              }]}>
-                {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
-              </Text>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md,
-                lineHeight: 24,
-                marginTop: spacing.sm
-              }]}>
-                - - - - -
-              </Text>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md,
-                lineHeight: 24,
-                marginTop: spacing.sm
-              }]}>
-                Voir toutes les opérations :
-              </Text>
-              <Text style={[commonStyles.textLight, { 
-                fontSize: fontSizes.sm,
-                lineHeight: 20,
-                marginTop: spacing.xs
-              }]}>
-                https://pay.inyad.com/c/r/31acc2cd-9203-4116-adc5-f81ce109fe4a
+                {generateMessage()}
               </Text>
             </View>
           </View>

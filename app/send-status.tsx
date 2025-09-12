@@ -79,6 +79,15 @@ export default function SendStatusScreen() {
     }
   };
 
+  const handleCancel = () => {
+    console.log('Cancelling send status - returning to customer details');
+    // Navigate directly back to customer details page
+    router.push({
+      pathname: '/customer-details',
+      params: { customerId },
+    });
+  };
+
   if (!customer) {
     return (
       <SafeAreaView style={commonStyles.container}>
@@ -95,7 +104,7 @@ export default function SendStatusScreen() {
         {/* Header */}
         <View style={[commonStyles.section, commonStyles.header]}>
           <TouchableOpacity 
-            onPress={() => router.back()} 
+            onPress={handleCancel} 
             style={{ marginRight: spacing.md }}
           >
             <Icon name="close" size={24} color={colors.text} />

@@ -146,6 +146,16 @@ export default function CustomerDetailsScreen() {
     });
   };
 
+  const openSendStatusPage = () => {
+    console.log('Opening send status page for customer:', customer?.name);
+    router.push({
+      pathname: '/send-status',
+      params: {
+        customerId,
+      },
+    });
+  };
+
   const getPaymentMethodLabel = (method: string): string => {
     const labels = {
       cash: 'Espèces',
@@ -247,7 +257,10 @@ export default function CustomerDetailsScreen() {
           }]}>
             {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
           </Text>
-          <TouchableOpacity style={{ position: 'absolute', right: spacing.lg, top: spacing.lg }}>
+          <TouchableOpacity 
+            style={{ position: 'absolute', right: spacing.lg, top: spacing.lg }}
+            onPress={openSendStatusPage}
+          >
             <View style={{
               backgroundColor: colors.primary + '20',
               borderRadius: 20,

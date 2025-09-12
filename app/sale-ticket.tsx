@@ -10,8 +10,8 @@ import { Sale, AppSettings, BluetoothPrinter, UNITS_OF_MEASUREMENT } from '../ty
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import * as Sharing from 'expo-sharing';
-import * as Print from 'react-native-print';
-import { captureRef } from 'react-native-view-shot';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system';
 
 export default function SaleTicketScreen() {
   const params = useLocalSearchParams();
@@ -97,6 +97,342 @@ export default function SaleTicketScreen() {
     };
   }, []);
 
+  const generatePrintableHTML = (): string => {
+    if (!sale || !settings) return '';
+
+    const { ticketSettings } = settings;
+    
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Ticket de vente - ${sale.receiptNumber}</title>
+        <style>
+          * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+          }
+          
+          body { 
+            font-family: 'Courier New', monospace; 
+            font-size: 14px; 
+            line-height: 1.4;
+            color: #000;
+            background: #fff;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+          }
+          
+          .ticket-container {
+            background: #fff;
+            border: 2px solid #000;
+            padding: 20px;
+            border-radius: 8px;
+          }
+          
+          .center { 
+            text-align: center; 
+            margin-bottom: 8px;
+          }
+          
+          .bold { 
+            font-weight: bold; 
+          }
+          
+          .large {
+            font-size: 18px;
+            font-weight: bold;
+          }
+          
+          .medium {
+            font-size: 16px;
+          }
+          
+          .small {
+            font-size: 12px;
+            color: #666;
+          }
+          
+          .separator { 
+            border-top: 2px dashed #000; 
+            margin: 15px 0; 
+            height: 2px;
+          }
+          
+          .thin-separator {
+            border-top: 1px solid #ccc;
+            margin: 8px 0;
+          }
+          
+          .row { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            margin: 6px 0; 
+            padding: 2px 0;
+          }
+          
+          .row-left {
+            text-align: left;
+            flex: 1;
+          }
+          
+          .row-right {
+            text-align: right;
+            font-weight: bold;
+          }
+          
+          .logo { 
+            max-width: 80px; 
+            max-height: 80px; 
+            margin: 0 auto 15px;
+            display: block;
+            border-radius: 4px;
+          }
+          
+          .company-name {
+            font-size: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+          }
+          
+          .company-info {
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 5px;
+          }
+          
+          .receipt-number {
+            font-size: 16px;
+            font-weight: bold;
+            background: #f0f0f0;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 10px 0;
+          }
+          
+          .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: center;
+            margin: 15px 0 10px;
+            padding: 8px;
+            background: #f8f8f8;
+            border-radius: 4px;
+          }
+          
+          .item-row {
+            margin-bottom: 12px;
+            padding: 8px 0;
+            border-bottom: 1px dotted #ccc;
+          }
+          
+          .item-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin-bottom: 4px;
+          }
+          
+          .item-details {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+          }
+          
+          .item-total {
+            font-weight: bold;
+            text-align: right;
+            font-size: 14px;
+          }
+          
+          .totals-section {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+          }
+          
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 4px 0;
+          }
+          
+          .grand-total {
+            font-size: 18px;
+            font-weight: bold;
+            border-top: 2px solid #000;
+            padding-top: 10px;
+            margin-top: 10px;
+          }
+          
+          .payment-section {
+            background: #f0f8ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+          }
+          
+          .thank-you {
+            text-align: center;
+            font-style: italic;
+            font-size: 14px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f0f8f0;
+            border-radius: 6px;
+            border: 1px solid #d4edda;
+          }
+          
+          .footer-info {
+            text-align: center;
+            font-size: 11px;
+            color: #888;
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+          }
+          
+          @media print {
+            body { 
+              padding: 10px;
+              font-size: 12px;
+            }
+            .ticket-container {
+              border: none;
+              padding: 10px;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="ticket-container">
+          ${ticketSettings.showLogo && settings.logoUrl ? `
+            <div class="center">
+              <img src="${settings.logoUrl}" class="logo" alt="Logo" />
+            </div>
+          ` : ''}
+          
+          ${ticketSettings.showCompanyName ? `
+            <div class="center company-name">${settings.companyName}</div>
+          ` : ''}
+          
+          ${ticketSettings.showAddress && settings.companyAddress ? `
+            <div class="center company-info">${settings.companyAddress}</div>
+          ` : ''}
+          
+          ${ticketSettings.showPhone && settings.companyPhone ? `
+            <div class="center company-info">Tél: ${settings.companyPhone}</div>
+          ` : ''}
+          
+          ${ticketSettings.showEmail && settings.companyEmail ? `
+            <div class="center company-info">Email: ${settings.companyEmail}</div>
+          ` : ''}
+          
+          <div class="separator"></div>
+          
+          ${ticketSettings.showReceiptNumber ? `
+            <div class="center receipt-number">TICKET N° ${sale.receiptNumber}</div>
+          ` : ''}
+          
+          ${ticketSettings.showDateTime ? `
+            <div class="center small">${format(new Date(sale.createdAt), 'dd/MM/yyyy à HH:mm', { locale: fr })}</div>
+          ` : ''}
+          
+          ${ticketSettings.showEmployeeName && sale.cashier ? `
+            <div class="center small">Employé: ${sale.cashier.username}</div>
+          ` : ''}
+          
+          ${sale.customer ? `
+            <div class="center small">Client: ${sale.customer.name}</div>
+          ` : ''}
+          
+          <div class="separator"></div>
+          
+          <div class="section-title">DÉTAIL DES ARTICLES</div>
+          
+          ${sale.items.map(item => {
+            const unitInfo = getUnitInfo(item.product?.unit || 'piece');
+            return `
+              <div class="item-row">
+                <div class="item-name">${item.product?.name || 'Produit'}</div>
+                <div class="item-details">
+                  ${formatQuantityWithUnit(item.quantity, unitInfo.symbol)} × ${formatCurrency(item.unitPrice)}
+                </div>
+                <div class="item-total">${formatCurrency(item.subtotal)}</div>
+              </div>
+            `;
+          }).join('')}
+          
+          <div class="separator"></div>
+          
+          <div class="totals-section">
+            <div class="total-row">
+              <span>Sous-total:</span>
+              <span class="bold">${formatCurrency(sale.subtotal)}</span>
+            </div>
+            
+            ${sale.discount > 0 ? `
+              <div class="total-row">
+                <span>Remise:</span>
+                <span class="bold" style="color: #28a745;">-${formatCurrency(sale.discount)}</span>
+              </div>
+            ` : ''}
+            
+            ${ticketSettings.showTax && sale.tax > 0 ? `
+              <div class="total-row">
+                <span>TVA (${settings.taxRate || 0}%):</span>
+                <span class="bold">${formatCurrency(sale.tax)}</span>
+              </div>
+            ` : ''}
+            
+            <div class="total-row grand-total">
+              <span>TOTAL À PAYER:</span>
+              <span>${formatCurrency(sale.total)}</span>
+            </div>
+          </div>
+          
+          <div class="payment-section">
+            <div class="total-row">
+              <span>Mode de paiement:</span>
+              <span class="bold">${getPaymentMethodLabel(sale.paymentMethod)}</span>
+            </div>
+            
+            <div class="total-row">
+              <span>Montant payé:</span>
+              <span class="bold">${formatCurrency(sale.amountPaid)}</span>
+            </div>
+            
+            ${sale.change > 0 ? `
+              <div class="total-row">
+                <span>Monnaie rendue:</span>
+                <span class="bold" style="color: #17a2b8;">${formatCurrency(sale.change)}</span>
+              </div>
+            ` : ''}
+          </div>
+          
+          ${ticketSettings.showThankYouMessage ? `
+            <div class="thank-you">
+              ${settings.customThankYouMessage || settings.receiptFooter || 'Merci pour votre achat !<br>À bientôt !'}
+            </div>
+          ` : ''}
+          
+          <div class="footer-info">
+            Ticket généré le ${format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  };
+
   const handlePrint = async () => {
     try {
       console.log('Starting ticket printing...');
@@ -117,9 +453,17 @@ export default function SaleTicketScreen() {
       // Generate HTML content for printing
       const htmlContent = generatePrintableHTML();
       
-      // Use react-native-print for printing
-      await Print.print({
+      // Use expo-print for printing
+      await Print.printAsync({
         html: htmlContent,
+        width: 612,
+        height: 792,
+        margins: {
+          left: 20,
+          top: 20,
+          right: 20,
+          bottom: 20,
+        },
       });
 
       console.log('Ticket printed successfully');
@@ -132,144 +476,53 @@ export default function SaleTicketScreen() {
 
   const handleSharePDF = async () => {
     try {
-      console.log('Starting PDF sharing...');
+      console.log('Starting PDF generation and sharing...');
       
-      if (!ticketRef.current) {
-        Alert.alert('Erreur', 'Impossible de capturer le ticket');
-        return;
-      }
-
-      // Capture the ticket as an image
-      const uri = await captureRef(ticketRef.current, {
-        format: 'png',
-        quality: 1.0,
-        result: 'tmpfile',
+      // Generate HTML content
+      const htmlContent = generatePrintableHTML();
+      
+      // Generate PDF using expo-print
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        width: 612,
+        height: 792,
+        margins: {
+          left: 20,
+          top: 20,
+          right: 20,
+          bottom: 20,
+        },
       });
 
-      console.log('Ticket captured as image:', uri);
+      console.log('PDF generated successfully:', uri);
 
-      // Share the image
+      // Create a proper filename
+      const fileName = `ticket_${sale?.receiptNumber || 'vente'}_${format(new Date(), 'ddMMyyyy_HHmm')}.pdf`;
+      const newUri = `${FileSystem.documentDirectory}${fileName}`;
+      
+      // Move the file to a permanent location
+      await FileSystem.moveAsync({
+        from: uri,
+        to: newUri,
+      });
+
+      console.log('PDF moved to:', newUri);
+
+      // Share the PDF
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'image/png',
-          dialogTitle: 'Partager le ticket',
+        await Sharing.shareAsync(newUri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Partager le ticket PDF',
+          UTI: 'com.adobe.pdf',
         });
-        console.log('Ticket shared successfully');
+        console.log('PDF shared successfully');
       } else {
         Alert.alert('Information', 'Le partage n\'est pas disponible sur cet appareil');
       }
     } catch (error) {
-      console.error('Error sharing ticket:', error);
-      Alert.alert('Erreur', 'Erreur lors du partage du ticket');
+      console.error('Error generating/sharing PDF:', error);
+      Alert.alert('Erreur', 'Erreur lors de la génération du PDF: ' + error.message);
     }
-  };
-
-  const generatePrintableHTML = (): string => {
-    if (!sale || !settings) return '';
-
-    const { ticketSettings } = settings;
-    
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: monospace; font-size: 12px; margin: 0; padding: 20px; }
-          .center { text-align: center; }
-          .bold { font-weight: bold; }
-          .separator { border-top: 1px dashed #000; margin: 10px 0; }
-          .row { display: flex; justify-content: space-between; margin: 5px 0; }
-          .logo { max-width: 60px; max-height: 60px; }
-        </style>
-      </head>
-      <body>
-        ${ticketSettings.showLogo && settings.logoUrl ? `<div class="center"><img src="${settings.logoUrl}" class="logo" /></div>` : ''}
-        ${ticketSettings.showCompanyName ? `<div class="center bold">${settings.companyName}</div>` : ''}
-        ${ticketSettings.showAddress && settings.companyAddress ? `<div class="center">${settings.companyAddress}</div>` : ''}
-        ${ticketSettings.showPhone && settings.companyPhone ? `<div class="center">Tél: ${settings.companyPhone}</div>` : ''}
-        ${ticketSettings.showEmail && settings.companyEmail ? `<div class="center">Email: ${settings.companyEmail}</div>` : ''}
-        
-        <div class="separator"></div>
-        
-        ${ticketSettings.showReceiptNumber ? `<div class="center bold">Ticket N°: ${sale.receiptNumber}</div>` : ''}
-        ${ticketSettings.showDateTime ? `<div class="center">${format(new Date(sale.createdAt), 'dd/MM/yyyy HH:mm', { locale: fr })}</div>` : ''}
-        ${ticketSettings.showEmployeeName && sale.cashier ? `<div class="center">Employé: ${sale.cashier.username}</div>` : ''}
-        ${sale.customer ? `<div class="center">Client: ${sale.customer.name}</div>` : ''}
-        
-        <div class="separator"></div>
-        
-        <div class="center bold">ARTICLES</div>
-        <div class="separator"></div>
-        
-        ${sale.items.map(item => {
-          const unitInfo = getUnitInfo(item.product?.unit || 'pièce');
-          return `
-            <div class="row">
-              <div>${item.product?.name || 'Produit'}</div>
-              <div>${formatCurrency(item.subtotal)}</div>
-            </div>
-            <div style="font-size: 10px; margin-left: 10px;">
-              ${formatQuantityWithUnit(item.quantity, unitInfo.symbol)} x ${formatCurrency(item.unitPrice)}
-            </div>
-          `;
-        }).join('')}
-        
-        <div class="separator"></div>
-        
-        <div class="row">
-          <div>Sous-total:</div>
-          <div>${formatCurrency(sale.subtotal)}</div>
-        </div>
-        
-        ${sale.discount > 0 ? `
-          <div class="row">
-            <div>Remise:</div>
-            <div>-${formatCurrency(sale.discount)}</div>
-          </div>
-        ` : ''}
-        
-        ${ticketSettings.showTax && sale.tax > 0 ? `
-          <div class="row">
-            <div>TVA:</div>
-            <div>${formatCurrency(sale.tax)}</div>
-          </div>
-        ` : ''}
-        
-        <div class="row bold">
-          <div>TOTAL:</div>
-          <div>${formatCurrency(sale.total)}</div>
-        </div>
-        
-        <div class="separator"></div>
-        
-        <div class="row">
-          <div>Mode de paiement:</div>
-          <div>${getPaymentMethodLabel(sale.paymentMethod)}</div>
-        </div>
-        
-        <div class="row">
-          <div>Montant payé:</div>
-          <div>${formatCurrency(sale.amountPaid)}</div>
-        </div>
-        
-        ${sale.change > 0 ? `
-          <div class="row">
-            <div>Monnaie:</div>
-            <div>${formatCurrency(sale.change)}</div>
-          </div>
-        ` : ''}
-        
-        <div class="separator"></div>
-        
-        ${ticketSettings.showThankYouMessage ? `
-          <div class="center">
-            ${settings.customThankYouMessage || settings.receiptFooter || 'Merci pour votre achat !'}
-          </div>
-        ` : ''}
-      </body>
-      </html>
-    `;
   };
 
   const handleNewSale = () => {
@@ -361,13 +614,13 @@ export default function SaleTicketScreen() {
 
             {/* Receipt Number */}
             {settings.ticketSettings.showReceiptNumber && (
-              <Text style={styles.receiptNumber}>Ticket N°: {sale.receiptNumber}</Text>
+              <Text style={styles.receiptNumber}>TICKET N° {sale.receiptNumber}</Text>
             )}
 
             {/* Date and Time */}
             {settings.ticketSettings.showDateTime && (
               <Text style={styles.dateTime}>
-                {format(new Date(sale.createdAt), 'dd/MM/yyyy HH:mm', { locale: fr })}
+                {format(new Date(sale.createdAt), 'dd/MM/yyyy à HH:mm', { locale: fr })}
               </Text>
             )}
 
@@ -384,18 +637,18 @@ export default function SaleTicketScreen() {
             <View style={styles.separator} />
 
             {/* Items Header */}
-            <Text style={styles.sectionTitle}>ARTICLES</Text>
-            <View style={styles.separator} />
+            <Text style={styles.sectionTitle}>DÉTAIL DES ARTICLES</Text>
+            <View style={styles.thinSeparator} />
 
             {/* Items List */}
             {sale.items.map((item, index) => {
-              const unitInfo = getUnitInfo(item.product?.unit || 'pièce');
+              const unitInfo = getUnitInfo(item.product?.unit || 'piece');
               return (
                 <View key={index} style={styles.itemRow}>
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemName}>{item.product?.name || 'Produit'}</Text>
                     <Text style={styles.itemDetails}>
-                      {formatQuantityWithUnit(item.quantity, unitInfo.symbol)} x {formatCurrency(item.unitPrice)}
+                      {formatQuantityWithUnit(item.quantity, unitInfo.symbol)} × {formatCurrency(item.unitPrice)}
                     </Text>
                   </View>
                   <Text style={styles.itemTotal}>{formatCurrency(item.subtotal)}</Text>
@@ -405,59 +658,68 @@ export default function SaleTicketScreen() {
 
             <View style={styles.separator} />
 
-            {/* Totals */}
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Sous-total:</Text>
-              <Text style={styles.totalValue}>{formatCurrency(sale.subtotal)}</Text>
-            </View>
-
-            {sale.discount > 0 && (
+            {/* Totals Section */}
+            <View style={styles.totalsSection}>
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Remise:</Text>
-                <Text style={[styles.totalValue, { color: colors.success }]}>-{formatCurrency(sale.discount)}</Text>
+                <Text style={styles.totalLabel}>Sous-total:</Text>
+                <Text style={styles.totalValue}>{formatCurrency(sale.subtotal)}</Text>
               </View>
-            )}
 
-            {settings.ticketSettings.showTax && sale.tax > 0 && (
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>TVA ({settings.taxRate}%):</Text>
-                <Text style={styles.totalValue}>{formatCurrency(sale.tax)}</Text>
+              {sale.discount > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Remise:</Text>
+                  <Text style={[styles.totalValue, { color: colors.success }]}>-{formatCurrency(sale.discount)}</Text>
+                </View>
+              )}
+
+              {settings.ticketSettings.showTax && sale.tax > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>TVA ({settings.taxRate || 0}%):</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(sale.tax)}</Text>
+                </View>
+              )}
+
+              <View style={[styles.totalRow, styles.grandTotalRow]}>
+                <Text style={styles.grandTotalLabel}>TOTAL À PAYER:</Text>
+                <Text style={styles.grandTotalValue}>{formatCurrency(sale.total)}</Text>
               </View>
-            )}
-
-            <View style={styles.totalRow}>
-              <Text style={styles.grandTotalLabel}>TOTAL:</Text>
-              <Text style={styles.grandTotalValue}>{formatCurrency(sale.total)}</Text>
             </View>
 
-            <View style={styles.separator} />
-
-            {/* Payment Info */}
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>Mode de paiement:</Text>
-              <Text style={styles.paymentValue}>{getPaymentMethodLabel(sale.paymentMethod)}</Text>
-            </View>
-
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>Montant payé:</Text>
-              <Text style={styles.paymentValue}>{formatCurrency(sale.amountPaid)}</Text>
-            </View>
-
-            {sale.change > 0 && (
+            {/* Payment Section */}
+            <View style={styles.paymentSection}>
               <View style={styles.paymentRow}>
-                <Text style={styles.paymentLabel}>Monnaie:</Text>
-                <Text style={styles.paymentValue}>{formatCurrency(sale.change)}</Text>
+                <Text style={styles.paymentLabel}>Mode de paiement:</Text>
+                <Text style={styles.paymentValue}>{getPaymentMethodLabel(sale.paymentMethod)}</Text>
               </View>
-            )}
 
-            <View style={styles.separator} />
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>Montant payé:</Text>
+                <Text style={styles.paymentValue}>{formatCurrency(sale.amountPaid)}</Text>
+              </View>
+
+              {sale.change > 0 && (
+                <View style={styles.paymentRow}>
+                  <Text style={styles.paymentLabel}>Monnaie rendue:</Text>
+                  <Text style={[styles.paymentValue, { color: colors.info }]}>{formatCurrency(sale.change)}</Text>
+                </View>
+              )}
+            </View>
 
             {/* Thank You Message */}
             {settings.ticketSettings.showThankYouMessage && (
-              <Text style={styles.thankYouMessage}>
-                {settings.customThankYouMessage || settings.receiptFooter || 'Merci pour votre achat !'}
-              </Text>
+              <View style={styles.thankYouContainer}>
+                <Text style={styles.thankYouMessage}>
+                  {settings.customThankYouMessage || settings.receiptFooter || 'Merci pour votre achat !\nÀ bientôt !'}
+                </Text>
+              </View>
             )}
+
+            {/* Footer */}
+            <View style={styles.footerContainer}>
+              <Text style={styles.footerText}>
+                Ticket généré le {format(new Date(), 'dd/MM/yyyy à HH:mm', { locale: fr })}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -559,20 +821,20 @@ const styles = StyleSheet.create({
   },
   ticketContainer: {
     margin: spacing.lg,
-    backgroundColor: colors.surface,
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    shadowColor: colors.text,
+    borderWidth: 2,
+    borderColor: '#000000',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 4,
+    elevation: 8,
   },
   ticketContent: {
     alignItems: 'center',
-    backgroundColor: colors.secondary,
+    backgroundColor: '#ffffff',
     padding: spacing.lg,
     borderRadius: 8,
   },
@@ -580,62 +842,84 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   logo: {
-    width: 60,
-    height: 60,
+    width: 80,
+    height: 80,
     borderRadius: 8,
     backgroundColor: colors.background,
   },
   companyName: {
-    fontSize: fontSizes.lg,
+    fontSize: fontSizes.xl,
     fontWeight: '700',
-    color: colors.text,
+    color: '#000000',
     textAlign: 'center',
     marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
   companyInfo: {
     fontSize: fontSizes.sm,
-    color: colors.textLight,
+    color: '#333333',
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
   separator: {
     width: '100%',
-    height: 1,
-    backgroundColor: colors.border,
+    height: 2,
+    backgroundColor: '#000000',
     marginVertical: spacing.md,
+    borderStyle: 'dashed',
+  },
+  thinSeparator: {
+    width: '100%',
+    height: 1,
+    backgroundColor: '#cccccc',
+    marginVertical: spacing.sm,
   },
   receiptNumber: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.text,
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+    color: '#000000',
     marginBottom: spacing.xs,
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 6,
   },
   dateTime: {
     fontSize: fontSizes.sm,
-    color: colors.textLight,
+    color: '#666666',
     marginBottom: spacing.xs,
   },
   employeeName: {
     fontSize: fontSizes.sm,
-    color: colors.textLight,
+    color: '#666666',
     marginBottom: spacing.xs,
   },
   customerName: {
     fontSize: fontSizes.sm,
-    color: colors.textLight,
+    color: '#666666',
   },
   sectionTitle: {
     fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.text,
+    fontWeight: '700',
+    color: '#000000',
     textAlign: 'center',
+    textTransform: 'uppercase',
+    backgroundColor: '#f8f8f8',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 6,
+    marginBottom: spacing.sm,
   },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: spacing.sm,
+    marginBottom: spacing.md,
     width: '100%',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eeeeee',
+    borderStyle: 'dotted',
   },
   itemInfo: {
     flex: 1,
@@ -643,18 +927,25 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: fontSizes.sm,
-    fontWeight: '500',
-    color: colors.text,
-    marginBottom: 2,
+    fontWeight: '600',
+    color: '#000000',
+    marginBottom: 4,
   },
   itemDetails: {
     fontSize: fontSizes.xs,
-    color: colors.textLight,
+    color: '#666666',
   },
   itemTotal: {
     fontSize: fontSizes.sm,
-    fontWeight: '600',
-    color: colors.text,
+    fontWeight: '700',
+    color: '#000000',
+  },
+  totalsSection: {
+    backgroundColor: '#f9f9f9',
+    padding: spacing.md,
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: spacing.md,
   },
   totalRow: {
     flexDirection: 'row',
@@ -665,22 +956,35 @@ const styles = StyleSheet.create({
   },
   totalLabel: {
     fontSize: fontSizes.sm,
-    color: colors.text,
+    color: '#000000',
   },
   totalValue: {
     fontSize: fontSizes.sm,
     fontWeight: '600',
-    color: colors.text,
+    color: '#000000',
+  },
+  grandTotalRow: {
+    borderTopWidth: 2,
+    borderTopColor: '#000000',
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
   },
   grandTotalLabel: {
     fontSize: fontSizes.md,
     fontWeight: '700',
-    color: colors.text,
+    color: '#000000',
   },
   grandTotalValue: {
     fontSize: fontSizes.md,
     fontWeight: '700',
-    color: colors.primary,
+    color: '#000000',
+  },
+  paymentSection: {
+    backgroundColor: '#f0f8ff',
+    padding: spacing.md,
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: spacing.md,
   },
   paymentRow: {
     flexDirection: 'row',
@@ -691,18 +995,39 @@ const styles = StyleSheet.create({
   },
   paymentLabel: {
     fontSize: fontSizes.sm,
-    color: colors.textLight,
+    color: '#333333',
   },
   paymentValue: {
     fontSize: fontSizes.sm,
-    fontWeight: '500',
-    color: colors.text,
+    fontWeight: '600',
+    color: '#000000',
+  },
+  thankYouContainer: {
+    backgroundColor: '#f0f8f0',
+    padding: spacing.md,
+    borderRadius: 8,
+    width: '100%',
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#d4edda',
   },
   thankYouMessage: {
     fontSize: fontSizes.sm,
-    color: colors.text,
+    color: '#000000',
     textAlign: 'center',
     fontStyle: 'italic',
+    lineHeight: 20,
+  },
+  footerContainer: {
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: '#eeeeee',
+    width: '100%',
+  },
+  footerText: {
+    fontSize: fontSizes.xs,
+    color: '#888888',
+    textAlign: 'center',
   },
   actionButtons: {
     flexDirection: 'row',

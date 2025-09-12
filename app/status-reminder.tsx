@@ -9,6 +9,8 @@ import { getCustomers, getSales, getSettings } from '../utils/storage';
 import { Customer, Sale, AppSettings } from '../types';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
+import * as Clipboard from 'expo-clipboard';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -85,31 +87,78 @@ Merci de régulariser votre situation dès que possible.`;
         return;
       }
 
+      // First copy the message to clipboard
+      const message = generateMessage();
+      await Clipboard.setStringAsync(message);
+      console.log('Message copied to clipboard');
+
+      // Capture the image directly to cache directory
+      const fileName = `reminder_${Date.now()}.png`;
+      const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+      
+      console.log('Capturing image to:', fileUri);
+      
+      // Capture directly to the cache directory
       const uri = await captureRef(cardRef.current, {
         format: 'png',
         quality: 1,
+        result: 'tmpfile', // This saves directly to a temporary file
       });
 
-      const message = generateMessage();
+      console.log('Image captured to:', uri);
       
-      // Share both image and message together
-      await Sharing.shareAsync(uri, {
-        mimeType: 'image/png',
-        dialogTitle: 'Partager le rappel de paiement',
-        UTI: 'image/png',
-      });
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (isAvailable) {
+        console.log('Sharing reminder image using Expo Sharing');
+        // Share the captured image directly
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'ALKD-POS - Rappel de paiement',
+        });
+        
+        console.log('Image shared successfully');
+        
+        // Show alert about the message being in clipboard
+        Alert.alert(
+          'Partage réussi', 
+          'L\'image a été partagée et le message a été copié dans le presse-papier. Vous pouvez maintenant le coller dans votre application de partage.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        console.log('Sharing not available, using clipboard fallback');
+        // Fallback: Just copy text to clipboard
+        Alert.alert(
+          'Partage non disponible', 
+          'Le partage n\'est pas disponible sur cet appareil. Le message a été copié dans le presse-papier.',
+          [{ text: 'OK' }]
+        );
+      }
 
-      console.log('Reminder card and message shared successfully');
     } catch (error) {
       console.error('Error sharing reminder card:', error);
-      Alert.alert('Erreur', 'Erreur lors du partage');
+      
+      // Fallback: Copy text to clipboard
+      try {
+        const message = generateMessage();
+        await Clipboard.setStringAsync(message);
+        Alert.alert(
+          'Erreur de partage', 
+          'Erreur lors du partage de l\'image. Le message a été copié dans le presse-papier.',
+          [{ text: 'OK' }]
+        );
+      } catch (clipboardError) {
+        console.error('Error copying to clipboard:', clipboardError);
+        Alert.alert('Erreur', 'Erreur lors du partage et de la copie');
+      }
     }
   };
 
   const handleCancel = () => {
     console.log('Cancelling payment reminder - returning to customer details');
-    // Navigate directly back to customer details page
-    router.push({
+    // Navigate directly back to customer details page using replace to ensure proper navigation
+    router.replace({
       pathname: '/customer-details',
       params: { customerId },
     });
@@ -279,7 +328,7 @@ Merci de régulariser votre situation dès que possible.`;
               ENVOYER
             </Text>
           </TouchableOpacity>
-        </View>
+        </div>
       </View>
     </SafeAreaView>
   );

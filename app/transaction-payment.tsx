@@ -144,16 +144,15 @@ export default function TransactionPaymentScreen() {
             <TouchableOpacity
               key={method.id}
               style={[
-                commonStyles.card,
                 {
                   marginBottom: spacing.md,
                   paddingVertical: spacing.lg,
                   paddingHorizontal: spacing.lg,
-                  borderWidth: 2,
-                  borderColor: selectedPaymentMethod === method.id ? colors.primary : colors.border,
-                  backgroundColor: colors.secondary,
+                  borderWidth: 1,
+                  borderColor: '#E5E5E5',
+                  backgroundColor: '#FFFFFF',
                   borderRadius: 15,
-                  shadowColor: colors.text,
+                  shadowColor: '#000000',
                   shadowOffset: { width: 0, height: 2 },
                   shadowOpacity: 0.1,
                   shadowRadius: 4,
@@ -170,7 +169,7 @@ export default function TransactionPaymentScreen() {
                   padding: spacing.md,
                   marginRight: spacing.md,
                 }}>
-                  <Icon name={method.icon} size={24} color={colors.secondary} />
+                  <Icon name={method.icon} size={24} color="#000000" />
                 </View>
                 
                 <View style={{ flex: 1 }}>
@@ -178,13 +177,13 @@ export default function TransactionPaymentScreen() {
                     fontSize: fontSizes.lg,
                     fontWeight: '600',
                     marginBottom: spacing.xs,
-                    color: colors.text
+                    color: '#000000'
                   }]}>
                     {method.name}
                   </Text>
                   <Text style={[commonStyles.textLight, { 
                     fontSize: fontSizes.sm,
-                    color: colors.textLight
+                    color: '#666666'
                   }]}>
                     {method.description}
                   </Text>
@@ -193,7 +192,7 @@ export default function TransactionPaymentScreen() {
                 <Icon 
                   name="chevron-forward" 
                   size={20} 
-                  color={colors.text} 
+                  color="#000000" 
                 />
               </View>
             </TouchableOpacity>
@@ -201,15 +200,14 @@ export default function TransactionPaymentScreen() {
 
           {/* Future payment methods placeholder */}
           <View style={[
-            commonStyles.card,
             {
               marginBottom: spacing.md,
               paddingVertical: spacing.lg,
               paddingHorizontal: spacing.lg,
               borderWidth: 1,
-              borderColor: colors.border,
+              borderColor: '#E5E5E5',
               borderStyle: 'dashed',
-              backgroundColor: colors.background,
+              backgroundColor: '#FFFFFF',
               borderRadius: 15,
               opacity: 0.6,
             }

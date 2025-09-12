@@ -137,11 +137,11 @@ export default function TransactionAmountScreen() {
   ];
 
   const getButtonStyle = (button: string) => {
-    const isOperator = ['÷', '×', '-', '+', '='].includes(button);
-    const isFunction = ['AC', 'M+', 'M-', '⌫', '%'].includes(button);
+    const isNumber = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'].includes(button);
+    const isSpecial = ['AC', 'M+', 'M-', '⌫', '%'].includes(button);
     
     return {
-      backgroundColor: isOperator ? colors.primary : isFunction ? colors.background : colors.secondary,
+      backgroundColor: isNumber ? '#FFFFFF' : isSpecial ? colors.primary : '#FFFFFF',
       borderRadius: 15,
       height: 60,
       justifyContent: 'center' as const,
@@ -149,8 +149,8 @@ export default function TransactionAmountScreen() {
       margin: 4,
       flex: 1,
       borderWidth: 1,
-      borderColor: colors.border,
-      shadowColor: colors.text,
+      borderColor: '#E5E5E5',
+      shadowColor: '#000000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.1,
       shadowRadius: 4,
@@ -159,13 +159,13 @@ export default function TransactionAmountScreen() {
   };
 
   const getButtonTextStyle = (button: string) => {
-    const isOperator = ['÷', '×', '-', '+', '='].includes(button);
-    const isFunction = ['AC', 'M+', 'M-', '⌫', '%'].includes(button);
+    const isNumber = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.'].includes(button);
+    const isSpecial = ['AC', 'M+', 'M-', '⌫', '%'].includes(button);
     
     return {
       fontSize: fontSizes.lg,
       fontWeight: '600' as const,
-      color: isOperator ? colors.secondary : isFunction ? colors.text : colors.text,
+      color: isNumber ? '#000000' : isSpecial ? '#000000' : '#000000',
     };
   };
 
@@ -275,7 +275,7 @@ export default function TransactionAmountScreen() {
                 onPress={handleValidate}
               >
                 <Text style={[commonStyles.text, { 
-                  color: colors.secondary, 
+                  color: '#FFFFFF', 
                   fontSize: fontSizes.md, 
                   fontWeight: 'bold',
                   textAlign: 'center'

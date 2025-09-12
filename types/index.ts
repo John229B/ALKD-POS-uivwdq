@@ -194,6 +194,19 @@ export interface DashboardStats {
   }[];
 }
 
+export interface TicketSettings {
+  showLogo: boolean;
+  showCompanyName: boolean;
+  showAddress: boolean;
+  showPhone: boolean;
+  showEmail: boolean;
+  showThankYouMessage: boolean;
+  showReceiptNumber: boolean;
+  showDateTime: boolean;
+  showEmployeeName: boolean;
+  showTax: boolean;
+}
+
 export interface AppSettings {
   companyName: string;
   companyAddress: string;
@@ -208,6 +221,8 @@ export interface AppSettings {
   offlineMode: boolean;
   autoSync: boolean;
   syncInterval: number; // in minutes
+  // New ticket configuration settings
+  ticketSettings: TicketSettings;
 }
 
 export interface License {

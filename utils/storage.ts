@@ -383,6 +383,18 @@ export const getSettings = async (): Promise<AppSettings> => {
     offlineMode: true,
     autoSync: true,
     syncInterval: 15,
+    ticketSettings: {
+      showLogo: true,
+      showCompanyName: true,
+      showAddress: true,
+      showPhone: true,
+      showEmail: false,
+      showThankYouMessage: true,
+      showReceiptNumber: true,
+      showDateTime: true,
+      showEmployeeName: true,
+      showTax: true,
+    },
   };
 };
 

@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Icon from '../components/Icon';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../styles/commonStyles';
-import { AppSettings, CURRENCIES, LANGUAGES } from '../types';
+import { AppSettings, CURRENCIES, LANGUAGES, TicketSettings } from '../types';
 import { getSettings, storeSettings, logActivity } from '../utils/storage';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -16,6 +16,7 @@ export default function SettingsScreen() {
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [companyModalVisible, setCompanyModalVisible] = useState(false);
+  const [ticketSettingsModalVisible, setTicketSettingsModalVisible] = useState(false);
   const [formData, setFormData] = useState({
     companyName: '',
     companyAddress: '',
@@ -144,6 +145,17 @@ export default function SettingsScreen() {
     Alert.alert('Succès', 'Informations de l\'entreprise mises à jour');
   };
 
+  const handleTicketSettingToggle = async (setting: keyof TicketSettings) => {
+    if (!settings) return;
+    
+    const updatedTicketSettings = {
+      ...settings.ticketSettings,
+      [setting]: !settings.ticketSettings[setting],
+    };
+    
+    await updateSettings({ ticketSettings: updatedTicketSettings });
+  };
+
   const toggleOfflineMode = async () => {
     if (!settings) return;
     await updateSettings({ offlineMode: !settings.offlineMode });
@@ -198,6 +210,33 @@ export default function SettingsScreen() {
               <View style={styles.settingInfo}>
                 <Text style={styles.settingTitle}>Informations de l'entreprise</Text>
                 <Text style={styles.settingSubtitle}>{settings.companyName}</Text>
+              </View>
+            </View>
+            <Icon name="chevron-forward" size={20} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Ticket Configuration Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Configuration des tickets</Text>
+          
+          <TouchableOpacity onPress={() => setTicketSettingsModalVisible(true)} style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Icon name="receipt-outline" size={24} color={colors.success} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingTitle}>Éléments du ticket</Text>
+                <Text style={styles.settingSubtitle}>Personnaliser l&apos;apparence des tickets</Text>
+              </View>
+            </View>
+            <Icon name="chevron-forward" size={20} color={colors.textLight} />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => router.push('/tickets')} style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Icon name="eye-outline" size={24} color={colors.info} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingTitle}>Aperçu du ticket</Text>
+                <Text style={styles.settingSubtitle}>Voir le rendu en temps réel</Text>
               </View>
             </View>
             <Icon name="chevron-forward" size={20} color={colors.textLight} />
@@ -301,17 +340,6 @@ export default function SettingsScreen() {
             </View>
             <Icon name="chevron-forward" size={20} color={colors.textLight} />
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => router.push('/tickets')} style={styles.settingItem}>
-            <View style={styles.settingLeft}>
-              <Icon name="receipt-outline" size={24} color={colors.success} />
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>Historique des tickets</Text>
-                <Text style={styles.settingSubtitle}>Voir et réimprimer les tickets</Text>
-              </View>
-            </View>
-            <Icon name="chevron-forward" size={20} color={colors.textLight} />
-          </TouchableOpacity>
         </View>
 
         {/* App Info Section */}
@@ -372,6 +400,196 @@ export default function SettingsScreen() {
               )}
             </View>
           </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Ticket Settings Modal */}
+      <Modal
+        visible={ticketSettingsModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTicketSettingsModalVisible(false)}
+      >
+        <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setTicketSettingsModalVisible(false)}>
+              <Text style={[commonStyles.text, { color: colors.error }]}>Fermer</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Configuration du ticket</Text>
+            <TouchableOpacity onPress={() => router.push('/tickets')}>
+              <Text style={[commonStyles.text, { color: colors.primary, fontWeight: '600' }]}>
+                Aperçu
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.ticketSettingsContent} showsVerticalScrollIndicator={false}>
+            <Text style={styles.ticketSettingsDescription}>
+              Activez ou désactivez les éléments qui apparaîtront sur vos tickets de vente.
+            </Text>
+
+            <View style={styles.ticketSettingsList}>
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="image-outline" size={24} color={colors.primary} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Logo de l'entreprise</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le logo sur le ticket</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showLogo}
+                  onValueChange={() => handleTicketSettingToggle('showLogo')}
+                  trackColor={{ false: colors.border, true: colors.primary + '40' }}
+                  thumbColor={settings.ticketSettings.showLogo ? colors.primary : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="business-outline" size={24} color={colors.primary} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Nom de l'entreprise</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le nom de l'entreprise</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showCompanyName}
+                  onValueChange={() => handleTicketSettingToggle('showCompanyName')}
+                  trackColor={{ false: colors.border, true: colors.primary + '40' }}
+                  thumbColor={settings.ticketSettings.showCompanyName ? colors.primary : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="location-outline" size={24} color={colors.info} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Adresse</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher l'adresse de l'entreprise</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showAddress}
+                  onValueChange={() => handleTicketSettingToggle('showAddress')}
+                  trackColor={{ false: colors.border, true: colors.info + '40' }}
+                  thumbColor={settings.ticketSettings.showAddress ? colors.info : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="call-outline" size={24} color={colors.success} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Numéro de téléphone</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le téléphone</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showPhone}
+                  onValueChange={() => handleTicketSettingToggle('showPhone')}
+                  trackColor={{ false: colors.border, true: colors.success + '40' }}
+                  thumbColor={settings.ticketSettings.showPhone ? colors.success : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="mail-outline" size={24} color={colors.warning} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Adresse email</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher l'email de l'entreprise</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showEmail}
+                  onValueChange={() => handleTicketSettingToggle('showEmail')}
+                  trackColor={{ false: colors.border, true: colors.warning + '40' }}
+                  thumbColor={settings.ticketSettings.showEmail ? colors.warning : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="heart-outline" size={24} color={colors.error} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Message de remerciement</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le message personnalisé</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showThankYouMessage}
+                  onValueChange={() => handleTicketSettingToggle('showThankYouMessage')}
+                  trackColor={{ false: colors.border, true: colors.error + '40' }}
+                  thumbColor={settings.ticketSettings.showThankYouMessage ? colors.error : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="receipt-outline" size={24} color={colors.textLight} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Numéro de ticket</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le numéro de reçu</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showReceiptNumber}
+                  onValueChange={() => handleTicketSettingToggle('showReceiptNumber')}
+                  trackColor={{ false: colors.border, true: colors.textLight + '40' }}
+                  thumbColor={settings.ticketSettings.showReceiptNumber ? colors.textLight : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="time-outline" size={24} color={colors.textLight} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Date et heure</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher la date et l'heure de vente</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showDateTime}
+                  onValueChange={() => handleTicketSettingToggle('showDateTime')}
+                  trackColor={{ false: colors.border, true: colors.textLight + '40' }}
+                  thumbColor={settings.ticketSettings.showDateTime ? colors.textLight : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="person-outline" size={24} color={colors.textLight} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>Nom de l'employé</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher qui a effectué la vente</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showEmployeeName}
+                  onValueChange={() => handleTicketSettingToggle('showEmployeeName')}
+                  trackColor={{ false: colors.border, true: colors.textLight + '40' }}
+                  thumbColor={settings.ticketSettings.showEmployeeName ? colors.textLight : colors.textLight}
+                />
+              </View>
+
+              <View style={styles.ticketSettingItem}>
+                <View style={styles.ticketSettingLeft}>
+                  <Icon name="calculator-outline" size={24} color={colors.textLight} />
+                  <View style={styles.ticketSettingInfo}>
+                    <Text style={styles.ticketSettingTitle}>TVA</Text>
+                    <Text style={styles.ticketSettingSubtitle}>Afficher le montant de la TVA</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={settings.ticketSettings.showTax}
+                  onValueChange={() => handleTicketSettingToggle('showTax')}
+                  trackColor={{ false: colors.border, true: colors.textLight + '40' }}
+                  thumbColor={settings.ticketSettings.showTax ? colors.textLight : colors.textLight}
+                />
+              </View>
+            </View>
+          </ScrollView>
         </SafeAreaView>
       </Modal>
 
@@ -679,6 +897,50 @@ const styles = {
   logoActions: {
     flex: 1,
     justifyContent: 'center' as const,
+  },
+  ticketSettingsContent: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  ticketSettingsDescription: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    textAlign: 'center' as const,
+    marginBottom: spacing.xl,
+    lineHeight: 22,
+  },
+  ticketSettingsList: {
+    gap: spacing.sm,
+  },
+  ticketSettingItem: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  ticketSettingLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    flex: 1,
+  },
+  ticketSettingInfo: {
+    marginLeft: spacing.md,
+    flex: 1,
+  },
+  ticketSettingTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '500' as const,
+    color: colors.text,
+    marginBottom: 2,
+  },
+  ticketSettingSubtitle: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
   },
   optionsContainer: {
     flex: 1,

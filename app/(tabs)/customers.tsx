@@ -2,14 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
-import { getCustomers, storeCustomers, getSettings } from '../../utils/storage';
-import { Customer, AppSettings } from '../../types';
+import { getCustomers, storeCustomers, getSettings, getSales } from '../../utils/storage';
+import { Customer, AppSettings, Sale } from '../../types';
+import { formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -28,11 +32,13 @@ export default function CustomersScreen() {
   const loadData = async () => {
     try {
       console.log('Loading customers data...');
-      const [customersData, settingsData] = await Promise.all([
+      const [customersData, salesData, settingsData] = await Promise.all([
         getCustomers(),
+        getSales(),
         getSettings(),
       ]);
       setCustomers(customersData);
+      setSales(salesData);
       setSettings(settingsData);
       console.log(`Loaded ${customersData.length} customers`);
     } catch (error) {
@@ -45,6 +51,70 @@ export default function CustomersScreen() {
     customer.phone?.includes(searchQuery) ||
     customer.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const formatCurrency = (amount: number): string => {
+    const currency = settings?.currency || 'XOF';
+    const currencySymbols = { XOF: 'F CFA', USD: '$', EUR: '€' };
+    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
+  };
+
+  // Calculate summary statistics
+  const calculateSummary = () => {
+    let totalGave = 0; // J'ai donné (debts)
+    let totalTook = 0; // J'ai pris (payments)
+
+    customers.forEach(customer => {
+      const customerSales = sales.filter(sale => sale.customerId === customer.id);
+      
+      customerSales.forEach(sale => {
+        if (sale.paymentStatus === 'credit') {
+          totalGave += sale.total; // Debt
+        } else if (sale.paymentStatus === 'paid') {
+          totalTook += sale.total; // Payment
+        }
+      });
+    });
+
+    return { totalGave, totalTook };
+  };
+
+  const getCustomerLastOperation = (customer: Customer) => {
+    const customerSales = sales.filter(sale => sale.customerId === customer.id);
+    if (customerSales.length === 0) return null;
+    
+    const lastSale = customerSales.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )[0];
+    
+    return new Date(lastSale.createdAt);
+  };
+
+  const getCustomerBalance = (customer: Customer) => {
+    const customerSales = sales.filter(sale => sale.customerId === customer.id);
+    let balance = 0;
+    
+    customerSales.forEach(sale => {
+      if (sale.paymentStatus === 'credit') {
+        balance += sale.total; // Debt increases balance
+      } else if (sale.paymentStatus === 'paid') {
+        balance -= sale.total; // Payment decreases balance
+      }
+    });
+    
+    return balance;
+  };
+
+  const getBalanceColor = (balance: number): string => {
+    if (balance > 0) return colors.danger; // Red for debt
+    if (balance < 0) return colors.success; // Green for credit
+    return colors.text;
+  };
+
+  const getBalanceLabel = (balance: number): string => {
+    if (balance > 0) return "J'ai donné";
+    if (balance < 0) return "J'ai pris";
+    return "J'ai pris";
+  };
 
   const resetForm = () => {
     setFormData({
@@ -129,120 +199,181 @@ export default function CustomersScreen() {
     }
   };
 
-  const formatCurrency = (amount: number | undefined | null): string => {
-    if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('formatCurrency called with invalid amount:', amount);
-      amount = 0;
-    }
-    
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
+  const { totalGave, totalTook } = calculateSummary();
 
   return (
     <SafeAreaView style={commonStyles.container}>
       <View style={commonStyles.content}>
         {/* Header */}
         <View style={[commonStyles.section, commonStyles.header]}>
+          <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
+            <Icon name="close" size={24} color={colors.text} />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
-            <Text style={commonStyles.title}>Gestion des Clients</Text>
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              {filteredCustomers.length} client(s)
+            <Text style={[commonStyles.title, { color: colors.primary, textAlign: 'center' }]}>
+              CLIENTS
             </Text>
           </View>
-          <TouchableOpacity
-            style={[buttonStyles.primary, isSmallScreen ? buttonStyles.small : {}]}
-            onPress={openAddModal}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-              <Icon name="person-add" size={20} color={colors.secondary} />
-              <Text style={{ color: colors.secondary, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
-                {isSmallScreen ? 'Ajouter' : 'Ajouter client'}
-              </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {/* Summary Section */}
+        <View style={[commonStyles.section, { backgroundColor: colors.background, padding: spacing.lg }]}>
+          <Text style={[commonStyles.text, { 
+            color: colors.primary, 
+            fontSize: fontSizes.md, 
+            marginBottom: spacing.md 
+          }]}>
+            J'ai donné
+          </Text>
+          <Text style={[commonStyles.title, { 
+            color: colors.danger, 
+            fontSize: fontSizes.xl,
+            fontWeight: 'bold',
+            marginBottom: spacing.sm
+          }]}>
+            {formatCurrency(totalGave)}
+          </Text>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+            J'ai pris: {formatCurrency(totalTook)}
+          </Text>
+        </View>
+
+        {/* Clients Section */}
+        <View style={[commonStyles.section, { flex: 1 }]}>
+          <Text style={[commonStyles.text, { 
+            color: colors.primary, 
+            fontSize: fontSizes.md, 
+            marginBottom: spacing.md,
+            paddingHorizontal: spacing.lg 
+          }]}>
+            Clients ({filteredCustomers.length})
+          </Text>
+
+          {/* Search and Filter */}
+          <View style={[commonStyles.row, { paddingHorizontal: spacing.lg, marginBottom: spacing.md, gap: spacing.sm }]}>
+            <View style={[commonStyles.input, { flex: 1, flexDirection: 'row', alignItems: 'center' }]}>
+              <Icon name="search" size={20} color={colors.textLight} style={{ marginRight: spacing.sm }} />
+              <TextInput
+                style={{ flex: 1, fontSize: fontSizes.md }}
+                placeholder="Recherche"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
             </View>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity style={{
+              backgroundColor: colors.primary + '20',
+              borderRadius: 10,
+              padding: spacing.sm,
+              minWidth: 44,
+              alignItems: 'center',
+            }}>
+              <Icon name="options" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
 
-        {/* Search */}
-        <View style={commonStyles.section}>
-          <TextInput
-            style={commonStyles.input}
-            placeholder="Rechercher par nom, téléphone ou email..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
-        {/* Customers List */}
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}>
-          {filteredCustomers.map(customer => (
-            <View key={customer.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
-              {/* Customer Header */}
-              <View style={[commonStyles.row, { marginBottom: spacing.xs, alignItems: 'flex-start' }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
-                    {customer.name}
-                  </Text>
-                  <View style={{ gap: 2 }}>
-                    {customer.phone && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                        📞 {customer.phone}
-                      </Text>
-                    )}
-                    {customer.email && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                        ✉️ {customer.email}
-                      </Text>
-                    )}
-                    {customer.address && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                        📍 {customer.address}
-                      </Text>
-                    )}
-                  </View>
-                </View>
+          {/* Customers List */}
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 100 }}>
+            {filteredCustomers.map(customer => {
+              const lastOperation = getCustomerLastOperation(customer);
+              const balance = getCustomerBalance(customer);
+              const initial = customer.name.charAt(0).toUpperCase();
+              
+              return (
                 <TouchableOpacity
-                  style={[buttonStyles.outline, buttonStyles.small]}
-                  onPress={() => openEditModal(customer)}
+                  key={customer.id}
+                  style={[commonStyles.card, { marginBottom: spacing.sm }]}
+                  onPress={() => router.push(`/customer-details?customerId=${customer.id}`)}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                    <Icon name="create" size={14} color={colors.primary} />
-                    <Text style={{ color: colors.primary, fontSize: fontSizes.xs }}>Modifier</Text>
+                  <View style={[commonStyles.row, { alignItems: 'center' }]}>
+                    {/* Customer Initial */}
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: colors.primary + '20',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: spacing.md,
+                    }}>
+                      <Text style={[commonStyles.text, { 
+                        color: colors.primary, 
+                        fontWeight: 'bold',
+                        fontSize: fontSizes.lg
+                      }]}>
+                        {initial}
+                      </Text>
+                    </View>
+
+                    {/* Customer Info */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                        {customer.name}
+                      </Text>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                        {lastOperation 
+                          ? formatDistanceToNow(lastOperation, { addSuffix: true, locale: fr })
+                          : 'Aucune opération'
+                        }
+                      </Text>
+                    </View>
+
+                    {/* Balance */}
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[commonStyles.text, { 
+                        color: getBalanceColor(balance),
+                        fontSize: fontSizes.md,
+                        fontWeight: 'bold',
+                        marginBottom: spacing.xs
+                      }]}>
+                        {formatCurrency(Math.abs(balance))}
+                      </Text>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                        {getBalanceLabel(balance)}
+                      </Text>
+                    </View>
                   </View>
                 </TouchableOpacity>
-              </View>
+              );
+            })}
 
-              {/* Customer Stats */}
-              <View style={[commonStyles.row, { paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                    💰 Total achats: {formatCurrency(customer.totalPurchases)}
-                  </Text>
-                  {customer.creditBalance > 0 && (
-                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.danger }]}>
-                      📋 Crédit: {formatCurrency(customer.creditBalance)}
-                    </Text>
-                  )}
-                </View>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                  Client depuis {new Date(customer.createdAt).toLocaleDateString('fr-FR')}
+            {filteredCustomers.length === 0 && (
+              <View style={{ alignItems: 'center', marginTop: 40 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
+                  Aucun client trouvé
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
+                  {searchQuery ? 'Essayez un autre terme de recherche' : 'Commencez par ajouter votre premier client'}
                 </Text>
               </View>
-            </View>
-          ))}
+            )}
+          </ScrollView>
+        </View>
 
-          {filteredCustomers.length === 0 && (
-            <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Text style={[commonStyles.textLight, { fontSize: fontSizes.lg, marginBottom: spacing.xs }]}>
-                Aucun client trouvé
-              </Text>
-              <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
-                {searchQuery ? 'Essayez un autre terme de recherche' : 'Commencez par ajouter votre premier client'}
-              </Text>
-            </View>
-          )}
-        </ScrollView>
+        {/* Floating Add Button */}
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            bottom: 20,
+            right: 20,
+            backgroundColor: colors.primary,
+            borderRadius: 30,
+            width: 60,
+            height: 60,
+            alignItems: 'center',
+            justifyContent: 'center',
+            elevation: 5,
+            shadowColor: colors.text,
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+          }}
+          onPress={openAddModal}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Icon name="person-add" size={24} color={colors.secondary} />
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Add/Edit Customer Modal */}

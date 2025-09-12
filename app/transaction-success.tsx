@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 
 export default function TransactionSuccessScreen() {
   const params = useLocalSearchParams();
@@ -116,9 +117,9 @@ export default function TransactionSuccessScreen() {
 
   const getPaymentMethodLabel = (method: string): string => {
     const labels = {
-      cash: 'Espèces',
+      cash: 'Especes',
       mobile_money: 'Mobile Money',
-      credit: 'Crédit',
+      credit: 'Credit',
     };
     return labels[method] || method;
   };
@@ -131,35 +132,69 @@ export default function TransactionSuccessScreen() {
 
   const handleShare = async () => {
     try {
-      // Create a simple text receipt to share
-      const receiptText = `
-🧾 REÇU DE TRANSACTION
+      console.log('Starting receipt sharing process...');
+      
+      // Create a clean receipt text without special characters that could cause encoding issues
+      const receiptText = [
+        '=== RECU DE TRANSACTION ===',
+        '',
+        settings?.companyName || 'ALKD-POS',
+        format(new Date(date), 'dd/MM/yyyy a HH:mm'),
+        '',
+        `Client: ${customer?.name || 'N/A'}`,
+        `${type === 'gave' ? "J'ai donne" : "J'ai pris"}: ${formatCurrency(parseFloat(amount))}`,
+        `Mode: ${getPaymentMethodLabel(paymentMethod)}`,
+        note ? `Note: ${note}` : '',
+        '',
+        `Nouveau solde: ${formatCurrency(Math.abs(newBalance))}`,
+        newBalance > 0 ? '(Dette)' : newBalance < 0 ? '(Credit)' : '(Equilibre)',
+        '',
+        'Merci pour votre confiance!',
+        '=========================='
+      ].filter(line => line !== '').join('\n');
 
-${settings?.companyName || 'ALKD-POS'}
-${format(new Date(date), 'dd/MM/yyyy à HH:mm', { locale: fr })}
+      console.log('Receipt text prepared:', receiptText);
 
-Client: ${customer?.name}
-${type === 'gave' ? "J'ai donné" : "J'ai pris"}: ${formatCurrency(parseFloat(amount))}
-Mode: ${getPaymentMethodLabel(paymentMethod)}
-${note ? `Note: ${note}` : ''}
+      // Try to create a temporary file for sharing
+      const fileName = `recu_${customer?.name?.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-Nouveau solde: ${formatCurrency(Math.abs(newBalance))}
-${newBalance > 0 ? '(Dette)' : newBalance < 0 ? '(Crédit)' : '(Équilibré)'}
+      console.log('Creating file at:', fileUri);
 
-Merci pour votre confiance!
-      `.trim();
+      // Write the file with UTF-8 encoding
+      await FileSystem.writeAsStringAsync(fileUri, receiptText, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
 
+      console.log('File created successfully');
+
+      // Check if sharing is available
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync('data:text/plain;base64,' + btoa(receiptText), {
+        console.log('Sharing is available, attempting to share...');
+        
+        await Sharing.shareAsync(fileUri, {
           mimeType: 'text/plain',
-          dialogTitle: 'Partager le reçu',
+          dialogTitle: 'Partager le recu',
+          UTI: 'public.plain-text',
         });
+
+        console.log('Sharing completed successfully');
       } else {
+        console.log('Sharing not available on this device');
         Alert.alert('Information', 'Le partage n\'est pas disponible sur cet appareil');
       }
+
+      // Clean up the temporary file
+      try {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+        console.log('Temporary file cleaned up');
+      } catch (cleanupError) {
+        console.log('Could not clean up temporary file:', cleanupError);
+      }
+
     } catch (error) {
       console.error('Error sharing receipt:', error);
-      Alert.alert('Erreur', 'Erreur lors du partage du reçu');
+      Alert.alert('Erreur', `Erreur lors du partage du recu: ${error.message || 'Erreur inconnue'}`);
     }
   };
 
@@ -205,7 +240,7 @@ Merci pour votre confiance!
             fontWeight: 'bold',
             marginBottom: spacing.lg
           }]}>
-            Transaction réussie!
+            Transaction reussie!
           </Text>
         </View>
 
@@ -234,7 +269,7 @@ Merci pour votre confiance!
                 color: colors.textLight,
                 marginBottom: spacing.xs
               }]}>
-                {settings?.companyName || 'POISSONNERIE ALKOADO &'}
+                {settings?.companyName || 'POISSONNERIE ALKOADO ET'}
               </Text>
               <Text style={[commonStyles.text, { 
                 fontSize: fontSizes.lg,
@@ -245,7 +280,7 @@ Merci pour votre confiance!
                 FILS
               </Text>
               <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                {format(transactionDate, "dd/MM/yyyy à HH:mm", { locale: fr })}
+                {format(transactionDate, "dd/MM/yyyy a HH:mm")}
               </Text>
             </View>
 
@@ -257,7 +292,7 @@ Merci pour votre confiance!
                 marginBottom: spacing.sm,
                 color: colors.text
               }]}>
-                {type === 'gave' ? 'Nouveau montant donné' : 'Nouveau montant payé'}
+                {type === 'gave' ? 'Nouveau montant donne' : 'Nouveau montant paye'}
               </Text>
               <Text style={[commonStyles.title, { 
                 color: colors.success,
@@ -326,8 +361,8 @@ Merci pour votre confiance!
               }]}>
                 {formatCurrency(Math.abs(newBalance))}
                 {newBalance > 0 && ' (Dette)'}
-                {newBalance < 0 && ' (Crédit)'}
-                {newBalance === 0 && ' (Équilibré)'}
+                {newBalance < 0 && ' (Credit)'}
+                {newBalance === 0 && ' (Equilibre)'}
               </Text>
             </View>
           </View>

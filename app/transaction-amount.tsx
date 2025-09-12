@@ -83,34 +83,29 @@ export default function TransactionAmountScreen() {
   };
 
   const getButtonStyle = (button: string) => {
-    if (button === '0' || button === 'clear' || button === 'backspace') {
-      return [commonStyles.card, {
-        backgroundColor: colors.secondary, // White background
-        borderColor: colors.border,
-        borderWidth: 1,
-        padding: spacing.lg,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 60,
-      }];
-    }
-    return [commonStyles.card, {
-      backgroundColor: colors.secondary, // White background
+    return {
+      backgroundColor: '#FFFFFF', // White background for all buttons
       borderColor: colors.border,
       borderWidth: 1,
+      borderRadius: 12,
       padding: spacing.lg,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
       minHeight: 60,
-    }];
+      shadowColor: colors.text,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    };
   };
 
   const getButtonTextStyle = (button: string) => {
-    return [commonStyles.text, { 
+    return {
       fontSize: fontSizes.lg, 
-      fontWeight: 'bold',
-      color: colors.text // Black text for better readability
-    }];
+      fontWeight: 'bold' as const,
+      color: '#000000' // Black text for better readability
+    };
   };
 
   if (!customer) {
@@ -223,7 +218,7 @@ export default function TransactionAmountScreen() {
                   {button === 'clear' ? (
                     <Text style={getButtonTextStyle(button)}>C</Text>
                   ) : button === 'backspace' ? (
-                    <Icon name="backspace" size={24} color={colors.text} />
+                    <Icon name="backspace" size={24} color="#000000" />
                   ) : (
                     <Text style={getButtonTextStyle(button)}>{button}</Text>
                   )}

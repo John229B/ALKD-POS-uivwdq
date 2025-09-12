@@ -5,11 +5,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import Icon from '../../components/Icon';
+import CustomerFilterModal from '../../components/CustomerFilterModal';
 import { getCustomers, storeCustomers, getSettings, getSales } from '../../utils/storage';
 import { Customer, AppSettings, Sale } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
+
+interface FilterOptions {
+  filterBy: 'all' | 'gave' | 'took' | 'balanced';
+  sortBy: 'recent' | 'old' | 'amount_asc' | 'amount_desc' | 'alphabetical';
+}
 
 export default function CustomersScreen() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -17,7 +23,12 @@ export default function CustomersScreen() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [filters, setFilters] = useState<FilterOptions>({
+    filterBy: 'all',
+    sortBy: 'recent'
+  });
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -54,11 +65,101 @@ export default function CustomersScreen() {
     }, [loadData])
   );
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    customer.phone?.includes(searchQuery) ||
-    customer.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const getCustomerBalance = (customer: Customer) => {
+    const customerSales = sales.filter(sale => sale.customerId === customer.id);
+    let balance = 0;
+    
+    customerSales.forEach(sale => {
+      if (sale.paymentStatus === 'credit') {
+        balance += sale.total; // Debt increases balance (J'ai donné)
+      } else if (sale.paymentStatus === 'paid') {
+        balance -= sale.total; // Payment decreases balance (J'ai pris)
+      }
+    });
+    
+    console.log(`Customer ${customer.name} balance:`, { 
+      balance, 
+      salesCount: customerSales.length,
+      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total }))
+    });
+    
+    return balance;
+  };
+
+  const getCustomerLastOperation = (customer: Customer) => {
+    const customerSales = sales.filter(sale => sale.customerId === customer.id);
+    if (customerSales.length === 0) return null;
+    
+    const lastSale = customerSales.sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )[0];
+    
+    return new Date(lastSale.createdAt);
+  };
+
+  // Filter and sort customers based on current filters
+  const getFilteredAndSortedCustomers = () => {
+    let filtered = customers.filter(customer =>
+      customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      customer.phone?.includes(searchQuery) ||
+      customer.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    // Apply filters
+    if (filters.filterBy !== 'all') {
+      filtered = filtered.filter(customer => {
+        const balance = getCustomerBalance(customer);
+        
+        switch (filters.filterBy) {
+          case 'gave':
+            return balance > 0; // Customer owes money (debt)
+          case 'took':
+            return balance < 0; // Customer has credit
+          case 'balanced':
+            return balance === 0; // Customer is balanced
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case 'recent':
+          const lastOpA = getCustomerLastOperation(a);
+          const lastOpB = getCustomerLastOperation(b);
+          if (!lastOpA && !lastOpB) return 0;
+          if (!lastOpA) return 1;
+          if (!lastOpB) return -1;
+          return lastOpB.getTime() - lastOpA.getTime();
+        
+        case 'old':
+          const lastOpA2 = getCustomerLastOperation(a);
+          const lastOpB2 = getCustomerLastOperation(b);
+          if (!lastOpA2 && !lastOpB2) return 0;
+          if (!lastOpA2) return 1;
+          if (!lastOpB2) return -1;
+          return lastOpA2.getTime() - lastOpB2.getTime();
+        
+        case 'amount_asc':
+          return Math.abs(getCustomerBalance(a)) - Math.abs(getCustomerBalance(b));
+        
+        case 'amount_desc':
+          return Math.abs(getCustomerBalance(b)) - Math.abs(getCustomerBalance(a));
+        
+        case 'alphabetical':
+          return a.name.localeCompare(b.name);
+        
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredCustomers = getFilteredAndSortedCustomers();
 
   const formatCurrency = (amount: number): string => {
     const currency = settings?.currency || 'XOF';
@@ -94,38 +195,6 @@ export default function CustomersScreen() {
 
     console.log('Summary calculation:', { totalGave, totalTook, customersCount: customers.length, salesCount: sales.length });
     return { totalGave, totalTook };
-  };
-
-  const getCustomerLastOperation = (customer: Customer) => {
-    const customerSales = sales.filter(sale => sale.customerId === customer.id);
-    if (customerSales.length === 0) return null;
-    
-    const lastSale = customerSales.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )[0];
-    
-    return new Date(lastSale.createdAt);
-  };
-
-  const getCustomerBalance = (customer: Customer) => {
-    const customerSales = sales.filter(sale => sale.customerId === customer.id);
-    let balance = 0;
-    
-    customerSales.forEach(sale => {
-      if (sale.paymentStatus === 'credit') {
-        balance += sale.total; // Debt increases balance (J'ai donné)
-      } else if (sale.paymentStatus === 'paid') {
-        balance -= sale.total; // Payment decreases balance (J'ai pris)
-      }
-    });
-    
-    console.log(`Customer ${customer.name} balance:`, { 
-      balance, 
-      salesCount: customerSales.length,
-      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total }))
-    });
-    
-    return balance;
   };
 
   const getBalanceColor = (balance: number): string => {
@@ -266,6 +335,11 @@ export default function CustomersScreen() {
     }
   };
 
+  const handleApplyFilters = (newFilters: FilterOptions) => {
+    console.log('Applying new filters:', newFilters);
+    setFilters(newFilters);
+  };
+
   const { totalGave, totalTook } = calculateSummary();
   const generalBalance = totalGave - totalTook; // Positive = overall debt, Negative = overall credit, Zero = balanced
   
@@ -343,13 +417,16 @@ export default function CustomersScreen() {
                 onChangeText={setSearchQuery}
               />
             </View>
-            <TouchableOpacity style={{
-              backgroundColor: colors.primary + '20',
-              borderRadius: 10,
-              padding: spacing.sm,
-              minWidth: 44,
-              alignItems: 'center',
-            }}>
+            <TouchableOpacity 
+              style={{
+                backgroundColor: colors.primary + '20',
+                borderRadius: 10,
+                padding: spacing.sm,
+                minWidth: 44,
+                alignItems: 'center',
+              }}
+              onPress={() => setShowFilterModal(true)}
+            >
               <Icon name="options" size={20} color={colors.primary} />
             </TouchableOpacity>
           </View>
@@ -571,6 +648,14 @@ export default function CustomersScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Filter Modal */}
+      <CustomerFilterModal
+        visible={showFilterModal}
+        onClose={() => setShowFilterModal(false)}
+        onApply={handleApplyFilters}
+        currentFilters={filters}
+      />
     </SafeAreaView>
   );
 }

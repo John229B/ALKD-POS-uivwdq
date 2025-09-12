@@ -13,14 +13,42 @@ interface MenuItem {
   icon: string;
   route: string;
   color?: string;
+  badge?: string;
 }
 
 const menuItems: MenuItem[] = [
   {
+    id: 'employees',
+    title: 'Gestion des employés',
+    description: 'Employés, rôles et permissions',
+    icon: 'people',
+    route: '/employees',
+    color: colors.primary,
+    badge: 'Nouveau',
+  },
+  {
+    id: 'printers',
+    title: 'Imprimantes Bluetooth',
+    description: 'Configuration des imprimantes thermiques',
+    icon: 'print',
+    route: '/printers',
+    color: colors.info,
+    badge: 'Nouveau',
+  },
+  {
+    id: 'tickets',
+    title: 'Gestion des tickets',
+    description: 'Historique et réimpression des tickets',
+    icon: 'receipt',
+    route: '/tickets',
+    color: colors.success,
+    badge: 'Nouveau',
+  },
+  {
     id: 'customers',
     title: 'Clients',
     description: 'Gestion de la clientèle',
-    icon: 'people',
+    icon: 'people-outline',
     route: '/(tabs)/customers',
     color: colors.info,
   },
@@ -47,6 +75,7 @@ const menuItems: MenuItem[] = [
     icon: 'settings',
     route: '/settings',
     color: colors.textLight,
+    badge: 'Mis à jour',
   },
   {
     id: 'licenses',
@@ -55,6 +84,37 @@ const menuItems: MenuItem[] = [
     icon: 'key-outline',
     route: '/licenses',
     color: colors.primary,
+  },
+];
+
+const newFeatures = [
+  {
+    id: 'multi-employee',
+    title: 'Gestion multi-employés',
+    description: 'Système complet de gestion des employés avec rôles et permissions personnalisés',
+    icon: 'people-circle',
+    color: colors.primary,
+  },
+  {
+    id: 'bluetooth-printing',
+    title: 'Impression Bluetooth',
+    description: 'Support des imprimantes thermiques Bluetooth pour l\'impression de tickets',
+    icon: 'bluetooth',
+    color: colors.info,
+  },
+  {
+    id: 'offline-sync',
+    title: 'Mode hors ligne',
+    description: 'Fonctionnement complet sans Internet avec synchronisation automatique',
+    icon: 'cloud-offline',
+    color: colors.warning,
+  },
+  {
+    id: 'activity-logging',
+    title: 'Journalisation',
+    description: 'Traçabilité complète de toutes les actions des employés',
+    icon: 'analytics',
+    color: colors.success,
   },
 ];
 
@@ -67,7 +127,13 @@ export default function MoreScreen() {
       console.error('Navigation error:', error);
       // Fallback navigation with proper error handling
       try {
-        if (item.id === 'licenses') {
+        if (item.id === 'employees') {
+          router.push('/employees');
+        } else if (item.id === 'printers') {
+          router.push('/printers');
+        } else if (item.id === 'tickets') {
+          router.push('/tickets');
+        } else if (item.id === 'licenses') {
           router.push('/licenses');
         } else if (item.id === 'reports') {
           router.push('/reports');
@@ -98,6 +164,23 @@ export default function MoreScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* New Features Highlight */}
+        <View style={styles.newFeaturesSection}>
+          <Text style={styles.newFeaturesTitle}>✨ Nouvelles fonctionnalités</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newFeaturesScroll}>
+            {newFeatures.map((feature) => (
+              <View key={feature.id} style={[styles.newFeatureCard, { borderColor: feature.color }]}>
+                <View style={[styles.newFeatureIcon, { backgroundColor: feature.color + '20' }]}>
+                  <Icon name={feature.icon} size={24} color={feature.color} />
+                </View>
+                <Text style={styles.newFeatureTitle}>{feature.title}</Text>
+                <Text style={styles.newFeatureDescription}>{feature.description}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Main Menu */}
         <View style={styles.menuGrid}>
           {menuItems.map((item) => (
             <TouchableOpacity
@@ -112,6 +195,11 @@ export default function MoreScreen() {
                   size={32} 
                   color={item.color || colors.primary} 
                 />
+                {item.badge && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{item.badge}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.menuContent}>
                 <Text style={styles.menuTitle}>{item.title}</Text>
@@ -126,26 +214,42 @@ export default function MoreScreen() {
           ))}
         </View>
 
-        {/* Section pour les fonctionnalités futures */}
-        <View style={styles.futureSection}>
-          <Text style={styles.futureSectionTitle}>Fonctionnalités à venir</Text>
-          <View style={styles.futureItem}>
-            <Icon name="cloud-upload" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Synchronisation cloud</Text>
+        {/* System Status */}
+        <View style={styles.systemStatus}>
+          <Text style={styles.systemStatusTitle}>État du système</Text>
+          
+          <View style={styles.statusItem}>
+            <View style={styles.statusLeft}>
+              <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.statusText}>Mode hors ligne</Text>
+            </View>
+            <Text style={styles.statusValue}>Activé</Text>
           </View>
-          <View style={styles.futureItem}>
-            <Icon name="analytics" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Analyses prédictives avancées</Text>
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusLeft}>
+              <View style={[styles.statusDot, { backgroundColor: colors.info }]} />
+              <Text style={styles.statusText}>Synchronisation</Text>
+            </View>
+            <Text style={styles.statusValue}>Automatique</Text>
           </View>
-          <View style={styles.futureItem}>
-            <Icon name="notifications" size={24} color={colors.textLight} />
-            <Text style={styles.futureItemText}>Notifications push</Text>
+
+          <View style={styles.statusItem}>
+            <View style={styles.statusLeft}>
+              <View style={[styles.statusDot, { backgroundColor: colors.warning }]} />
+              <Text style={styles.statusText}>Données en attente</Text>
+            </View>
+            <Text style={styles.statusValue}>0</Text>
           </View>
         </View>
 
+        {/* App Info */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>ALKD-POS v1.1.0</Text>
           <Text style={styles.footerSubtext}>Système de point de vente professionnel</Text>
+          <Text style={styles.footerFeatures}>
+            ✓ Gestion multi-employés • ✓ Mode hors ligne • ✓ Impression Bluetooth
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -176,6 +280,50 @@ const styles = {
   scrollContent: {
     paddingBottom: spacing.xl,
   },
+  newFeaturesSection: {
+    paddingVertical: spacing.lg,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  newFeaturesTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '600' as const,
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  newFeaturesScroll: {
+    paddingLeft: spacing.lg,
+  },
+  newFeatureCard: {
+    width: 200,
+    backgroundColor: colors.background,
+    borderRadius: 16,
+    padding: spacing.md,
+    marginRight: spacing.md,
+    borderWidth: 2,
+    borderStyle: 'dashed' as const,
+  },
+  newFeatureIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    marginBottom: spacing.sm,
+  },
+  newFeatureTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '600' as const,
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  newFeatureDescription: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    lineHeight: 16,
+  },
   menuGrid: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
@@ -205,6 +353,21 @@ const styles = {
     justifyContent: 'center' as const,
     alignItems: 'center' as const,
     marginRight: spacing.md,
+    position: 'relative' as const,
+  },
+  badge: {
+    position: 'absolute' as const,
+    top: -4,
+    right: -4,
+    backgroundColor: colors.error,
+    borderRadius: 8,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    fontSize: fontSizes.xs,
+    fontWeight: '600' as const,
+    color: colors.background,
   },
   menuContent: {
     flex: 1,
@@ -220,27 +383,42 @@ const styles = {
     color: colors.textLight,
     lineHeight: 18,
   },
-  futureSection: {
+  systemStatus: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xl,
     marginTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  futureSectionTitle: {
+  systemStatusTitle: {
     fontSize: fontSizes.lg,
     fontWeight: '600' as const,
     color: colors.text,
     marginBottom: spacing.md,
   },
-  futureItem: {
+  statusItem: {
     flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
     alignItems: 'center' as const,
     paddingVertical: spacing.sm,
-    gap: spacing.md,
   },
-  futureItemText: {
+  statusLeft: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: spacing.sm,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
     fontSize: fontSizes.md,
+    color: colors.text,
+  },
+  statusValue: {
+    fontSize: fontSizes.md,
+    fontWeight: '600' as const,
     color: colors.textLight,
   },
   footer: {
@@ -259,5 +437,12 @@ const styles = {
     fontSize: fontSizes.xs,
     color: colors.textLight,
     textAlign: 'center' as const,
+    marginBottom: spacing.sm,
+  },
+  footerFeatures: {
+    fontSize: fontSizes.xs,
+    color: colors.success,
+    textAlign: 'center' as const,
+    fontWeight: '500' as const,
   },
 };

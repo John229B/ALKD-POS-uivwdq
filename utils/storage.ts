@@ -1,16 +1,23 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { User, Product, Customer, Sale, AppSettings, DashboardStats, Category } from '../types';
+import { User, Product, Customer, Sale, AppSettings, DashboardStats, Category, Employee, ActivityLog, BluetoothPrinter, Ticket, SyncData } from '../types';
 
 const STORAGE_KEYS = {
   USERS: 'alkd_pos_users',
+  EMPLOYEES: 'alkd_pos_employees',
   PRODUCTS: 'alkd_pos_products',
   CATEGORIES: 'alkd_pos_categories',
   CUSTOMERS: 'alkd_pos_customers',
   SALES: 'alkd_pos_sales',
   SETTINGS: 'alkd_pos_settings',
   CURRENT_USER: 'alkd_pos_current_user',
+  CURRENT_EMPLOYEE: 'alkd_pos_current_employee',
   RECEIPT_COUNTER: 'alkd_pos_receipt_counter',
+  ACTIVITY_LOGS: 'alkd_pos_activity_logs',
+  BLUETOOTH_PRINTERS: 'alkd_pos_bluetooth_printers',
+  TICKETS: 'alkd_pos_tickets',
+  SYNC_QUEUE: 'alkd_pos_sync_queue',
+  OFFLINE_DATA: 'alkd_pos_offline_data',
 };
 
 // Generic storage functions
@@ -82,6 +89,193 @@ export const clearCurrentUser = async (): Promise<void> => {
   await removeData(STORAGE_KEYS.CURRENT_USER);
 };
 
+// Employee management
+export const storeEmployees = async (employees: Employee[]): Promise<void> => {
+  await storeData(STORAGE_KEYS.EMPLOYEES, employees);
+  await logActivity('system', 'employees', 'Employees data updated', { count: employees.length });
+};
+
+export const getEmployees = async (): Promise<Employee[]> => {
+  const employees = await getData<Employee[]>(STORAGE_KEYS.EMPLOYEES);
+  return employees || [];
+};
+
+export const storeCurrentEmployee = async (employee: Employee): Promise<void> => {
+  await storeData(STORAGE_KEYS.CURRENT_EMPLOYEE, employee);
+};
+
+export const getCurrentEmployee = async (): Promise<Employee | null> => {
+  return await getData<Employee>(STORAGE_KEYS.CURRENT_EMPLOYEE);
+};
+
+export const clearCurrentEmployee = async (): Promise<void> => {
+  await removeData(STORAGE_KEYS.CURRENT_EMPLOYEE);
+};
+
+export const deleteEmployee = async (employeeId: string): Promise<void> => {
+  try {
+    console.log('Deleting employee:', employeeId);
+    const employees = await getEmployees();
+    const updatedEmployees = employees.filter(e => e.id !== employeeId);
+    await storeEmployees(updatedEmployees);
+    await logActivity('admin', 'employees', 'Employee deleted', { employeeId });
+    console.log('Employee deleted successfully');
+  } catch (error) {
+    console.error('Error deleting employee:', error);
+    throw error;
+  }
+};
+
+// Activity logging
+export const logActivity = async (employeeId: string, module: string, action: string, details?: any): Promise<void> => {
+  try {
+    const logs = await getActivityLogs();
+    const newLog: ActivityLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      employeeId,
+      action,
+      module,
+      details: typeof details === 'string' ? details : JSON.stringify(details || {}),
+      metadata: details,
+      timestamp: new Date(),
+    };
+    
+    logs.unshift(newLog); // Add to beginning
+    
+    // Keep only last 1000 logs to prevent storage bloat
+    if (logs.length > 1000) {
+      logs.splice(1000);
+    }
+    
+    await storeData(STORAGE_KEYS.ACTIVITY_LOGS, logs);
+    console.log('Activity logged:', action, 'by', employeeId);
+  } catch (error) {
+    console.error('Error logging activity:', error);
+    // Don't throw error to prevent breaking main functionality
+  }
+};
+
+export const getActivityLogs = async (): Promise<ActivityLog[]> => {
+  const logs = await getData<ActivityLog[]>(STORAGE_KEYS.ACTIVITY_LOGS);
+  return logs || [];
+};
+
+// Bluetooth printer management
+export const storeBluetoothPrinters = async (printers: BluetoothPrinter[]): Promise<void> => {
+  await storeData(STORAGE_KEYS.BLUETOOTH_PRINTERS, printers);
+  await logActivity('system', 'printers', 'Printers data updated', { count: printers.length });
+};
+
+export const getBluetoothPrinters = async (): Promise<BluetoothPrinter[]> => {
+  const printers = await getData<BluetoothPrinter[]>(STORAGE_KEYS.BLUETOOTH_PRINTERS);
+  return printers || [];
+};
+
+export const deleteBluetoothPrinter = async (printerId: string): Promise<void> => {
+  try {
+    console.log('Deleting printer:', printerId);
+    const printers = await getBluetoothPrinters();
+    const updatedPrinters = printers.filter(p => p.id !== printerId);
+    await storeBluetoothPrinters(updatedPrinters);
+    await logActivity('admin', 'printers', 'Printer deleted', { printerId });
+    console.log('Printer deleted successfully');
+  } catch (error) {
+    console.error('Error deleting printer:', error);
+    throw error;
+  }
+};
+
+export const setDefaultPrinter = async (printerId: string): Promise<void> => {
+  try {
+    const printers = await getBluetoothPrinters();
+    const updatedPrinters = printers.map(p => ({
+      ...p,
+      isDefault: p.id === printerId
+    }));
+    await storeBluetoothPrinters(updatedPrinters);
+    await logActivity('admin', 'printers', 'Default printer set', { printerId });
+  } catch (error) {
+    console.error('Error setting default printer:', error);
+    throw error;
+  }
+};
+
+// Ticket management
+export const storeTickets = async (tickets: Ticket[]): Promise<void> => {
+  await storeData(STORAGE_KEYS.TICKETS, tickets);
+};
+
+export const getTickets = async (): Promise<Ticket[]> => {
+  const tickets = await getData<Ticket[]>(STORAGE_KEYS.TICKETS);
+  return tickets || [];
+};
+
+export const addTicket = async (ticket: Ticket): Promise<void> => {
+  try {
+    const tickets = await getTickets();
+    tickets.unshift(ticket); // Add to beginning
+    
+    // Keep only last 500 tickets to prevent storage bloat
+    if (tickets.length > 500) {
+      tickets.splice(500);
+    }
+    
+    await storeTickets(tickets);
+    await logActivity(ticket.employeeName, 'tickets', 'Ticket created', { ticketId: ticket.id, receiptNumber: ticket.receiptNumber });
+  } catch (error) {
+    console.error('Error adding ticket:', error);
+    throw error;
+  }
+};
+
+// Sync and offline management
+export const addToSyncQueue = async (data: Omit<SyncData, 'id' | 'timestamp' | 'synced'>): Promise<void> => {
+  try {
+    const queue = await getSyncQueue();
+    const syncItem: SyncData = {
+      ...data,
+      id: `sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      synced: false,
+    };
+    
+    queue.push(syncItem);
+    await storeData(STORAGE_KEYS.SYNC_QUEUE, queue);
+    console.log('Added to sync queue:', syncItem.type);
+  } catch (error) {
+    console.error('Error adding to sync queue:', error);
+  }
+};
+
+export const getSyncQueue = async (): Promise<SyncData[]> => {
+  const queue = await getData<SyncData[]>(STORAGE_KEYS.SYNC_QUEUE);
+  return queue || [];
+};
+
+export const markAsSynced = async (syncId: string): Promise<void> => {
+  try {
+    const queue = await getSyncQueue();
+    const updatedQueue = queue.map(item => 
+      item.id === syncId 
+        ? { ...item, synced: true, syncedAt: new Date() }
+        : item
+    );
+    await storeData(STORAGE_KEYS.SYNC_QUEUE, updatedQueue);
+  } catch (error) {
+    console.error('Error marking as synced:', error);
+  }
+};
+
+export const clearSyncedItems = async (): Promise<void> => {
+  try {
+    const queue = await getSyncQueue();
+    const unsyncedItems = queue.filter(item => !item.synced);
+    await storeData(STORAGE_KEYS.SYNC_QUEUE, unsyncedItems);
+  } catch (error) {
+    console.error('Error clearing synced items:', error);
+  }
+};
+
 // Category management
 export const storeCategories = async (categories: Category[]): Promise<void> => {
   await storeData(STORAGE_KEYS.CATEGORIES, categories);
@@ -109,6 +303,7 @@ export const deleteProduct = async (productId: string): Promise<void> => {
     const products = await getProducts();
     const updatedProducts = products.filter(p => p.id !== productId);
     await storeProducts(updatedProducts);
+    await logActivity('admin', 'products', 'Product deleted', { productId });
     console.log('Product deleted successfully');
   } catch (error) {
     console.error('Error deleting product:', error);
@@ -149,6 +344,7 @@ export const deleteCustomer = async (customerId: string): Promise<void> => {
       storeSales(updatedSales),
     ]);
     
+    await logActivity('admin', 'customers', 'Customer deleted', { customerId });
     console.log('Customer and associated sales deleted successfully');
   } catch (error) {
     console.error('Error deleting customer:', error);
@@ -169,6 +365,7 @@ export const getSales = async (): Promise<Sale[]> => {
 // Settings management
 export const storeSettings = async (settings: AppSettings): Promise<void> => {
   await storeData(STORAGE_KEYS.SETTINGS, settings);
+  await logActivity('admin', 'settings', 'Settings updated', settings);
 };
 
 export const getSettings = async (): Promise<AppSettings> => {
@@ -182,6 +379,10 @@ export const getSettings = async (): Promise<AppSettings> => {
     language: 'fr',
     taxRate: 0,
     receiptFooter: 'Merci pour votre achat!',
+    customThankYouMessage: 'Merci pour votre confiance !',
+    offlineMode: true,
+    autoSync: true,
+    syncInterval: 15,
   };
 };
 
@@ -238,6 +439,20 @@ export const formatQuantityWithUnit = (quantity: number, unit: string): string =
   } else {
     // For fractions, show up to 3 decimal places but remove trailing zeros
     return `${parseFloat(quantity.toFixed(3))} ${unit}`;
+  }
+};
+
+// Network status check
+export const isOnline = async (): Promise<boolean> => {
+  try {
+    // Simple connectivity check - in a real app you might want to ping your server
+    const response = await fetch('https://www.google.com/favicon.ico', {
+      method: 'HEAD',
+      mode: 'no-cors',
+    });
+    return true;
+  } catch {
+    return false;
   }
 };
 

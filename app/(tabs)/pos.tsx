@@ -942,6 +942,13 @@ export default function POSScreen() {
       console.log('POS: Total:', total);
       console.log('POS: Advance used:', advanceUsed);
       console.log('POS: Effective paid amount:', effectivePaidAmount);
+      
+      if (selectedCustomer && paymentMethod === 'advance') {
+        const currentBalance = getCustomerBalance(selectedCustomer);
+        console.log('POS: Customer current balance before transaction:', currentBalance);
+        console.log('POS: Customer advance available:', customerAdvanceBalance);
+        console.log('POS: Expected balance after transaction:', currentBalance + advanceUsed);
+      }
 
       // Generate receipt number
       const receiptNumber = await getNextReceiptNumber();
@@ -995,7 +1002,8 @@ export default function POSScreen() {
       const salesToSave = [sale];
       
       if (paymentMethod === 'advance' && advanceUsed > 0) {
-        // Create a separate "J'ai pris" transaction to consume the advance
+        // CORRECTED: Create a separate "J'ai donné" transaction to consume the advance
+        // This creates a positive debt that cancels out the negative advance balance
         const advanceConsumptionSale: Sale = {
           id: uuid.v4() as string,
           customerId: selectedCustomer!.id,
@@ -1009,7 +1017,7 @@ export default function POSScreen() {
           paymentStatus: 'paid',
           amountPaid: advanceUsed,
           change: 0,
-          notes: `J'ai pris - Utilisation d'avance pour vente ${receiptNumber}`,
+          notes: `J'ai donné - Utilisation d'avance pour vente ${receiptNumber}`,
           cashierId: user.id,
           cashier: user,
           createdAt: new Date(),
@@ -1017,7 +1025,7 @@ export default function POSScreen() {
         };
         
         salesToSave.push(advanceConsumptionSale);
-        console.log('POS: Created advance consumption transaction:', advanceUsed);
+        console.log('POS: Created advance consumption transaction (J\'ai donné):', advanceUsed);
       }
 
       // Save sale(s) - including advance consumption if applicable

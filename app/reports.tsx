@@ -22,7 +22,7 @@ import * as Sharing from 'expo-sharing';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
 import Icon from '../components/Icon';
 import { getSales, getProducts, getCustomers, getSettings, getCategories, getEmployees } from '../utils/storage';
-import { useCustomersSync } from '../hooks/useCustomersSync';
+import { useCustomersSync, useDashboardSync } from '../hooks/useCustomersSync';
 import { Sale, Product, Customer, AppSettings, Category } from '../types';
 import { AuthUser } from '../types/auth';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -49,6 +49,8 @@ interface ReportData {
   averageOrderValue: number;
   totalDebts: number;
   totalAdvances: number;
+  totalJaiDonne: number; // Total "J'ai donné" from all transactions
+  totalJaiPris: number;  // Total "J'ai pris" from all transactions
   topProducts: {
     product: Product;
     quantity: number;
@@ -106,6 +108,7 @@ const getPaymentMethodLabel = (method: string): string => {
 
 export default function ReportsScreen() {
   const { customers } = useCustomersSync();
+  const { lastUpdate: dashboardLastUpdate } = useDashboardSync();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -120,7 +123,7 @@ export default function ReportsScreen() {
   
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: 'month',
-    paymentMethods: ['cash', 'mobile_money', 'credit'],
+    paymentMethods: ['cash', 'mobile_money', 'credit', 'advance'],
     creditStatus: ['paid', 'credit', 'partial'],
     debtType: 'all',
   });
@@ -155,7 +158,7 @@ export default function ReportsScreen() {
       setSettings(settingsData);
       setCategories(categoriesData || []);
       setEmployees(employeesData || []);
-      console.log(`Reports data loaded successfully - ${customers.length} customers (from sync)`);
+      console.log(`Reports data loaded successfully - ${customers.length} customers (from sync), ${salesData?.length || 0} sales`);
     } catch (error) {
       console.error('Error loading reports data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données des rapports');
@@ -179,6 +182,21 @@ export default function ReportsScreen() {
       useNativeDriver: true,
     }).start();
   }, [loadData]);
+
+  // Real-time updates when dashboard data changes
+  useEffect(() => {
+    console.log('Reports: Dashboard data updated, refreshing reports...');
+    loadData();
+  }, [dashboardLastUpdate, loadData]);
+
+  // Real-time updates when customers data changes
+  useEffect(() => {
+    console.log('Reports: Customers data updated, refreshing reports...');
+    if (customers.length > 0) {
+      // Trigger a refresh to ensure data consistency
+      loadData();
+    }
+  }, [customers, loadData]);
 
   const filteredSales = useMemo(() => {
     if (!sales.length) return [];
@@ -209,6 +227,19 @@ export default function ReportsScreen() {
           return product?.categoryId === filters.categoryId;
         });
         if (!hasCategory) return false;
+      }
+
+      // Filter by debt type (J'ai donné/J'ai pris)
+      if (filters.debtType !== 'all') {
+        // Check if this is a manual transaction
+        if (sale.items.length === 0 && sale.notes) {
+          if (filters.debtType === 'gave' && !sale.notes.includes("J'ai donné")) return false;
+          if (filters.debtType === 'took' && !sale.notes.includes("J'ai pris")) return false;
+        } else {
+          // For regular sales, filter based on payment status
+          if (filters.debtType === 'gave' && sale.paymentStatus === 'paid') return false;
+          if (filters.debtType === 'took' && sale.paymentStatus !== 'paid') return false;
+        }
       }
       
       return true;
@@ -262,17 +293,22 @@ export default function ReportsScreen() {
         break;
     }
 
+    console.log(`Filtered sales: ${filtered.length} out of ${sales.length} total sales`);
     return filtered;
   }, [sales, filters, products]);
 
   const reportData = useMemo((): ReportData => {
-    if (!filteredSales.length) {
+    console.log('Calculating report data...');
+    
+    if (!filteredSales.length && !customers.length) {
       return {
         totalRevenue: 0,
         totalSales: 0,
         averageOrderValue: 0,
         totalDebts: 0,
         totalAdvances: 0,
+        totalJaiDonne: 0,
+        totalJaiPris: 0,
         topProducts: [],
         paymentMethodBreakdown: [],
         creditAnalysis: { totalCredit: 0, partiallyPaid: 0, fullyPaid: 0 },
@@ -292,21 +328,67 @@ export default function ReportsScreen() {
 
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
     const totalSales = filteredSales.length;
-    const averageOrderValue = totalRevenue / totalSales;
+    const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
 
-    // Calcul des dettes et avances
+    // Calculate "J'ai donné" and "J'ai pris" totals from ALL sales (not just filtered)
+    // This matches the customer details page logic exactly
+    let totalJaiDonne = 0;
+    let totalJaiPris = 0;
+    
+    // Process all sales to calculate totals (same logic as customer-details.tsx)
+    sales.forEach(sale => {
+      // Check if this is a manual transaction (J'ai pris/donné)
+      if (sale.items.length === 0 && sale.notes) {
+        if (sale.notes.includes("J'ai donné")) {
+          totalJaiDonne += sale.total;
+        } else if (sale.notes.includes("J'ai pris")) {
+          totalJaiPris += sale.total;
+        }
+      } else {
+        // Regular sales transactions
+        if (sale.paymentStatus === 'credit') {
+          totalJaiDonne += sale.total; // Credit sale = "J'ai donné"
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          totalJaiDonne += unpaidAmount; // Unpaid portion = "J'ai donné"
+          
+          const paidAmount = sale.amountPaid || 0;
+          if (paidAmount > 0) {
+            totalJaiPris += paidAmount; // Paid portion = "J'ai pris"
+          }
+        } else if (sale.paymentStatus === 'paid') {
+          totalJaiPris += sale.total; // Fully paid = "J'ai pris"
+          
+          // Check for overpayment
+          const overpayment = (sale.amountPaid || sale.total) - sale.total;
+          if (overpayment > 0) {
+            totalJaiPris += overpayment; // Overpayment = additional "J'ai pris"
+          }
+        }
+      }
+    });
+
+    // Calculate current balances from customers (same as customer page)
     let totalDebts = 0;
     let totalAdvances = 0;
     
     customers.forEach(customer => {
       if (customer.balance < 0) {
-        totalDebts += Math.abs(customer.balance); // J'ai donné
+        totalAdvances += Math.abs(customer.balance); // Customer has credit (J'ai pris)
       } else if (customer.balance > 0) {
-        totalAdvances += customer.balance; // J'ai pris
+        totalDebts += customer.balance; // Customer owes money (J'ai donné)
       }
     });
 
-    // Top products analysis
+    console.log('Report totals calculated:', {
+      totalJaiDonne,
+      totalJaiPris,
+      totalDebts,
+      totalAdvances,
+      netBalance: totalAdvances - totalDebts
+    });
+
+    // Top products analysis (from filtered sales)
     const productStats = new Map();
     filteredSales.forEach(sale => {
       sale.items.forEach(item => {
@@ -328,7 +410,7 @@ export default function ReportsScreen() {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
-    // Payment method breakdown
+    // Payment method breakdown (from filtered sales)
     const paymentStats = new Map();
     filteredSales.forEach(sale => {
       const existing = paymentStats.get(sale.paymentMethod) || { amount: 0, count: 0 };
@@ -344,7 +426,7 @@ export default function ReportsScreen() {
       count: stats.count
     }));
 
-    // Credit analysis
+    // Credit analysis (from filtered sales)
     const creditSales = filteredSales.filter(sale => sale.paymentStatus === 'credit');
     const partialSales = filteredSales.filter(sale => sale.paymentStatus === 'partial');
     const paidSales = filteredSales.filter(sale => sale.paymentStatus === 'paid');
@@ -355,7 +437,7 @@ export default function ReportsScreen() {
       fullyPaid: paidSales.reduce((sum, sale) => sum + sale.total, 0)
     };
 
-    // Daily trends (last 7 days)
+    // Daily trends (last 7 days from filtered sales)
     const dailyTrends = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -373,7 +455,7 @@ export default function ReportsScreen() {
       });
     }
 
-    // Category performance
+    // Category performance (from filtered sales)
     const categoryStats = new Map();
     filteredSales.forEach(sale => {
       sale.items.forEach(item => {
@@ -397,7 +479,7 @@ export default function ReportsScreen() {
       };
     });
 
-    // Employee performance
+    // Employee performance (from filtered sales)
     const employeeStats = new Map();
     filteredSales.forEach(sale => {
       if (sale.employeeId) {
@@ -418,14 +500,14 @@ export default function ReportsScreen() {
       };
     });
 
-    // Debt analysis
+    // Debt analysis (using calculated totals)
     const debtAnalysis = {
-      totalGave: totalDebts,
-      totalTook: totalAdvances,
-      netBalance: totalAdvances - totalDebts
+      totalGave: totalJaiDonne,
+      totalTook: totalJaiPris,
+      netBalance: totalJaiPris - totalJaiDonne
     };
 
-    // Filter breakdown for multi-color chart
+    // Filter breakdown for multi-color chart (from filtered sales)
     const clientStats = new Map();
     const productFilterStats = new Map();
     const employeeFilterStats = new Map();
@@ -491,6 +573,8 @@ export default function ReportsScreen() {
       averageOrderValue,
       totalDebts,
       totalAdvances,
+      totalJaiDonne,
+      totalJaiPris,
       topProducts,
       paymentMethodBreakdown,
       creditAnalysis,
@@ -500,7 +584,7 @@ export default function ReportsScreen() {
       debtAnalysis,
       filterBreakdown
     };
-  }, [filteredSales, products, customers, categories, employees]);
+  }, [filteredSales, products, customers, categories, employees, sales]);
 
   const formatCurrency = useCallback((amount: number) => {
     const currency = settings?.currency || 'XOF';
@@ -570,10 +654,15 @@ Chiffre d'affaires total: ${formatCurrency(reportData.totalRevenue)}
 Nombre de ventes: ${reportData.totalSales}
 Panier moyen: ${formatCurrency(reportData.averageOrderValue)}
 
-=== ANALYSE DETTES ET AVANCES ===
-Total dettes (J'ai donné): ${formatCurrency(reportData.totalDebts)}
-Total avances (J'ai pris): ${formatCurrency(reportData.totalAdvances)}
+=== TOTAUX GÉNÉRAUX ===
+Total "J'ai donné": ${formatCurrency(reportData.totalJaiDonne)}
+Total "J'ai pris": ${formatCurrency(reportData.totalJaiPris)}
 Balance nette: ${formatCurrency(reportData.debtAnalysis.netBalance)}
+
+=== ANALYSE DETTES ET AVANCES ===
+Dettes actuelles (clients doivent): ${formatCurrency(reportData.totalDebts)}
+Avances actuelles (clients ont payé d'avance): ${formatCurrency(reportData.totalAdvances)}
+Balance clients: ${formatCurrency(reportData.totalAdvances - reportData.totalDebts)}
 
 === TOP PRODUITS ===
 ${reportData.topProducts.slice(0, 10).map((item, index) => 
@@ -617,9 +706,9 @@ ${reportData.dailyTrends.map(item =>
           'Le rapport a été généré mais ne peut pas être sauvegardé sur cet appareil. Voici un résumé:\n\n' +
           `CA total: ${formatCurrency(reportData.totalRevenue)}\n` +
           `Ventes: ${reportData.totalSales}\n` +
-          `Panier moyen: ${formatCurrency(reportData.averageOrderValue)}\n` +
-          `Dettes: ${formatCurrency(reportData.totalDebts)}\n` +
-          `Avances: ${formatCurrency(reportData.totalAdvances)}`,
+          `J'ai donné: ${formatCurrency(reportData.totalJaiDonne)}\n` +
+          `J'ai pris: ${formatCurrency(reportData.totalJaiPris)}\n` +
+          `Balance: ${formatCurrency(reportData.debtAnalysis.netBalance)}`,
           [{ text: 'OK' }]
         );
         return;
@@ -993,7 +1082,7 @@ ${reportData.dailyTrends.map(item =>
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Cartes récapitulatives épurées */}
+        {/* Cartes récapitulatives épurées avec totaux J'ai pris/donné */}
         <View style={styles.summaryContainer}>
           {renderSummaryCard({
             title: 'Chiffre d\'affaires',
@@ -1005,27 +1094,18 @@ ${reportData.dailyTrends.map(item =>
           })}
           
           {renderSummaryCard({
-            title: 'Panier moyen',
-            value: formatCurrency(reportData.averageOrderValue),
-            subtitle: 'Par transaction',
-            icon: 'calculator',
-            color: colors.info,
-            trend: 8.3
-          })}
-          
-          {renderSummaryCard({
-            title: 'Total Dettes',
-            value: formatCurrency(reportData.totalDebts),
-            subtitle: 'J\'ai donné',
+            title: 'Total "J\'ai donné"',
+            value: formatCurrency(reportData.totalJaiDonne),
+            subtitle: 'Crédit accordé',
             icon: 'arrow-up',
             color: colors.error,
             trend: -5.2
           })}
           
           {renderSummaryCard({
-            title: 'Total Avances',
-            value: formatCurrency(reportData.totalAdvances),
-            subtitle: 'J\'ai pris',
+            title: 'Total "J\'ai pris"',
+            value: formatCurrency(reportData.totalJaiPris),
+            subtitle: 'Paiements reçus',
             icon: 'arrow-down',
             color: colors.warning,
             trend: 15.7
@@ -1037,6 +1117,31 @@ ${reportData.dailyTrends.map(item =>
             subtitle: reportData.debtAnalysis.netBalance >= 0 ? 'Positif' : 'Négatif',
             icon: 'balance',
             color: reportData.debtAnalysis.netBalance >= 0 ? colors.success : colors.error
+          })}
+          
+          {renderSummaryCard({
+            title: 'Dettes Actuelles',
+            value: formatCurrency(reportData.totalDebts),
+            subtitle: 'Clients doivent',
+            icon: 'person',
+            color: colors.error
+          })}
+          
+          {renderSummaryCard({
+            title: 'Avances Actuelles',
+            value: formatCurrency(reportData.totalAdvances),
+            subtitle: 'Clients ont payé d\'avance',
+            icon: 'wallet',
+            color: colors.success
+          })}
+          
+          {renderSummaryCard({
+            title: 'Panier moyen',
+            value: formatCurrency(reportData.averageOrderValue),
+            subtitle: 'Par transaction',
+            icon: 'calculator',
+            color: colors.info,
+            trend: 8.3
           })}
         </View>
 
@@ -1346,6 +1451,47 @@ ${reportData.dailyTrends.map(item =>
               </View>
             </View>
 
+            {/* Produits */}
+            <View style={styles.filterSection}>
+              <Text style={styles.filterTitle}>Produit</Text>
+              <View style={styles.filterOptions}>
+                <TouchableOpacity
+                  style={[
+                    styles.filterOption,
+                    !filters.productId && styles.activeFilterOption
+                  ]}
+                  onPress={() => setFilters(prev => ({ ...prev, productId: undefined }))}
+                >
+                  <Text style={[
+                    styles.filterOptionText,
+                    !filters.productId && styles.activeFilterOptionText
+                  ]}>
+                    Tous les produits
+                  </Text>
+                </TouchableOpacity>
+                {products.slice(0, 5).map(product => (
+                  <TouchableOpacity
+                    key={product.id}
+                    style={[
+                      styles.filterOption,
+                      filters.productId === product.id && styles.activeFilterOption
+                    ]}
+                    onPress={() => setFilters(prev => ({ 
+                      ...prev, 
+                      productId: prev.productId === product.id ? undefined : product.id 
+                    }))}
+                  >
+                    <Text style={[
+                      styles.filterOptionText,
+                      filters.productId === product.id && styles.activeFilterOptionText
+                    ]} numberOfLines={1}>
+                      {product.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             {/* Catégories */}
             <View style={styles.filterSection}>
               <Text style={styles.filterTitle}>Catégorie</Text>
@@ -1492,7 +1638,7 @@ ${reportData.dailyTrends.map(item =>
               style={styles.resetFiltersButton}
               onPress={() => setFilters({
                 dateRange: 'month',
-                paymentMethods: ['cash', 'mobile_money', 'credit'],
+                paymentMethods: ['cash', 'mobile_money', 'credit', 'advance'],
                 creditStatus: ['paid', 'credit', 'partial'],
                 debtType: 'all',
               })}

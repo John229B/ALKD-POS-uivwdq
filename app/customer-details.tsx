@@ -9,7 +9,7 @@ import { getCustomers, getSales, getSettings, storeCustomers } from '../utils/st
 import { Customer, Sale, AppSettings } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { useCustomersUpdater } from '../hooks/useCustomersSync';
+import { useCustomersUpdater, useDashboardUpdater } from '../hooks/useCustomersSync';
 
 interface CustomerTransaction {
   id: string;
@@ -25,6 +25,7 @@ interface CustomerTransaction {
 export default function CustomerDetailsScreen() {
   const { customerId } = useLocalSearchParams<{ customerId: string }>();
   const { triggerCustomersUpdate } = useCustomersUpdater();
+  const { triggerDashboardUpdate } = useDashboardUpdater();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);

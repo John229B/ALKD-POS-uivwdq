@@ -7,6 +7,7 @@ import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../style
 import Icon from '../components/Icon';
 import { getCustomers, getSales, storeCustomers, storeSales, getSettings } from '../utils/storage';
 import { Customer, Sale, AppSettings } from '../types';
+import { useDashboardUpdater } from '../hooks/useCustomersSync';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
@@ -28,6 +29,7 @@ export default function TransactionSuccessScreen() {
   const [newBalance, setNewBalance] = useState<number>(0);
   const [isProcessing, setIsProcessing] = useState(true);
   const receiptRef = React.useRef<View>(null);
+  const { triggerDashboardUpdate } = useDashboardUpdater();
 
   const processTransaction = useCallback(async () => {
     try {
@@ -133,6 +135,10 @@ export default function TransactionSuccessScreen() {
       setSettings(settingsData);
       setNewBalance(calculatedNewBalance);
       setIsProcessing(false);
+
+      // CORRECTED: Trigger dashboard update for real-time sync of daily totals
+      console.log('Transaction: Triggering dashboard update for real-time sync');
+      triggerDashboardUpdate();
 
       console.log('Transaction processed successfully. New balance:', calculatedNewBalance);
       console.log('Transaction note saved:', note);

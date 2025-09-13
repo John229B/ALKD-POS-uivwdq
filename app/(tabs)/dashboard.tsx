@@ -6,6 +6,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { getSales, getProducts, getCustomers, getSettings } from '../../utils/storage';
 import { useAuthState } from '../../hooks/useAuth';
+import { useDashboardSync } from '../../hooks/useCustomersSync';
 import { syncService } from '../../utils/syncService';
 import Icon from '../../components/Icon';
 import { Sale, Product, Customer, AppSettings } from '../../types';
@@ -55,6 +56,7 @@ export default function DashboardScreen() {
   }>({ pendingCount: 0, isOnline: false });
 
   const { user } = useAuthState();
+  const { lastUpdate: dashboardLastUpdate } = useDashboardSync();
 
   // Get personalized greeting based on user role
   const getGreeting = useCallback(() => {
@@ -122,24 +124,55 @@ export default function DashboardScreen() {
       let dailyJaiPris = 0; // Total des "J'ai pris" de la journée
       let dailyJaiDonne = 0; // Total des "J'ai donné" de la journée
 
+      console.log('Dashboard: Processing today\'s sales for daily totals:', {
+        todaySalesCount: todaySales.length,
+        todaySales: todaySales.map(s => ({
+          id: s.id,
+          receiptNumber: s.receiptNumber,
+          total: s.total,
+          notes: s.notes,
+          itemsCount: s.items.length,
+          createdAt: s.createdAt
+        }))
+      });
+
       todaySales.forEach(sale => {
         // Check if this is a manual transaction (J'ai pris/donné)
         if (sale.items.length === 0 && sale.notes) {
           if (sale.notes.includes("J'ai donné")) {
             dailyJaiDonne += sale.total;
+            console.log('Dashboard: Found "J\'ai donné" transaction:', {
+              saleId: sale.id,
+              amount: sale.total,
+              notes: sale.notes,
+              newDailyJaiDonne: dailyJaiDonne
+            });
           } else if (sale.notes.includes("J'ai pris")) {
             dailyJaiPris += sale.total;
+            console.log('Dashboard: Found "J\'ai pris" transaction:', {
+              saleId: sale.id,
+              amount: sale.total,
+              notes: sale.notes,
+              newDailyJaiPris: dailyJaiPris
+            });
           }
         } else {
           // Regular sales transactions - add to total daily sales regardless of payment status
           totalDailySales += sale.total;
+          console.log('Dashboard: Found regular sale transaction:', {
+            saleId: sale.id,
+            amount: sale.total,
+            itemsCount: sale.items.length,
+            newTotalDailySales: totalDailySales
+          });
         }
       });
 
-      console.log('Dashboard: Calculated daily totals:', {
+      console.log('Dashboard: Final calculated daily totals:', {
         totalDailySales,
         dailyJaiPris,
-        dailyJaiDonne
+        dailyJaiDonne,
+        timestamp: new Date().toISOString()
       });
 
       // Find low stock products
@@ -210,6 +243,12 @@ export default function DashboardScreen() {
       loadDashboardData();
     }, [loadDashboardData])
   );
+
+  // CORRECTED: Listen for real-time dashboard updates
+  useEffect(() => {
+    console.log('Dashboard: Real-time update triggered, reloading data...');
+    loadDashboardData();
+  }, [dashboardLastUpdate, loadDashboardData]);
 
   // Initialize sync service properly
   useEffect(() => {

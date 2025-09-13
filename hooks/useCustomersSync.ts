@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
-import { Customer } from '../types';
-import { getCustomers } from '../utils/storage';
+import { Customer, Sale } from '../types';
+import { getCustomers, getSales } from '../utils/storage';
 import { AppState } from 'react-native';
 
 // Simple event emitter for React Native
@@ -32,6 +32,35 @@ class CustomersEventEmitter {
 
 // Global event emitter instance
 const customersEmitter = new CustomersEventEmitter();
+
+// Dashboard event emitter for real-time dashboard updates
+class DashboardEventEmitter {
+  private listeners: (() => void)[] = [];
+
+  addListener(callback: () => void) {
+    this.listeners.push(callback);
+    console.log('DashboardEventEmitter: Listener added, total:', this.listeners.length);
+  }
+
+  removeListener(callback: () => void) {
+    this.listeners = this.listeners.filter(listener => listener !== callback);
+    console.log('DashboardEventEmitter: Listener removed, total:', this.listeners.length);
+  }
+
+  emit() {
+    console.log('DashboardEventEmitter: Emitting dashboard update to', this.listeners.length, 'listeners');
+    this.listeners.forEach(listener => {
+      try {
+        listener();
+      } catch (error) {
+        console.error('DashboardEventEmitter: Error in listener:', error);
+      }
+    });
+  }
+}
+
+// Global dashboard event emitter instance
+const dashboardEmitter = new DashboardEventEmitter();
 
 // Hook for real-time customer synchronization
 export const useCustomersSync = () => {
@@ -112,5 +141,61 @@ export const useCustomersUpdater = () => {
 
   return {
     triggerCustomersUpdate,
+  };
+};
+
+// Hook for real-time dashboard synchronization
+export const useDashboardSync = () => {
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+
+  const refreshDashboard = useCallback(() => {
+    console.log('useDashboardSync: Dashboard refresh triggered');
+    setLastUpdate(new Date());
+  }, []);
+
+  useEffect(() => {
+    // Listen for dashboard update events
+    const handleDashboardUpdate = () => {
+      console.log('useDashboardSync: Received dashboard update event');
+      refreshDashboard();
+    };
+
+    // Add event listener for real-time sync
+    dashboardEmitter.addListener(handleDashboardUpdate);
+    console.log('useDashboardSync: Event listener added for dashboard updates');
+
+    // Listen for app state changes to refresh data when app becomes active
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        console.log('useDashboardSync: App became active, refreshing dashboard');
+        refreshDashboard();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Cleanup
+    return () => {
+      dashboardEmitter.removeListener(handleDashboardUpdate);
+      subscription.remove();
+      console.log('useDashboardSync: Event listeners removed');
+    };
+  }, [refreshDashboard]);
+
+  return {
+    lastUpdate,
+    refreshDashboard,
+  };
+};
+
+// Hook for triggering dashboard updates across the app
+export const useDashboardUpdater = () => {
+  const triggerDashboardUpdate = useCallback(() => {
+    console.log('useDashboardUpdater: Triggering dashboard update event');
+    dashboardEmitter.emit();
+  }, []);
+
+  return {
+    triggerDashboardUpdate,
   };
 };

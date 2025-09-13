@@ -1,14 +1,14 @@
 {
   "expo": {
-    "name": "ALKD-POS-uivwdq",
-    "slug": "ALKD-POS-uivwdq",
+    "name": "ALKD-POS",
+    "slug": "ALKD-POS",
     "version": "1.1.0",
     "orientation": "portrait",
-    "icon": "./assets/images/natively-dark.png",
+    "icon": "./assets/images/e4a5b0f6-595e-41ee-86a1-85f554302eee.jpeg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/natively-dark.png",
+      "image": "./assets/images/e4a5b0f6-595e-41ee-86a1-85f554302eee.jpeg",
       "resizeMode": "contain",
       "backgroundColor": "#FFC107"
     },
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/natively-dark.png",
+        "foregroundImage": "./assets/images/e4a5b0f6-595e-41ee-86a1-85f554302eee.jpeg",
         "backgroundColor": "#FFC107"
       },
       "edgeToEdgeEnabled": true,
@@ -29,7 +29,7 @@
       "versionCode": 2
     },
     "web": {
-      "favicon": "./assets/images/final_quest_240x240.png",
+      "favicon": "./assets/images/e4a5b0f6-595e-41ee-86a1-85f554302eee.jpeg",
       "bundler": "metro"
     },
     "plugins": [

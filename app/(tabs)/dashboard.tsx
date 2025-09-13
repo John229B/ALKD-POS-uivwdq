@@ -50,6 +50,24 @@ export default function DashboardScreen() {
 
   const { user } = useAuthState();
 
+  // Get personalized greeting based on user role
+  const getGreeting = useCallback(() => {
+    if (!user) return 'Bonjour 👋';
+    
+    // If user has a role other than admin, show role-based greeting
+    if (user.role && user.role !== 'admin') {
+      const roleLabels = {
+        manager: 'Manager',
+        cashier: 'Caissier',
+        inventory: 'Gestionnaire de stock'
+      };
+      return `Bonjour, ${roleLabels[user.role] || user.role} 👋`;
+    }
+    
+    // For admin or users without specific roles, show username
+    return `Bonjour, ${user.username} 👋`;
+  }, [user]);
+
   // CORRECTED: Real-time balance calculation function
   const calculateCustomerBalance = useCallback((customerId: string, sales: Sale[]) => {
     const customerSales = sales.filter(sale => sale.customerId === customerId);
@@ -350,39 +368,50 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
-      {/* FIXED: Header with better alignment and centering */}
-      <View style={[
-        commonStyles.header, 
-        { 
-          backgroundColor: colors.background, 
-          borderBottomColor: colors.border,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.md,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexDirection: 'row',
-        }
-      ]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[commonStyles.headerTitle, { color: colors.text, fontSize: fontSizes.xl, fontWeight: 'bold' }]}>
-            Tableau de bord
-          </Text>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginTop: spacing.xs }]}>
-            Bonjour, {user?.username}
-          </Text>
-        </View>
+      {/* RESTORED: Clean header with prominent title and personalized greeting */}
+      <View style={{
+        backgroundColor: colors.background,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}>
+        {/* Main Title */}
+        <Text style={{
+          fontSize: fontSizes.xxl,
+          fontWeight: 'bold',
+          color: colors.text,
+          textAlign: 'center',
+          marginBottom: spacing.sm,
+        }}>
+          Tableau de Bord
+        </Text>
         
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {/* Personalized Greeting */}
+        <Text style={{
+          fontSize: fontSizes.md,
+          color: colors.textLight,
+          textAlign: 'center',
+          marginBottom: spacing.md,
+        }}>
+          {getGreeting()}
+        </Text>
+
+        {/* Sync Status and Settings Row */}
+        <View style={{ 
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          justifyContent: 'space-between',
+        }}>
           {/* Sync Status */}
           <TouchableOpacity
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              paddingHorizontal: spacing.sm,
-              paddingVertical: spacing.xs,
-              borderRadius: 16,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              borderRadius: 20,
               backgroundColor: syncStatus.isOnline ? colors.success + '20' : colors.error + '20',
-              marginRight: spacing.sm,
               borderWidth: 1,
               borderColor: syncStatus.isOnline ? colors.success + '40' : colors.error + '40',
             }}
@@ -395,7 +424,7 @@ export default function DashboardScreen() {
               color={syncStatus.isOnline ? colors.success : colors.error}
             />
             <Text style={{
-              fontSize: fontSizes.xs,
+              fontSize: fontSizes.sm,
               color: syncStatus.isOnline ? colors.success : colors.error,
               marginLeft: spacing.xs,
               fontWeight: '600',
@@ -404,6 +433,7 @@ export default function DashboardScreen() {
             </Text>
           </TouchableOpacity>
           
+          {/* Settings Button */}
           <TouchableOpacity 
             onPress={() => router.push('/settings')}
             style={{
@@ -495,7 +525,7 @@ export default function DashboardScreen() {
               value={stats.lowStockProducts.toString()}
               subtitle="produits"
               icon="warning"
-              color={colors.error}
+              color={stats.lowStockProducts > 0 ? colors.error : colors.success}
             />
             <StatCard
               title="Crédit total"

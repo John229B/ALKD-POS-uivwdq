@@ -93,13 +93,50 @@ export default function EmployeesScreen() {
 
   const saveEmployee = async () => {
     try {
-      if (!formData.name.trim() || !formData.username.trim() || !formData.email.trim()) {
-        Alert.alert('Erreur', 'Veuillez remplir tous les champs obligatoires');
+      console.log('Saving employee with data:', formData);
+      
+      // Fixed validation - check all required fields properly
+      const requiredFields = {
+        username: formData.username?.trim(),
+        email: formData.email?.trim(),
+        role: formData.role,
+      };
+
+      // For new employees, password is required
+      if (!editingEmployee) {
+        requiredFields['password'] = formData.password?.trim();
+      }
+
+      console.log('Required fields check:', requiredFields);
+
+      // Check if any required field is empty
+      const missingFields = Object.entries(requiredFields).filter(([key, value]) => !value);
+      
+      if (missingFields.length > 0) {
+        const missingFieldNames = missingFields.map(([key]) => {
+          const fieldLabels = {
+            username: 'Nom d\'utilisateur',
+            email: 'Email',
+            password: 'Mot de passe',
+            role: 'Rôle'
+          };
+          return fieldLabels[key] || key;
+        });
+        
+        Alert.alert('Erreur', `Veuillez remplir les champs obligatoires: ${missingFieldNames.join(', ')}`);
         return;
       }
 
-      if (!editingEmployee && !formData.password.trim()) {
-        Alert.alert('Erreur', 'Le mot de passe est requis pour un nouvel employé');
+      // Additional validations
+      if (!editingEmployee && formData.password && formData.password.length < 6) {
+        Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+        return;
+      }
+
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        Alert.alert('Erreur', 'Veuillez saisir une adresse email valide');
         return;
       }
 
@@ -115,8 +152,19 @@ export default function EmployeesScreen() {
         await updateEmployee(editingEmployee.id, updates);
         Alert.alert('Succès', 'Employé modifié avec succès');
       } else {
-        // Create new employee
-        await createEmployee(formData);
+        // Create new employee - prepare data for offline support
+        const employeeData: CreateEmployeeData = {
+          name: formData.username, // Use username as name
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          permissions: formData.permissions.length > 0 ? formData.permissions : DEFAULT_PERMISSIONS[formData.role] || [],
+          phone: formData.phone || '',
+        };
+
+        console.log('Creating employee with data:', employeeData);
+        await createEmployee(employeeData);
         Alert.alert('Succès', 'Employé créé avec succès');
       }
 
@@ -125,7 +173,7 @@ export default function EmployeesScreen() {
       await loadEmployees();
     } catch (error) {
       console.error('Error saving employee:', error);
-      Alert.alert('Erreur', error instanceof Error ? error.message : 'Une erreur est survenue');
+      Alert.alert('Erreur', error instanceof Error ? error.message : 'Une erreur est survenue lors de la sauvegarde');
     }
   };
 
@@ -468,7 +516,7 @@ export default function EmployeesScreen() {
 
                 <View style={{ marginBottom: spacing.lg }}>
                   <Text style={[commonStyles.textLight, { marginBottom: spacing.md }]}>
-                    Rôle
+                    Rôle *
                   </Text>
                   
                   {(['manager', 'cashier', 'inventory'] as const).map((role) => (

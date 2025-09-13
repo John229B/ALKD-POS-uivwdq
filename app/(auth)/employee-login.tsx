@@ -8,7 +8,7 @@ import { useAuthState } from '../../hooks/useAuth';
 import { LoginCredentials } from '../../types/auth';
 import Icon from '../../components/Icon';
 
-export default function LoginScreen() {
+export default function EmployeeLoginScreen() {
   const [credentials, setCredentials] = useState<LoginCredentials>({
     username: '',
     password: '',
@@ -59,8 +59,8 @@ export default function LoginScreen() {
     }
   };
 
-  const handleEmployeeLogin = () => {
-    router.push('/(auth)/employee-login');
+  const handleAdminLogin = () => {
+    router.push('/(auth)/login');
   };
 
   return (
@@ -80,11 +80,11 @@ export default function LoginScreen() {
               justifyContent: 'center',
               marginBottom: spacing.lg,
             }}>
-              <Icon name="storefront" size={40} color={colors.secondary} />
+              <Icon name="person" size={40} color={colors.secondary} />
             </View>
-            <Text style={[commonStyles.title, { textAlign: 'center' }]}>ALKD-POS</Text>
+            <Text style={[commonStyles.title, { textAlign: 'center' }]}>Connexion Employé</Text>
             <Text style={[commonStyles.textLight, { textAlign: 'center' }]}>
-              Connexion Administrateur
+              Connectez-vous avec vos identifiants employé
             </Text>
           </View>
 
@@ -162,11 +162,11 @@ export default function LoginScreen() {
 
             <TouchableOpacity
               style={[buttonStyles.secondary, { marginBottom: spacing.md }]}
-              onPress={handleEmployeeLogin}
+              onPress={handleAdminLogin}
               disabled={isLoading}
             >
               <Text style={{ color: colors.text, fontSize: fontSizes.md, fontWeight: '600' }}>
-                Connexion Employé
+                Connexion Administrateur
               </Text>
             </TouchableOpacity>
 
@@ -175,7 +175,7 @@ export default function LoginScreen() {
               onPress={() => {
                 Alert.alert(
                   'Mot de passe oublié',
-                  'En tant qu\'administrateur, vous pouvez réinitialiser votre mot de passe en contactant le support technique.',
+                  'Contactez votre administrateur pour réinitialiser votre mot de passe.',
                   [{ text: 'OK' }]
                 );
               }}
@@ -185,6 +185,17 @@ export default function LoginScreen() {
                 Mot de passe oublié ?
               </Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={{
+            marginTop: spacing.lg,
+            padding: spacing.md,
+            backgroundColor: colors.backgroundAlt,
+            borderRadius: 8,
+          }}>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, textAlign: 'center' }]}>
+              💡 Si vous n'avez pas de compte employé, demandez à votre administrateur de vous en créer un.
+            </Text>
           </View>
         </View>
       </KeyboardAvoidingView>

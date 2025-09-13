@@ -1,274 +1,359 @@
 
-import { StyleSheet, ViewStyle, TextStyle, Dimensions } from 'react-native';
+import { StyleSheet, Dimensions } from 'react-native';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
+// Check if screen is small (phones vs tablets)
+export const isSmallScreen = screenWidth < 768;
+
 export const colors = {
-  primary: '#FFD700',      // Yellow primary
-  primaryDark: '#FFC107',  // Darker yellow
-  secondary: '#000000',    // Black
-  background: '#FFFFFF',   // White background
-  backgroundAlt: '#F8F9FA', // Light grey background
-  backgroundLight: '#FAFBFC', // Even lighter background
-  text: '#000000',         // Black text
-  textLight: '#666666',    // Grey text
-  textWhite: '#FFFFFF',    // White text
-  success: '#28A745',      // Green for success
-  danger: '#DC3545',       // Red for danger
-  warning: '#FFC107',      // Yellow for warning
-  info: '#17A2B8',         // Blue for info
-  card: '#FFFFFF',         // White card background
-  border: '#E9ECEF',       // Light border
-  shadow: 'rgba(0, 0, 0, 0.1)',
+  primary: '#F1C40F',      // Yellow
+  primaryLight: '#F7DC6F',  // Light yellow
+  primaryDark: '#D4AC0D',   // Dark yellow
+  secondary: '#000000',     // Black
+  background: '#FFFFFF',    // White
+  backgroundAlt: '#F8F9FA', // Light gray
+  text: '#2C3E50',         // Dark gray
+  textLight: '#7F8C8D',    // Medium gray
+  textDark: '#1A252F',     // Very dark gray
+  border: '#E5E7EB',       // Light border
+  success: '#27AE60',      // Green
+  error: '#E74C3C',        // Red
+  warning: '#F39C12',      // Orange
+  info: '#3498DB',         // Blue
+  white: '#FFFFFF',
+  black: '#000000',
+  transparent: 'transparent',
 };
 
-// Responsive breakpoints
-export const breakpoints = {
-  small: 480,
-  medium: 768,
-  large: 1024,
-  xlarge: 1200,
-};
-
-// Helper functions for responsive design
-export const isSmallScreen = screenWidth < breakpoints.small;
-export const isMediumScreen = screenWidth >= breakpoints.small && screenWidth < breakpoints.medium;
-export const isLargeScreen = screenWidth >= breakpoints.medium && screenWidth < breakpoints.large;
-export const isXLargeScreen = screenWidth >= breakpoints.large;
-
-// Responsive spacing
 export const spacing = {
-  xs: isSmallScreen ? 4 : 6,
-  sm: isSmallScreen ? 8 : 12,
-  md: isSmallScreen ? 12 : 16,
-  lg: isSmallScreen ? 16 : 20,
-  xl: isSmallScreen ? 20 : 24,
-  xxl: isSmallScreen ? 24 : 32,
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+  xxl: 48,
 };
 
-// Responsive font sizes
 export const fontSizes = {
-  xs: isSmallScreen ? 10 : 12,
-  sm: isSmallScreen ? 12 : 14,
-  md: isSmallScreen ? 14 : 16,
-  lg: isSmallScreen ? 16 : 18,
-  xl: isSmallScreen ? 18 : 20,
-  xxl: isSmallScreen ? 20 : 24,
-  title: isSmallScreen ? 24 : 28,
-  subtitle: isSmallScreen ? 18 : 20,
+  xs: 12,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 24,
+  xxl: 32,
 };
+
+export const borderRadius = {
+  sm: 4,
+  md: 8,
+  lg: 12,
+  xl: 16,
+  full: 9999,
+};
+
+export const shadows = {
+  sm: {
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  md: {
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  lg: {
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+};
+
+export const commonStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  content: {
+    flex: 1,
+  },
+  center: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  spaceBetween: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  
+  // Typography
+  title: {
+    fontSize: fontSizes.xl,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  subtitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  text: {
+    fontSize: fontSizes.md,
+    color: colors.text,
+    lineHeight: 24,
+  },
+  textLight: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    lineHeight: 24,
+  },
+  textSmall: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+  },
+  
+  // Layout components
+  card: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.md,
+  },
+  cardSmall: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    ...shadows.sm,
+  },
+  
+  // Header
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  headerTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '600',
+    color: colors.text,
+    flex: 1,
+    textAlign: 'center',
+  },
+  
+  // Form elements
+  input: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSizes.md,
+    color: colors.text,
+    backgroundColor: colors.background,
+    minHeight: 48,
+  },
+  inputFocused: {
+    borderColor: colors.primary,
+  },
+  inputError: {
+    borderColor: colors.error,
+  },
+  
+  // Lists
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  listItemLast: {
+    borderBottomWidth: 0,
+  },
+  
+  // Utility classes
+  flex1: {
+    flex: 1,
+  },
+  flexGrow: {
+    flexGrow: 1,
+  },
+  flexShrink: {
+    flexShrink: 1,
+  },
+  
+  // Margins and padding
+  mt: {
+    marginTop: spacing.md,
+  },
+  mb: {
+    marginBottom: spacing.md,
+  },
+  ml: {
+    marginLeft: spacing.md,
+  },
+  mr: {
+    marginRight: spacing.md,
+  },
+  mx: {
+    marginHorizontal: spacing.md,
+  },
+  my: {
+    marginVertical: spacing.md,
+  },
+  
+  pt: {
+    paddingTop: spacing.md,
+  },
+  pb: {
+    paddingBottom: spacing.md,
+  },
+  pl: {
+    paddingLeft: spacing.md,
+  },
+  pr: {
+    paddingRight: spacing.md,
+  },
+  px: {
+    paddingHorizontal: spacing.md,
+  },
+  py: {
+    paddingVertical: spacing.md,
+  },
+});
 
 export const buttonStyles = StyleSheet.create({
   primary: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: `0px 2px 4px ${colors.shadow}`,
-    elevation: 2,
-    minHeight: 44, // Minimum touch target size
+    minHeight: 48,
+    ...shadows.sm,
   },
   secondary: {
-    backgroundColor: colors.secondary,
+    backgroundColor: colors.backgroundAlt,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    boxShadow: `0px 2px 4px ${colors.shadow}`,
-    elevation: 2,
-    minHeight: 44,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: colors.primary,
+    backgroundColor: colors.transparent,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 8,
+    borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 48,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  danger: {
+    backgroundColor: colors.error,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    ...shadows.sm,
+  },
+  success: {
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    ...shadows.sm,
+  },
+  warning: {
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    ...shadows.sm,
   },
   small: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     minHeight: 36,
   },
   large: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
-    minHeight: 52,
+    minHeight: 56,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+  
+  // Icon buttons
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.backgroundAlt,
+  },
+  iconButtonPrimary: {
+    backgroundColor: colors.primary,
+  },
+  iconButtonSecondary: {
+    backgroundColor: colors.secondary,
   },
 });
 
-export const commonStyles = StyleSheet.create({
-  wrapper: {
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
+// Responsive styles for different screen sizes
+export const responsiveStyles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    width: '100%',
-    height: '100%',
-  },
-  content: {
-    flex: 1,
-    maxWidth: isSmallScreen ? '100%' : isLargeScreen ? 1200 : 800,
-    width: '100%',
+    maxWidth: isSmallScreen ? '100%' : 1200,
     alignSelf: 'center',
+    width: '100%',
   },
-  title: {
-    fontSize: fontSizes.title,
-    fontWeight: '800',
-    color: colors.text,
-    marginBottom: spacing.xs,
+  padding: {
+    paddingHorizontal: isSmallScreen ? spacing.md : spacing.xl,
   },
-  subtitle: {
-    fontSize: fontSizes.subtitle,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  text: {
-    fontSize: fontSizes.md,
-    fontWeight: '400',
-    color: colors.text,
-    lineHeight: fontSizes.md * 1.5,
-  },
-  textLight: {
-    fontSize: fontSizes.sm,
-    fontWeight: '400',
-    color: colors.textLight,
-    lineHeight: fontSizes.sm * 1.4,
-  },
-  section: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  sectionSmall: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.md,
-    marginVertical: spacing.xs,
-    boxShadow: `0px 2px 8px ${colors.shadow}`,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cardSmall: {
-    padding: spacing.sm,
-    borderRadius: 8,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  rowWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  grid: {
+    flexDirection: isSmallScreen ? 'column' : 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  center: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: fontSizes.md,
-    backgroundColor: colors.background,
-    color: colors.text,
-    minHeight: 44,
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
-  },
-  // Responsive grid layouts
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
   },
   gridItem: {
-    flex: isSmallScreen ? 1 : isMediumScreen ? 0.48 : 0.32,
-    minWidth: isSmallScreen ? '100%' : isMediumScreen ? '45%' : '30%',
-  },
-  // POS specific layouts
-  posContainer: {
-    flex: 1,
-    flexDirection: isSmallScreen ? 'column' : 'row',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  posProductsSection: {
-    flex: isSmallScreen ? 1 : 2,
-    minHeight: isSmallScreen ? 300 : 'auto',
-  },
-  posCartSection: {
-    flex: 1,
-    minWidth: isSmallScreen ? '100%' : 300,
-    maxWidth: isSmallScreen ? '100%' : 400,
-  },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  modalContent: {
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: spacing.lg,
-    width: '100%',
-    maxWidth: isSmallScreen ? '95%' : 500,
-    maxHeight: '90%',
-  },
-  // Button containers
-  buttonContainer: {
-    flexDirection: isSmallScreen ? 'column' : 'row',
-    gap: spacing.sm,
-    alignItems: 'stretch',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-  },
-  // Header styles
-  header: {
-    flexDirection: isSmallScreen ? 'column' : 'row',
-    alignItems: isSmallScreen ? 'flex-start' : 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    alignItems: 'center',
-    flexWrap: 'wrap',
+    width: isSmallScreen ? '100%' : '50%',
+    paddingHorizontal: isSmallScreen ? 0 : spacing.sm,
   },
 });

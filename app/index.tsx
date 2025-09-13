@@ -53,13 +53,13 @@ export default function IndexScreen() {
 
   // Redirect based on auth state
   if (isFirstLaunch) {
-    console.log('IndexScreen: Redirecting to setup-admin (first launch)');
-    return <Redirect href="/(auth)/setup-admin" />;
+    console.log('IndexScreen: Redirecting to welcome (first launch)');
+    return <Redirect href="/(auth)/welcome" />;
   }
 
   if (!isAuthenticated) {
-    console.log('IndexScreen: Redirecting to login (not authenticated)');
-    return <Redirect href="/(auth)/login" />;
+    console.log('IndexScreen: Redirecting to welcome (not authenticated)');
+    return <Redirect href="/(auth)/welcome" />;
   }
 
   if (user?.isFirstLogin) {

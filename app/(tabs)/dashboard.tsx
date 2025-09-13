@@ -6,8 +6,9 @@ import { router } from 'expo-router';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { getSales, getProducts, getCustomers, getSettings } from '../../utils/storage';
 import { useAuthState } from '../../hooks/useAuth';
-import { Sale, Product, Customer, AppSettings } from '../../types';
+import { syncService } from '../../utils/syncService';
 import Icon from '../../components/Icon';
+import { Sale, Product, Customer, AppSettings } from '../../types';
 
 interface DashboardStats {
   todayRevenue: number;
@@ -27,194 +28,195 @@ interface DashboardStats {
 }
 
 export default function DashboardScreen() {
-  const { user } = useAuthState();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    todayRevenue: 0,
+    todaySales: 0,
+    weekRevenue: 0,
+    monthRevenue: 0,
+    totalCustomers: 0,
+    lowStockProducts: 0,
+    creditAmount: 0,
+    generalBalance: 0,
+    topProducts: [],
+    recentSales: [],
+  });
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<{
+    pendingCount: number;
+    lastSyncTime?: Date;
+    isOnline: boolean;
+  }>({ pendingCount: 0, isOnline: false });
 
-  // CORRECTED: Real-time balance calculation for individual customers
-  const getCustomerBalance = useCallback((customer: Customer, sales: Sale[]) => {
-    const customerSales = sales.filter(sale => sale.customerId === customer.id);
-    let balance = 0;
-    
-    customerSales.forEach(sale => {
-      // Check if this is a manual transaction (J'ai pris/donné)
-      if (sale.items.length === 0 && sale.notes) {
-        if (sale.notes.includes("J'ai donné")) {
-          balance += sale.total; // "J'ai donné" increases debt (positive balance)
-        } else if (sale.notes.includes("J'ai pris")) {
-          balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
-        }
-      } else {
-        // Regular sales transactions
-        if (sale.paymentStatus === 'credit') {
-          balance += sale.total; // Credit sale adds to debt
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          balance += unpaidAmount; // Only unpaid portion adds to debt
-        } else if (sale.paymentStatus === 'paid') {
-          // Check for overpayment
-          const overpayment = (sale.amountPaid || sale.total) - sale.total;
-          if (overpayment > 0) {
-            balance -= overpayment; // Overpayment creates credit for customer
-          }
-          // Fully paid sales with exact payment don't affect balance
-        }
-      }
-    });
-    
-    return balance;
-  }, []);
+  const { user } = useAuthState();
 
   const loadDashboardData = useCallback(async () => {
     try {
-      console.log('Dashboard: Loading data...');
-      const [salesData, productsData, customersData, settingsData] = await Promise.all([
+      setIsLoading(true);
+      
+      const [sales, products, customers, appSettings] = await Promise.all([
         getSales(),
         getProducts(),
         getCustomers(),
         getSettings(),
       ]);
 
-      setSettings(settingsData);
+      setSettings(appSettings);
 
+      // Calculate date ranges
       const now = new Date();
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      // Filter sales by date ranges
-      const todaySales = salesData.filter(sale => {
-        const saleDate = new Date(sale.createdAt);
-        return saleDate >= today;
-      });
+      // Filter sales by date
+      const todaySales = sales.filter(sale => new Date(sale.date) >= today);
+      const weekSales = sales.filter(sale => new Date(sale.date) >= weekAgo);
+      const monthSales = sales.filter(sale => new Date(sale.date) >= monthAgo);
 
-      const weekSales = salesData.filter(sale => {
-        const saleDate = new Date(sale.createdAt);
-        return saleDate >= weekAgo;
-      });
-
-      const monthSales = salesData.filter(sale => {
-        const saleDate = new Date(sale.createdAt);
-        return saleDate >= monthAgo;
-      });
-
-      // Calculate revenue (only from actual sales, not manual transactions)
+      // Calculate revenue (only from paid sales)
       const todayRevenue = todaySales
-        .filter(sale => sale.items.length > 0) // Only actual sales
+        .filter(sale => sale.status === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
-
+      
       const weekRevenue = weekSales
-        .filter(sale => sale.items.length > 0) // Only actual sales
+        .filter(sale => sale.status === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
-
+      
       const monthRevenue = monthSales
-        .filter(sale => sale.items.length > 0) // Only actual sales
+        .filter(sale => sale.status === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
 
-      // Calculate credit amount (total unpaid amounts)
-      const creditAmount = salesData
-        .filter(sale => sale.items.length > 0) // Only actual sales
-        .reduce((sum, sale) => {
-          if (sale.paymentStatus === 'credit') {
-            return sum + sale.total;
-          } else if (sale.paymentStatus === 'partial') {
-            return sum + (sale.total - (sale.amountPaid || 0));
-          }
-          return sum;
-        }, 0);
+      // Calculate credit amount (unpaid sales)
+      const creditAmount = sales
+        .filter(sale => sale.status === 'credit')
+        .reduce((sum, sale) => sum + sale.total, 0);
 
-      // CORRECTED: Calculate general balance using the same logic as customers screen
-      let totalDebt = 0; // Total amount customers owe us (positive balances)
-      let totalCredit = 0; // Total amount we owe customers (negative balances)
+      // Calculate general balance (customer balances)
+      const generalBalance = customers.reduce((sum, customer) => sum + (customer.creditBalance || 0), 0);
 
-      customersData.forEach(customer => {
-        const customerBalance = getCustomerBalance(customer, salesData);
-        if (customerBalance > 0) {
-          totalDebt += customerBalance; // Customer owes us money
-        } else if (customerBalance < 0) {
-          totalCredit += Math.abs(customerBalance); // We owe customer money
-        }
-      });
-
-      const generalBalance = totalDebt - totalCredit;
-
-      console.log('Dashboard general balance calculation:', { 
-        totalDebt, 
-        totalCredit, 
-        generalBalance,
-        customersCount: customersData.length, 
-        salesCount: salesData.length 
-      });
-
-      // Calculate low stock products
-      const lowStockProducts = productsData.filter(product => 
-        product.isActive && product.stock <= (product.minStock || 0)
+      // Find low stock products
+      const lowStockProducts = products.filter(product => 
+        product.stock <= (product.minStock || 0)
       ).length;
 
-      // Calculate top products (from actual sales only)
-      const productSales = new Map<string, { name: string; quantity: number; revenue: number }>();
+      // Calculate top products
+      const productSales = new Map<string, { quantity: number; revenue: number }>();
       
-      salesData
-        .filter(sale => sale.items.length > 0) // Only actual sales
-        .forEach(sale => {
-          sale.items.forEach(item => {
-            const existing = productSales.get(item.productId) || { 
-              name: item.product.name, 
-              quantity: 0, 
-              revenue: 0 
-            };
-            existing.quantity += item.quantity;
-            existing.revenue += item.subtotal;
-            productSales.set(item.productId, existing);
+      sales.forEach(sale => {
+        sale.items.forEach(item => {
+          const existing = productSales.get(item.productId) || { quantity: 0, revenue: 0 };
+          productSales.set(item.productId, {
+            quantity: existing.quantity + item.quantity,
+            revenue: existing.revenue + (item.price * item.quantity),
           });
         });
+      });
 
-      const topProducts = Array.from(productSales.values())
+      const topProducts = Array.from(productSales.entries())
+        .map(([productId, data]) => {
+          const product = products.find(p => p.id === productId);
+          return {
+            name: product?.name || 'Produit inconnu',
+            quantity: data.quantity,
+            revenue: data.revenue,
+          };
+        })
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 5);
 
-      // Get recent sales (actual sales only)
-      const recentSales = salesData
-        .filter(sale => sale.items.length > 0) // Only actual sales
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      // Get recent sales
+      const recentSales = sales
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 10);
 
-      const dashboardStats: DashboardStats = {
+      setStats({
         todayRevenue,
-        todaySales: todaySales.filter(sale => sale.items.length > 0).length,
+        todaySales: todaySales.length,
         weekRevenue,
         monthRevenue,
-        totalCustomers: customersData.length,
+        totalCustomers: customers.length,
         lowStockProducts,
         creditAmount,
         generalBalance,
         topProducts,
         recentSales,
-      };
+      });
 
-      setStats(dashboardStats);
-      console.log('Dashboard: Data loaded successfully');
+      // Load sync status
+      const status = await syncService.getSyncStatus();
+      setSyncStatus(status);
+
     } catch (error) {
-      console.error('Dashboard: Error loading data:', error);
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [getCustomerBalance]);
+  }, []);
 
   useEffect(() => {
     loadDashboardData();
-  }, [loadDashboardData]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadDashboardData();
-    setRefreshing(false);
+    
+    // Start auto sync
+    syncService.startAutoSync(15); // Every 15 minutes
+    
+    return () => {
+      syncService.stopAutoSync();
+    };
   }, [loadDashboardData]);
 
   const formatCurrency = useCallback((amount: number): string => {
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'F CFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  }, [settings?.currency]);
+    if (!settings) return `${amount.toLocaleString()} F CFA`;
+    
+    const { currency } = settings;
+    const currencySymbols = {
+      XOF: 'F CFA',
+      USD: '$',
+      EUR: '€',
+    };
+    
+    return `${amount.toLocaleString()} ${currencySymbols[currency] || currency}`;
+  }, [settings]);
+
+  const handleSyncNow = async () => {
+    const result = await syncService.syncNow();
+    if (result.success) {
+      console.log('Sync completed successfully');
+    } else {
+      console.log('Sync failed:', result.message);
+    }
+    
+    // Refresh sync status
+    const status = await syncService.getSyncStatus();
+    setSyncStatus(status);
+  };
+
+  const quickActions = useMemo(() => [
+    {
+      title: 'Nouvelle Vente',
+      icon: 'add-circle',
+      color: colors.primary,
+      onPress: () => router.push('/(tabs)/pos'),
+    },
+    {
+      title: 'Ajouter Produit',
+      icon: 'cube',
+      color: colors.info,
+      onPress: () => router.push('/(tabs)/products'),
+    },
+    {
+      title: 'Nouveau Client',
+      icon: 'person-add',
+      color: colors.success,
+      onPress: () => router.push('/(tabs)/customers'),
+    },
+    {
+      title: 'Rapports',
+      icon: 'bar-chart',
+      color: colors.warning,
+      onPress: () => router.push('/reports'),
+    },
+  ], []);
 
   const StatCard = ({ title, value, subtitle, icon, color }: {
     title: string;
@@ -224,18 +226,23 @@ export default function DashboardScreen() {
     color?: string;
   }) => (
     <View style={[commonStyles.card, { flex: 1, marginHorizontal: spacing.xs }]}>
-      <View style={[commonStyles.row, { marginBottom: spacing.sm }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>{title}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+        <View style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: color ? `${color}20` : `${colors.primary}20`,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: spacing.sm,
+        }}>
+          <Icon name={icon} size={20} color={color || colors.primary} />
         </View>
-        <Icon name={icon} size={20} color={color || colors.primary} />
+        <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, flex: 1 }]}>
+          {title}
+        </Text>
       </View>
-      <Text style={[commonStyles.text, { 
-        fontSize: fontSizes.lg, 
-        fontWeight: 'bold',
-        color: color || colors.text,
-        marginBottom: spacing.xs
-      }]}>
+      <Text style={[commonStyles.title, { fontSize: fontSizes.lg, marginBottom: 0 }]}>
         {value}
       </Text>
       {subtitle && (
@@ -246,106 +253,116 @@ export default function DashboardScreen() {
     </View>
   );
 
-  const quickActions = [
-    {
-      title: 'Nouvelle vente',
-      subtitle: 'Point de vente',
-      icon: 'card',
-      color: colors.primary,
-      route: '/(tabs)/pos',
-    },
-    {
-      title: 'Ajouter produit',
-      subtitle: 'Gestion stock',
-      icon: 'add-circle',
-      color: colors.success,
-      route: '/(tabs)/products',
-    },
-    {
-      title: 'Clients',
-      subtitle: 'Gestion clients',
-      icon: 'people',
-      color: colors.warning,
-      route: '/(tabs)/customers',
-    },
-    {
-      title: 'Rapports',
-      subtitle: 'Analyses',
-      icon: 'bar-chart',
-      color: colors.danger,
-      route: '/reports',
-    },
-  ];
-
   const QuickActionCard = ({ action }: { action: typeof quickActions[0] }) => (
     <TouchableOpacity
-      style={[commonStyles.card, { flex: 1, marginHorizontal: spacing.xs }]}
-      onPress={() => router.push(action.route as any)}
+      style={[commonStyles.card, { 
+        flex: 1, 
+        marginHorizontal: spacing.xs,
+        alignItems: 'center',
+        paddingVertical: spacing.lg,
+      }]}
+      onPress={action.onPress}
     >
-      <View style={{ alignItems: 'center' }}>
-        <View style={{
-          backgroundColor: action.color + '20',
-          borderRadius: 25,
-          padding: spacing.md,
-          marginBottom: spacing.sm,
-        }}>
-          <Icon name={action.icon} size={24} color={action.color} />
-        </View>
-        <Text style={[commonStyles.text, { 
-          fontWeight: '600', 
-          textAlign: 'center',
-          marginBottom: spacing.xs
-        }]}>
-          {action.title}
-        </Text>
-        <Text style={[commonStyles.textLight, { 
-          fontSize: fontSizes.sm, 
-          textAlign: 'center' 
-        }]}>
-          {action.subtitle}
-        </Text>
+      <View style={{
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: `${action.color}20`,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: spacing.sm,
+      }}>
+        <Icon name={action.icon} size={24} color={action.color} />
       </View>
+      <Text style={[commonStyles.text, { 
+        fontSize: fontSizes.sm, 
+        textAlign: 'center',
+        fontWeight: '600',
+      }]}>
+        {action.title}
+      </Text>
     </TouchableOpacity>
   );
 
-  if (!stats) {
-    return (
-      <SafeAreaView style={commonStyles.container}>
-        <View style={[commonStyles.content, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Text style={commonStyles.text}>Chargement du tableau de bord...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={commonStyles.container}>
-      <ScrollView 
-        style={commonStyles.content}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={{ paddingBottom: spacing.xl }}
-      >
-        {/* Header */}
-        <View style={[commonStyles.section, commonStyles.header]}>
-          <View style={{ flex: 1 }}>
-            <Text style={commonStyles.title}>Tableau de bord</Text>
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              Bonjour {user?.username || 'Utilisateur'} 👋
+      {/* Header */}
+      <View style={[commonStyles.header, { backgroundColor: colors.background }]}>
+        <View>
+          <Text style={commonStyles.headerTitle}>Tableau de bord</Text>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+            Bonjour, {user?.username}
+          </Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Sync Status */}
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: spacing.sm,
+              paddingVertical: spacing.xs,
+              borderRadius: 16,
+              backgroundColor: syncStatus.isOnline ? colors.success + '20' : colors.error + '20',
+              marginRight: spacing.sm,
+            }}
+            onPress={handleSyncNow}
+          >
+            <Icon 
+              name={syncStatus.isOnline ? 'cloud-done' : 'cloud-offline'} 
+              size={16} 
+              color={syncStatus.isOnline ? colors.success : colors.error}
+            />
+            <Text style={{
+              fontSize: fontSizes.xs,
+              color: syncStatus.isOnline ? colors.success : colors.error,
+              marginLeft: spacing.xs,
+              fontWeight: '600',
+            }}>
+              {syncStatus.pendingCount > 0 ? `${syncStatus.pendingCount}` : (syncStatus.isOnline ? 'En ligne' : 'Hors ligne')}
             </Text>
-          </View>
+          </TouchableOpacity>
+          
           <TouchableOpacity onPress={() => router.push('/settings')}>
-            <Icon name="settings" size={24} color={colors.primary} />
+            <Icon name="settings" size={24} color={colors.text} />
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Revenue Stats */}
-        <View style={commonStyles.section}>
+      <ScrollView
+        style={commonStyles.content}
+        refreshControl={
+          <RefreshControl refreshing={isLoading} onRefresh={loadDashboardData} />
+        }
+      >
+        <View style={{ padding: spacing.lg }}>
+          {/* Quick Actions */}
           <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
-            💰 Revenus
+            Actions rapides
           </Text>
-          <View style={{ flexDirection: isSmallScreen ? 'column' : 'row', gap: spacing.sm }}>
+          <View style={{ 
+            flexDirection: 'row', 
+            marginBottom: spacing.xl,
+            flexWrap: 'wrap',
+          }}>
+            {quickActions.map((action, index) => (
+              <View key={index} style={{ 
+                width: isSmallScreen ? '50%' : '25%',
+                marginBottom: spacing.sm,
+              }}>
+                <QuickActionCard action={action} />
+              </View>
+            ))}
+          </View>
+
+          {/* Revenue Stats */}
+          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+            Revenus
+          </Text>
+          <View style={{ 
+            flexDirection: isSmallScreen ? 'column' : 'row', 
+            marginBottom: spacing.xl 
+          }}>
             <StatCard
               title="Aujourd'hui"
               value={formatCurrency(stats.todayRevenue)}
@@ -357,172 +374,144 @@ export default function DashboardScreen() {
               title="Cette semaine"
               value={formatCurrency(stats.weekRevenue)}
               icon="calendar"
-              color={colors.primary}
+              color={colors.info}
             />
             <StatCard
               title="Ce mois"
               value={formatCurrency(stats.monthRevenue)}
-              icon="calendar-outline"
+              icon="trending-up"
               color={colors.warning}
             />
           </View>
-        </View>
 
-        {/* Business Stats */}
-        <View style={commonStyles.section}>
+          {/* Business Stats */}
           <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
-            📊 Statistiques
+            Statistiques
           </Text>
-          <View style={{ flexDirection: isSmallScreen ? 'column' : 'row', gap: spacing.sm }}>
+          <View style={{ 
+            flexDirection: isSmallScreen ? 'column' : 'row', 
+            marginBottom: spacing.xl 
+          }}>
             <StatCard
               title="Clients"
               value={stats.totalCustomers.toString()}
-              subtitle="Total enregistrés"
               icon="people"
               color={colors.primary}
             />
             <StatCard
-              title="Stock bas"
+              title="Stock faible"
               value={stats.lowStockProducts.toString()}
-              subtitle="Produits à réapprovisionner"
+              subtitle="produits"
               icon="warning"
-              color={stats.lowStockProducts > 0 ? colors.danger : colors.success}
+              color={colors.error}
             />
             <StatCard
-              title="Balance générale"
-              value={stats.generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(stats.generalBalance))}
-              subtitle={stats.generalBalance > 0 ? "J'ai donné (dettes)" : 
-                       stats.generalBalance < 0 ? "J'ai pris (avances)" : 
-                       "Équilibré"}
-              icon="wallet"
-              color={stats.generalBalance > 0 ? colors.danger : 
-                     stats.generalBalance < 0 ? colors.success : 
-                     colors.text}
+              title="Crédit total"
+              value={formatCurrency(stats.creditAmount)}
+              icon="card"
+              color={colors.warning}
             />
           </View>
-        </View>
 
-        {/* Quick Actions */}
-        <View style={commonStyles.section}>
-          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
-            ⚡ Actions rapides
-          </Text>
-          <View style={{ 
-            flexDirection: 'row', 
-            flexWrap: 'wrap',
-            gap: spacing.sm
-          }}>
-            {quickActions.map((action, index) => (
-              <View key={index} style={{ 
-                width: isSmallScreen ? '48%' : '23%',
-                minWidth: 150
-              }}>
-                <QuickActionCard action={action} />
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Top Products */}
-        {stats.topProducts.length > 0 && (
-          <View style={commonStyles.section}>
-            <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
-              🏆 Produits populaires
+          {/* Balance générale */}
+          <View style={[commonStyles.card, { marginBottom: spacing.xl }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+              <Icon name="wallet" size={24} color={colors.primary} />
+              <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0 }]}>
+                Balance générale
+              </Text>
+            </View>
+            <Text style={[
+              commonStyles.title, 
+              { 
+                fontSize: fontSizes.xl,
+                color: stats.generalBalance >= 0 ? colors.success : colors.error,
+                marginBottom: 0,
+              }
+            ]}>
+              {formatCurrency(stats.generalBalance)}
             </Text>
-            {stats.topProducts.map((product, index) => (
-              <View key={index} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
-                <View style={[commonStyles.row, { alignItems: 'center' }]}>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+              {stats.generalBalance >= 0 ? 'Solde positif' : 'Solde négatif'}
+            </Text>
+          </View>
+
+          {/* Top Products */}
+          {stats.topProducts.length > 0 && (
+            <View style={[commonStyles.card, { marginBottom: spacing.xl }]}>
+              <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+                Produits les plus vendus
+              </Text>
+              {stats.topProducts.map((product, index) => (
+                <View key={index} style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: spacing.sm,
+                  borderBottomWidth: index < stats.topProducts.length - 1 ? 1 : 0,
+                  borderBottomColor: colors.border,
+                }}>
                   <View style={{
-                    backgroundColor: colors.primary + '20',
+                    width: 30,
+                    height: 30,
                     borderRadius: 15,
-                    padding: spacing.sm,
-                    marginRight: spacing.md,
-                    minWidth: 30,
+                    backgroundColor: colors.primary,
                     alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: spacing.md,
                   }}>
-                    <Text style={[commonStyles.text, { 
-                      color: colors.primary, 
-                      fontWeight: 'bold',
-                      fontSize: fontSizes.sm
-                    }]}>
+                    <Text style={{ color: colors.secondary, fontWeight: 'bold', fontSize: fontSizes.sm }}>
                       {index + 1}
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                    <Text style={[commonStyles.text, { fontWeight: '600' }]}>
                       {product.name}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                       {product.quantity} vendus
                     </Text>
                   </View>
-                  <Text style={[commonStyles.text, { 
-                    color: colors.success, 
-                    fontWeight: 'bold' 
-                  }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600' }]}>
                     {formatCurrency(product.revenue)}
                   </Text>
                 </View>
-              </View>
-            ))}
-          </View>
-        )}
+              ))}
+            </View>
+          )}
 
-        {/* Recent Sales */}
-        {stats.recentSales.length > 0 && (
-          <View style={commonStyles.section}>
-            <View style={[commonStyles.row, { marginBottom: spacing.md }]}>
-              <Text style={commonStyles.subtitle}>
-                🕒 Ventes récentes
+          {/* Sync Status Details */}
+          {syncStatus.pendingCount > 0 && (
+            <View style={[commonStyles.card, { 
+              backgroundColor: colors.warning + '10',
+              borderLeftWidth: 4,
+              borderLeftColor: colors.warning,
+            }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+                <Icon name="sync" size={20} color={colors.warning} />
+                <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0 }]}>
+                  Synchronisation en attente
+                </Text>
+              </View>
+              <Text style={[commonStyles.textLight, { marginBottom: spacing.sm }]}>
+                {syncStatus.pendingCount} élément(s) en attente de synchronisation
               </Text>
-              <TouchableOpacity onPress={() => router.push('/reports')}>
-                <Text style={[commonStyles.text, { color: colors.primary, fontSize: fontSizes.sm }]}>
-                  Voir tout
+              <TouchableOpacity
+                style={{
+                  backgroundColor: colors.warning,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  borderRadius: 6,
+                  alignSelf: 'flex-start',
+                }}
+                onPress={handleSyncNow}
+              >
+                <Text style={{ color: colors.secondary, fontSize: fontSizes.sm, fontWeight: '600' }}>
+                  Synchroniser maintenant
                 </Text>
               </TouchableOpacity>
             </View>
-            {stats.recentSales.slice(0, 5).map((sale) => (
-              <TouchableOpacity
-                key={sale.id}
-                style={[commonStyles.card, { marginBottom: spacing.sm }]}
-                onPress={() => router.push(`/sale-ticket?saleId=${sale.id}`)}
-              >
-                <View style={[commonStyles.row, { alignItems: 'center' }]}>
-                  <View style={{
-                    backgroundColor: colors.backgroundLight,
-                    borderRadius: 20,
-                    padding: spacing.sm,
-                    marginRight: spacing.md,
-                  }}>
-                    <Icon name="receipt" size={16} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
-                      {sale.receiptNumber}
-                    </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                      {sale.customer?.name || 'Client anonyme'} • {sale.items.length} article(s)
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[commonStyles.text, { 
-                      color: colors.success, 
-                      fontWeight: 'bold',
-                      marginBottom: spacing.xs
-                    }]}>
-                      {formatCurrency(sale.total)}
-                    </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                      {sale.paymentStatus === 'paid' ? '✅ Payé' : 
-                       sale.paymentStatus === 'partial' ? '⏳ Partiel' : 
-                       '💳 Crédit'}
-                    </Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

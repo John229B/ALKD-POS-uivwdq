@@ -3,13 +3,15 @@ import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthUser, LoginCredentials, CreateAccountData, CreateEmployeeData, DEFAULT_PERMISSIONS } from '../types/auth';
 import { AppSettings } from '../types';
-import { storeSettings, getSettings, logActivity } from './storage';
+import { storeSettings, getSettings, logActivity, addToSyncQueue, isOnline } from './storage';
 
 const STORAGE_KEYS = {
   AUTH_USERS: 'alkd_pos_auth_users',
   CURRENT_AUTH_USER: 'alkd_pos_current_auth_user',
   FIRST_LAUNCH: 'alkd_pos_first_launch',
   ADMIN_SETUP_COMPLETE: 'alkd_pos_admin_setup_complete',
+  OFFLINE_EMPLOYEES: 'alkd_pos_offline_employees',
+  PENDING_SYNC: 'alkd_pos_pending_sync',
 };
 
 export class AuthService {
@@ -102,6 +104,67 @@ export class AuthService {
     }
   }
 
+  // Store offline employee data for sync
+  private async storeOfflineEmployee(employee: AuthUser): Promise<void> {
+    try {
+      const offlineEmployees = await this.getOfflineEmployees();
+      offlineEmployees.push({
+        ...employee,
+        isOfflineCreated: true,
+        createdOfflineAt: new Date(),
+      });
+      await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_EMPLOYEES, JSON.stringify(offlineEmployees));
+      console.log('Employee stored offline for sync:', employee.username);
+    } catch (error) {
+      console.error('Error storing offline employee:', error);
+    }
+  }
+
+  // Get offline employees
+  private async getOfflineEmployees(): Promise<any[]> {
+    try {
+      const offlineJson = await AsyncStorage.getItem(STORAGE_KEYS.OFFLINE_EMPLOYEES);
+      return offlineJson ? JSON.parse(offlineJson) : [];
+    } catch (error) {
+      console.error('Error getting offline employees:', error);
+      return [];
+    }
+  }
+
+  // Sync offline data when online
+  async syncOfflineData(): Promise<void> {
+    try {
+      const online = await isOnline();
+      if (!online) {
+        console.log('Still offline, skipping sync');
+        return;
+      }
+
+      const offlineEmployees = await this.getOfflineEmployees();
+      if (offlineEmployees.length === 0) {
+        console.log('No offline employees to sync');
+        return;
+      }
+
+      console.log(`Syncing ${offlineEmployees.length} offline employees...`);
+      
+      // Add to sync queue for each offline employee
+      for (const employee of offlineEmployees) {
+        await addToSyncQueue({
+          type: 'employee_create',
+          data: employee,
+          priority: 'high',
+        });
+      }
+
+      // Clear offline employees after adding to sync queue
+      await AsyncStorage.removeItem(STORAGE_KEYS.OFFLINE_EMPLOYEES);
+      console.log('Offline employees added to sync queue');
+    } catch (error) {
+      console.error('Error syncing offline data:', error);
+    }
+  }
+
   // Create admin account (first launch)
   async createAdminAccount(data: CreateAccountData): Promise<AuthUser> {
     try {
@@ -169,7 +232,7 @@ export class AuthService {
     }
   }
 
-  // Login user
+  // Login user (with offline support)
   async login(credentials: LoginCredentials): Promise<AuthUser> {
     try {
       console.log('Attempting login for:', credentials.username);
@@ -207,6 +270,13 @@ export class AuthService {
 
       // Log activity
       await logActivity(user.id, 'auth', 'User logged in', { username: user.username });
+
+      // Try to sync offline data if online
+      try {
+        await this.syncOfflineData();
+      } catch (syncError) {
+        console.log('Sync failed, will retry later:', syncError);
+      }
 
       console.log('Login successful for:', user.username);
       return user;
@@ -262,13 +332,13 @@ export class AuthService {
     }
   }
 
-  // Create employee (admin only)
+  // Create employee (admin only) with offline support
   async createEmployee(data: CreateEmployeeData, adminId: string): Promise<AuthUser> {
     try {
-      console.log('Creating employee account...');
+      console.log('Creating employee account...', data);
 
       // Validate input
-      if (!data.name || !data.username || !data.email || !data.password) {
+      if (!data.username || !data.email || !data.password) {
         throw new Error('Tous les champs obligatoires doivent être remplis');
       }
 
@@ -288,7 +358,7 @@ export class AuthService {
 
       // Create employee user
       const employee: AuthUser = {
-        id: `emp-${Date.now()}`,
+        id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         username: data.username,
         email: data.email,
         password: hashedPassword,
@@ -305,11 +375,28 @@ export class AuthService {
       const updatedUsers = [...users, employee];
       await this.storeUsers(updatedUsers);
 
+      // Check if online for sync
+      const online = await isOnline();
+      if (online) {
+        // Add to sync queue for server sync
+        await addToSyncQueue({
+          type: 'employee_create',
+          data: employee,
+          priority: 'high',
+        });
+        console.log('Employee added to sync queue for server sync');
+      } else {
+        // Store offline for later sync
+        await this.storeOfflineEmployee(employee);
+        console.log('Employee stored offline, will sync when online');
+      }
+
       // Log activity
       await logActivity(adminId, 'employees', 'Employee created', { 
         employeeId: employee.id, 
         username: employee.username,
-        role: employee.role 
+        role: employee.role,
+        offline: !online
       });
 
       console.log('Employee account created successfully');
@@ -352,10 +439,21 @@ export class AuthService {
       users[employeeIndex] = updatedEmployee;
       await this.storeUsers(users);
 
+      // Add to sync queue if online
+      const online = await isOnline();
+      if (online) {
+        await addToSyncQueue({
+          type: 'employee_update',
+          data: { id: employeeId, updates },
+          priority: 'medium',
+        });
+      }
+
       // Log activity
       await logActivity(adminId, 'employees', 'Employee updated', { 
         employeeId: updatedEmployee.id, 
-        username: updatedEmployee.username 
+        username: updatedEmployee.username,
+        offline: !online
       });
 
       return updatedEmployee;
@@ -384,10 +482,21 @@ export class AuthService {
       const updatedUsers = users.filter(u => u.id !== employeeId);
       await this.storeUsers(updatedUsers);
 
+      // Add to sync queue if online
+      const online = await isOnline();
+      if (online) {
+        await addToSyncQueue({
+          type: 'employee_delete',
+          data: { id: employeeId },
+          priority: 'medium',
+        });
+      }
+
       // Log activity
       await logActivity(adminId, 'employees', 'Employee deleted', { 
         employeeId: employee.id, 
-        username: employee.username 
+        username: employee.username,
+        offline: !online
       });
 
       console.log('Employee deleted successfully');
@@ -430,8 +539,21 @@ export class AuthService {
       users[userIndex] = user;
       await this.storeUsers(users);
 
+      // Add to sync queue if online
+      const online = await isOnline();
+      if (online) {
+        await addToSyncQueue({
+          type: 'password_change',
+          data: { userId, hashedPassword: hashedNewPassword },
+          priority: 'high',
+        });
+      }
+
       // Log activity
-      await logActivity(userId, 'auth', 'Password changed', { username: user.username });
+      await logActivity(userId, 'auth', 'Password changed', { 
+        username: user.username,
+        offline: !online
+      });
 
       console.log('Password changed successfully');
     } catch (error) {
@@ -467,10 +589,21 @@ export class AuthService {
       users[userIndex] = user;
       await this.storeUsers(users);
 
+      // Add to sync queue if online
+      const online = await isOnline();
+      if (online) {
+        await addToSyncQueue({
+          type: 'password_reset',
+          data: { employeeId, hashedPassword: hashedNewPassword },
+          priority: 'high',
+        });
+      }
+
       // Log activity
       await logActivity(adminId, 'employees', 'Password reset', { 
         employeeId: user.id, 
-        username: user.username 
+        username: user.username,
+        offline: !online
       });
 
       console.log('Password reset successfully');

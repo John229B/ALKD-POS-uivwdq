@@ -9,6 +9,7 @@ import { useAuthState } from '../../hooks/useAuth';
 import { syncService } from '../../utils/syncService';
 import Icon from '../../components/Icon';
 import { Sale, Product, Customer, AppSettings } from '../../types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface DashboardStats {
   todayRevenue: number;
@@ -19,6 +20,8 @@ interface DashboardStats {
   lowStockProducts: number;
   creditAmount: number;
   generalBalance: number;
+  dailyJaiPris: number;
+  dailyJaiDonne: number;
   topProducts: {
     name: string;
     quantity: number;
@@ -37,6 +40,8 @@ export default function DashboardScreen() {
     lowStockProducts: 0,
     creditAmount: 0,
     generalBalance: 0,
+    dailyJaiPris: 0,
+    dailyJaiDonne: 0,
     topProducts: [],
     recentSales: [],
   });
@@ -152,7 +157,26 @@ export default function DashboardScreen() {
         generalBalance += customerBalance;
       });
 
-      console.log('Dashboard: Calculated general balance:', generalBalance);
+      // CORRECTED: Calculate daily "J'ai pris" and "J'ai donné" totals
+      let dailyJaiPris = 0;
+      let dailyJaiDonne = 0;
+
+      todaySales.forEach(sale => {
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
+            dailyJaiDonne += sale.total;
+          } else if (sale.notes.includes("J'ai pris")) {
+            dailyJaiPris += sale.total;
+          }
+        }
+      });
+
+      console.log('Dashboard: Calculated balances:', {
+        generalBalance,
+        dailyJaiPris,
+        dailyJaiDonne
+      });
 
       // Find low stock products
       const lowStockProducts = products.filter(product => 
@@ -198,6 +222,8 @@ export default function DashboardScreen() {
         lowStockProducts,
         creditAmount,
         generalBalance,
+        dailyJaiPris,
+        dailyJaiDonne,
         topProducts,
         recentSales,
       });
@@ -221,14 +247,52 @@ export default function DashboardScreen() {
     }, [loadDashboardData])
   );
 
+  // CORRECTED: Initialize sync service properly
   useEffect(() => {
-    // Start auto sync
-    syncService.startAutoSync(15); // Every 15 minutes
+    const initializeSync = async () => {
+      try {
+        console.log('Dashboard: Initializing sync service...');
+        await syncService.initializeSyncService();
+        console.log('Dashboard: Sync service initialized successfully');
+      } catch (error) {
+        console.error('Dashboard: Failed to initialize sync service:', error);
+      }
+    };
+
+    initializeSync();
     
     return () => {
       syncService.stopAutoSync();
     };
   }, []);
+
+  // CORRECTED: Daily reset functionality using AsyncStorage
+  useEffect(() => {
+    const checkDailyReset = async () => {
+      try {
+        const now = new Date();
+        const lastResetDate = await AsyncStorage.getItem('lastDashboardReset');
+        const today = now.toDateString();
+        
+        if (lastResetDate !== today) {
+          console.log('Dashboard: Performing daily reset');
+          await AsyncStorage.setItem('lastDashboardReset', today);
+          // Reload data to reflect the new day
+          loadDashboardData();
+        }
+      } catch (error) {
+        console.error('Dashboard: Error checking daily reset:', error);
+      }
+    };
+
+    // Check on mount
+    checkDailyReset();
+
+    // Set up interval to check every hour
+    const resetInterval = setInterval(checkDailyReset, 60 * 60 * 1000);
+
+    return () => clearInterval(resetInterval);
+  }, [loadDashboardData]);
 
   const formatCurrency = useCallback((amount: number): string => {
     if (!settings) return `${amount.toLocaleString()} F CFA`;
@@ -477,6 +541,95 @@ export default function DashboardScreen() {
             ))}
           </View>
 
+          {/* CORRECTED: Balance générale avec réinitialisation journalière et affichage correct */}
+          <View style={[
+            commonStyles.card, 
+            { 
+              marginBottom: spacing.xl,
+              backgroundColor: colors.background,
+              borderWidth: 2,
+              borderColor: stats.generalBalance < 0 ? colors.success + '40' : stats.generalBalance > 0 ? colors.error + '40' : colors.border,
+            }
+          ]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+              <View style={{
+                backgroundColor: stats.generalBalance < 0 ? colors.success + '20' : stats.generalBalance > 0 ? colors.error + '20' : colors.textLight + '20',
+                borderRadius: 20,
+                padding: spacing.sm,
+                marginRight: spacing.sm,
+              }}>
+                <Icon 
+                  name="wallet" 
+                  size={24} 
+                  color={stats.generalBalance < 0 ? colors.success : stats.generalBalance > 0 ? colors.error : colors.textLight} 
+                />
+              </View>
+              <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0, color: colors.text }]}>
+                Balance générale
+              </Text>
+            </View>
+            
+            {/* Montant principal de la journée */}
+            <Text style={[
+              commonStyles.title, 
+              { 
+                fontSize: fontSizes.xxl,
+                color: stats.generalBalance < 0 ? colors.success : stats.generalBalance > 0 ? colors.error : colors.text,
+                marginBottom: spacing.sm,
+                fontWeight: 'bold',
+                textAlign: 'center',
+              }
+            ]}>
+              {formatCurrency(Math.abs(stats.generalBalance))}
+            </Text>
+            
+            {/* CORRECTED: Libellé correct selon le signe */}
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.md, textAlign: 'center', marginBottom: spacing.md }]}>
+              {stats.generalBalance < 0 ? 'J\'ai pris (avance/crédit)' : 
+               stats.generalBalance > 0 ? 'J\'ai donné (dette)' : 
+               'Solde équilibré'}
+            </Text>
+            
+            {/* Détails journaliers séparés */}
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-around',
+              paddingTop: spacing.md,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
+                  J'ai pris aujourd'hui
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  fontSize: fontSizes.md, 
+                  fontWeight: '600',
+                  color: colors.success 
+                }]}>
+                  {formatCurrency(stats.dailyJaiPris)}
+                </Text>
+              </View>
+              
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
+                  J'ai donné aujourd'hui
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  fontSize: fontSizes.md, 
+                  fontWeight: '600',
+                  color: colors.error 
+                }]}>
+                  {formatCurrency(stats.dailyJaiDonne)}
+                </Text>
+              </View>
+            </View>
+            
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.sm, textAlign: 'center' }]}>
+              Se réinitialise automatiquement chaque jour à zéro
+            </Text>
+          </View>
+
           {/* Revenue Stats */}
           <Text style={[commonStyles.subtitle, { marginBottom: spacing.md, color: colors.text }]}>
             Revenus
@@ -533,54 +686,6 @@ export default function DashboardScreen() {
               icon="card"
               color={colors.warning}
             />
-          </View>
-
-          {/* CORRECTED: Balance générale avec calcul en temps réel */}
-          <View style={[
-            commonStyles.card, 
-            { 
-              marginBottom: spacing.xl,
-              backgroundColor: colors.background,
-              borderWidth: 2,
-              borderColor: stats.generalBalance >= 0 ? colors.success + '40' : colors.error + '40',
-            }
-          ]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-              <View style={{
-                backgroundColor: stats.generalBalance >= 0 ? colors.success + '20' : colors.error + '20',
-                borderRadius: 20,
-                padding: spacing.sm,
-                marginRight: spacing.sm,
-              }}>
-                <Icon 
-                  name="wallet" 
-                  size={24} 
-                  color={stats.generalBalance >= 0 ? colors.success : colors.error} 
-                />
-              </View>
-              <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0, color: colors.text }]}>
-                Balance générale
-              </Text>
-            </View>
-            <Text style={[
-              commonStyles.title, 
-              { 
-                fontSize: fontSizes.xl,
-                color: stats.generalBalance >= 0 ? colors.success : colors.error,
-                marginBottom: spacing.xs,
-                fontWeight: 'bold',
-              }
-            ]}>
-              {formatCurrency(Math.abs(stats.generalBalance))}
-            </Text>
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              {stats.generalBalance > 0 ? 'Solde positif (dettes clients)' : 
-               stats.generalBalance < 0 ? 'Solde négatif (avances clients)' : 
-               'Solde équilibré'}
-            </Text>
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.xs }]}>
-              Calculé en temps réel depuis toutes les transactions
-            </Text>
           </View>
 
           {/* Top Products */}

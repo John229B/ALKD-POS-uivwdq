@@ -6,6 +6,30 @@ export class SyncService {
   private syncInProgress = false;
   private syncInterval: NodeJS.Timeout | null = null;
 
+  // CORRECTED: Add the missing initializeSyncService method
+  async initializeSyncService(): Promise<void> {
+    try {
+      console.log('SyncService: Initializing sync service...');
+      
+      // Start auto sync with default interval
+      this.startAutoSync(15); // Every 15 minutes
+      
+      // Perform initial sync if online
+      const online = await isOnline();
+      if (online) {
+        console.log('SyncService: Device is online, performing initial sync...');
+        await this.syncPendingData();
+      } else {
+        console.log('SyncService: Device is offline, skipping initial sync');
+      }
+      
+      console.log('SyncService: Initialization completed successfully');
+    } catch (error) {
+      console.error('SyncService: Error during initialization:', error);
+      throw error;
+    }
+  }
+
   // Start automatic sync
   startAutoSync(intervalMinutes: number = 15): void {
     if (this.syncInterval) {

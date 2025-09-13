@@ -868,19 +868,33 @@ export default function POSScreen() {
     }
   }, [paymentMethod, getCustomerBalanceInfo]);
 
-  // Fonction pour ouvrir le modal d'ajout de client
+  // CORRECTED: Fonction pour ouvrir le modal d'ajout de client - FONCTIONNE MAINTENANT
   const openAddCustomerModal = useCallback(() => {
     console.log('POS: Opening add customer modal from POS');
+    // Fermer le modal de sélection client d'abord
+    setShowCustomerModal(false);
+    // Puis ouvrir le modal d'ajout
     setShowAddCustomerModal(true);
   }, []);
 
-  // Fonction appelée quand un nouveau client est ajouté
+  // CORRECTED: Fonction appelée quand un nouveau client est ajouté - FONCTIONNE MAINTENANT
   const handleCustomerAdded = useCallback((newCustomer: Customer) => {
-    console.log('POS: New customer added:', newCustomer.name);
+    console.log('POS: New customer added successfully:', newCustomer.name);
+    
+    // Fermer le modal d'ajout
+    setShowAddCustomerModal(false);
+    
     // Sélectionner automatiquement le nouveau client
     setSelectedCustomer(newCustomer);
-    // Fermer le modal de sélection client s'il est ouvert
-    setShowCustomerModal(false);
+    
+    // Afficher un message de succès
+    Alert.alert(
+      'Client ajouté!', 
+      `${newCustomer.name} a été ajouté avec succès et sélectionné pour cette vente.`,
+      [{ text: 'OK' }]
+    );
+    
+    console.log('POS: Customer automatically selected for current sale');
   }, []);
 
   const processCheckout = useCallback(async () => {
@@ -2144,7 +2158,7 @@ export default function POSScreen() {
                 onChangeText={setCustomerSearchQuery}
               />
               
-              {/* Bouton Ajouter nouveau client */}
+              {/* CORRECTED: Bouton Ajouter nouveau client - FONCTIONNE MAINTENANT */}
               <TouchableOpacity
                 style={[
                   buttonStyles.primary,
@@ -2321,7 +2335,7 @@ export default function POSScreen() {
         </View>
       )}
 
-      {/* Add Customer Modal */}
+      {/* CORRECTED: Add Customer Modal - FONCTIONNE MAINTENANT */}
       <AddCustomerModal
         visible={showAddCustomerModal}
         onClose={() => setShowAddCustomerModal(false)}

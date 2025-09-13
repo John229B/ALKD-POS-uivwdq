@@ -31,7 +31,7 @@ export default function TransactionSuccessScreen() {
 
   const processTransaction = useCallback(async () => {
     try {
-      console.log('Processing transaction:', { customerId, type, amount, paymentMethod });
+      console.log('Processing transaction:', { customerId, type, amount, paymentMethod, note });
       
       const [customersData, salesData, settingsData] = await Promise.all([
         getCustomers(),
@@ -78,7 +78,13 @@ export default function TransactionSuccessScreen() {
         }
       });
 
-      // Create a new sale record for this transaction - FIXED
+      // Create transaction description with note - IMPROVED
+      let transactionDescription = `Transaction ${type === 'gave' ? "J'ai donné" : "J'ai pris"}`;
+      if (note && note.trim()) {
+        transactionDescription += ` - ${note.trim()}`;
+      }
+
+      // Create a new sale record for this transaction - FIXED with note
       const newSale: Sale = {
         id: uuid.v4() as string,
         customerId: foundCustomer.id,
@@ -92,7 +98,7 @@ export default function TransactionSuccessScreen() {
         paymentStatus: 'paid', // Always mark manual transactions as paid
         amountPaid: numAmount,
         change: 0,
-        notes: note || `Transaction ${type === 'gave' ? "J'ai donné" : "J'ai pris"}`,
+        notes: transactionDescription, // Include the note in the transaction
         cashierId: 'admin-001', // TODO: Get from auth context
         createdAt: transactionDate,
         receiptNumber: `TXN-${Date.now()}`,
@@ -129,6 +135,7 @@ export default function TransactionSuccessScreen() {
       setIsProcessing(false);
 
       console.log('Transaction processed successfully. New balance:', calculatedNewBalance);
+      console.log('Transaction note saved:', note);
     } catch (error) {
       console.error('Error processing transaction:', error);
       Alert.alert('Erreur', 'Erreur lors du traitement de la transaction');
@@ -148,9 +155,9 @@ export default function TransactionSuccessScreen() {
 
   const getPaymentMethodLabel = (method: string): string => {
     const labels = {
-      cash: 'Especes',
+      cash: 'Espèces',
       mobile_money: 'Mobile Money',
-      credit: 'Credit',
+      credit: 'Crédit',
     };
     return labels[method] || method;
   };
@@ -223,13 +230,13 @@ export default function TransactionSuccessScreen() {
       // Fallback to text sharing if image capture fails
       const balanceStatus = getBalanceStatus(newBalance);
       const receiptText = [
-        '=== RECU DE TRANSACTION ===',
+        '=== REÇU DE TRANSACTION ===',
         '',
         settings?.companyName || 'ALKD-POS',
-        format(new Date(date), 'dd/MM/yyyy a HH:mm'),
+        format(new Date(date), 'dd/MM/yyyy à HH:mm'),
         '',
         `Client: ${customer?.name || 'N/A'}`,
-        `${type === 'gave' ? "J'ai donne" : "J'ai pris"}: ${formatCurrency(parseFloat(amount))}`,
+        `${type === 'gave' ? "J'ai donné" : "J'ai pris"}: ${formatCurrency(parseFloat(amount))}`,
         `Mode: ${getPaymentMethodLabel(paymentMethod)}`,
         note ? `Note: ${note}` : '',
         '',
@@ -256,7 +263,7 @@ export default function TransactionSuccessScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/plain',
-          dialogTitle: 'Partager le recu',
+          dialogTitle: 'Partager le reçu',
         });
       }
 
@@ -269,7 +276,7 @@ export default function TransactionSuccessScreen() {
 
     } catch (error) {
       console.error('Error sharing receipt as text:', error);
-      Alert.alert('Erreur', `Erreur lors du partage du recu: ${error.message || 'Erreur inconnue'}`);
+      Alert.alert('Erreur', `Erreur lors du partage du reçu: ${error.message || 'Erreur inconnue'}`);
     }
   };
 
@@ -315,7 +322,7 @@ export default function TransactionSuccessScreen() {
             fontWeight: 'bold',
             marginBottom: spacing.lg
           }]}>
-            Transaction reussie!
+            ✅ Transaction réussie!
           </Text>
         </View>
 
@@ -358,7 +365,7 @@ export default function TransactionSuccessScreen() {
                 FILS
               </Text>
               <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                {format(transactionDate, "dd/MM/yyyy a HH:mm")}
+                {format(transactionDate, "dd/MM/yyyy à HH:mm")}
               </Text>
             </View>
 
@@ -370,10 +377,10 @@ export default function TransactionSuccessScreen() {
                 marginBottom: spacing.sm,
                 color: colors.text
               }]}>
-                {type === 'gave' ? 'Nouveau montant donne' : 'Nouveau montant paye'}
+                {type === 'gave' ? 'Nouveau montant donné' : 'Nouveau montant payé'}
               </Text>
               <Text style={[commonStyles.title, { 
-                color: colors.success,
+                color: type === 'gave' ? colors.error : colors.success,
                 fontSize: 32,
                 fontWeight: 'bold'
               }]}>
@@ -390,16 +397,38 @@ export default function TransactionSuccessScreen() {
               }]}>
                 {customer.name}
               </Text>
-              {note && (
-                <Text style={[commonStyles.textLight, { 
-                  fontSize: fontSizes.sm,
-                  marginTop: spacing.xs,
+            </View>
+
+            {/* Note Section - IMPROVED: More prominent display */}
+            {note && note.trim() && (
+              <View style={{
+                backgroundColor: colors.background,
+                borderRadius: 12,
+                padding: spacing.md,
+                marginBottom: spacing.lg,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+                  <Text style={{ fontSize: 16, marginRight: spacing.xs }}>📝</Text>
+                  <Text style={[commonStyles.text, { 
+                    fontSize: fontSizes.sm,
+                    fontWeight: '600',
+                    color: colors.textLight
+                  }]}>
+                    Note de transaction
+                  </Text>
+                </View>
+                <Text style={[commonStyles.text, { 
+                  fontSize: fontSizes.md,
+                  color: colors.text,
+                  fontStyle: 'italic',
                   textAlign: 'center'
                 }]}>
-                  {note}
+                  "{note.trim()}"
                 </Text>
-              )}
-            </View>
+              </View>
+            )}
 
             {/* Payment Method */}
             <View style={{ alignItems: 'center', marginBottom: spacing.lg }}>
@@ -468,7 +497,7 @@ export default function TransactionSuccessScreen() {
                 fontWeight: 'bold',
                 textAlign: 'center'
               }]}>
-                PARTAGER
+                📤 PARTAGER
               </Text>
             </TouchableOpacity>
 
@@ -488,7 +517,7 @@ export default function TransactionSuccessScreen() {
                 fontWeight: 'bold',
                 textAlign: 'center'
               }]}>
-                TERMINER
+                ✅ TERMINER
               </Text>
             </TouchableOpacity>
           </View>

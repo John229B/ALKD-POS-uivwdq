@@ -17,6 +17,7 @@ interface CustomerTransaction {
   type: 'gave' | 'took'; // J'ai donné (dette) | J'ai pris (paiement)
   paymentMethod: string;
   description: string;
+  note?: string; // ADDED: Note field for transactions
   balance: number; // Balance after this transaction
 }
 
@@ -60,7 +61,7 @@ export default function CustomerDetailsScreen() {
         address: foundCustomer.address || '',
       });
 
-      // Generate transactions from sales - FIXED LOGIC
+      // Generate transactions from sales - IMPROVED with note extraction
       const customerSales = salesData.filter(sale => sale.customerId === customerId);
       const generatedTransactions: CustomerTransaction[] = [];
 
@@ -79,8 +80,25 @@ export default function CustomerDetailsScreen() {
           itemsCount: sale.items.length
         });
 
+        // Extract note from sale notes - IMPROVED
+        const extractNoteFromSaleNotes = (saleNotes: string): string | undefined => {
+          if (!saleNotes) return undefined;
+          
+          // Look for note after " - " in manual transactions
+          if (saleNotes.includes("J'ai donné - ") || saleNotes.includes("J'ai pris - ")) {
+            const parts = saleNotes.split(' - ');
+            if (parts.length > 1) {
+              return parts.slice(1).join(' - ').trim();
+            }
+          }
+          
+          return undefined;
+        };
+
         // Check if this is a manual transaction (J'ai pris/donné)
         if (sale.items.length === 0 && sale.notes) {
+          const extractedNote = extractNoteFromSaleNotes(sale.notes);
+          
           if (sale.notes.includes("J'ai donné")) {
             generatedTransactions.push({
               id: `manual-gave-${sale.id}`,
@@ -88,7 +106,8 @@ export default function CustomerDetailsScreen() {
               amount: sale.total,
               type: 'gave',
               paymentMethod: sale.paymentMethod,
-              description: sale.notes,
+              description: extractedNote ? `J'ai donné` : sale.notes,
+              note: extractedNote,
               balance: 0, // Will be calculated later
             });
           } else if (sale.notes.includes("J'ai pris")) {
@@ -98,7 +117,8 @@ export default function CustomerDetailsScreen() {
               amount: sale.total,
               type: 'took',
               paymentMethod: sale.paymentMethod,
-              description: sale.notes,
+              description: extractedNote ? `J'ai pris` : sale.notes,
+              note: extractedNote,
               balance: 0, // Will be calculated later
             });
           }
@@ -113,6 +133,7 @@ export default function CustomerDetailsScreen() {
               type: 'gave',
               paymentMethod: 'credit',
               description: `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+              note: sale.notes && !sale.notes.includes('Transaction') ? sale.notes : undefined,
               balance: 0, // Will be calculated later
             });
           } else if (sale.paymentStatus === 'partial') {
@@ -127,6 +148,7 @@ export default function CustomerDetailsScreen() {
                 type: 'gave',
                 paymentMethod: 'credit',
                 description: `Vente partielle ${sale.receiptNumber} - Reste à payer`,
+                note: sale.notes && !sale.notes.includes('Transaction') ? sale.notes : undefined,
                 balance: 0, // Will be calculated later
               });
             }
@@ -141,6 +163,7 @@ export default function CustomerDetailsScreen() {
                 type: 'took',
                 paymentMethod: sale.paymentMethod,
                 description: `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
+                note: sale.notes && !sale.notes.includes('Transaction') ? sale.notes : undefined,
                 balance: 0, // Will be calculated later
               });
             }
@@ -156,6 +179,7 @@ export default function CustomerDetailsScreen() {
                 type: 'took',
                 paymentMethod: sale.paymentMethod,
                 description: `Vente ${sale.receiptNumber} - Surplus de paiement`,
+                note: sale.notes && !sale.notes.includes('Transaction') ? sale.notes : undefined,
                 balance: 0, // Will be calculated later
               });
             }
@@ -429,9 +453,39 @@ export default function CustomerDetailsScreen() {
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.xs }]}>
                       Solde après: {transaction.balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(transaction.balance))}
                     </Text>
-                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.xs }]}>
                       {transaction.description}
                     </Text>
+                    
+                    {/* IMPROVED: Display note prominently if it exists */}
+                    {transaction.note && (
+                      <View style={{
+                        backgroundColor: colors.backgroundAlt,
+                        borderRadius: 8,
+                        padding: spacing.sm,
+                        marginTop: spacing.xs,
+                        borderLeftWidth: 3,
+                        borderLeftColor: colors.primary,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                          <Text style={{ fontSize: 12, marginRight: spacing.xs }}>📝</Text>
+                          <Text style={[commonStyles.textLight, { 
+                            fontSize: fontSizes.xs, 
+                            fontWeight: '600',
+                            color: colors.primary
+                          }]}>
+                            Note:
+                          </Text>
+                        </View>
+                        <Text style={[commonStyles.text, { 
+                          fontSize: fontSizes.sm,
+                          color: colors.text,
+                          fontStyle: 'italic'
+                        }]}>
+                          "{transaction.note}"
+                        </Text>
+                      </View>
+                    )}
                   </View>
 
                   {/* Amount and Type */}

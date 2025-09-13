@@ -89,13 +89,14 @@ export default function TransactionAmountScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={commonStyles.content}>
-          {/* Header - FIXED: Better contrast and visibility */}
+          {/* Header - Better contrast and visibility */}
           <View style={[
             commonStyles.header, 
             { 
               backgroundColor: colors.background, 
               borderBottomColor: colors.border,
               borderBottomWidth: 1,
+              paddingVertical: spacing.lg,
             }
           ]}>
             <TouchableOpacity 
@@ -115,34 +116,45 @@ export default function TransactionAmountScreen() {
             <View style={{ flex: 1, alignItems: 'center' }}>
               <Text style={[commonStyles.title, { 
                 color: type === 'gave' ? colors.error : colors.success,
-                fontSize: fontSizes.lg,
+                fontSize: fontSizes.xl,
                 fontWeight: 'bold',
                 textAlign: 'center'
               }]}>
                 {type === 'gave' ? "J'AI DONNÉ" : "J'AI PRIS"}
               </Text>
+              <Text style={[commonStyles.textLight, { 
+                fontSize: fontSizes.sm,
+                textAlign: 'center',
+                marginTop: spacing.xs
+              }]}>
+                {type === 'gave' 
+                  ? 'Crédit accordé ou monnaie rendue'
+                  : 'Paiement reçu ou remboursement de dette'
+                }
+              </Text>
             </View>
             <View style={{ width: 44 }} />
           </View>
 
-          {/* Customer Info - FIXED: Better visibility */}
+          {/* Customer Info - Better visibility */}
           <View style={[
             commonStyles.card, 
             { 
               backgroundColor: colors.background, 
               margin: spacing.lg,
-              borderWidth: 1,
-              borderColor: colors.border,
+              borderWidth: 2,
+              borderColor: type === 'gave' ? colors.error + '30' : colors.success + '30',
+              borderRadius: 15,
             }
           ]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
               <View style={{
                 backgroundColor: colors.primary + '20',
-                borderRadius: 20,
-                padding: spacing.sm,
+                borderRadius: 25,
+                padding: spacing.md,
                 marginRight: spacing.md,
               }}>
-                <Icon name="person" size={20} color={colors.primary} />
+                <Icon name="person" size={24} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[commonStyles.text, { 
@@ -150,7 +162,7 @@ export default function TransactionAmountScreen() {
                   fontSize: fontSizes.sm, 
                   marginBottom: spacing.xs 
                 }]}>
-                  Client
+                  Client sélectionné
                 </Text>
                 <Text style={[commonStyles.title, { 
                   fontSize: fontSizes.lg,
@@ -162,47 +174,45 @@ export default function TransactionAmountScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              {type === 'gave' 
-                ? 'Montant que vous avez donné (crédit accordé ou monnaie rendue)'
-                : 'Montant que vous avez reçu (paiement ou remboursement de dette)'
-              }
-            </Text>
           </View>
 
-          {/* Amount Input - FIXED: Better design and visibility */}
+          {/* Amount Input - Better design and visibility */}
           <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
             <View style={[
               commonStyles.card,
               {
                 backgroundColor: colors.background,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: colors.border,
                 marginBottom: spacing.lg,
+                borderRadius: 15,
               }
             ]}>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md, 
-                fontWeight: '600',
-                marginBottom: spacing.md,
-                color: colors.text,
-              }]}>
-                💰 Montant
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+                <Text style={{ fontSize: 24, marginRight: spacing.sm }}>💰</Text>
+                <Text style={[commonStyles.text, { 
+                  fontSize: fontSizes.lg, 
+                  fontWeight: 'bold',
+                  color: colors.text,
+                }]}>
+                  Montant de la transaction
+                </Text>
+              </View>
 
               <TextInput
                 style={[
                   commonStyles.input, 
                   { 
-                    fontSize: fontSizes.xl,
+                    fontSize: fontSizes.xxl,
                     fontWeight: 'bold',
                     textAlign: 'center',
-                    paddingVertical: spacing.lg,
+                    paddingVertical: spacing.xl,
                     marginBottom: spacing.lg,
                     backgroundColor: colors.backgroundAlt,
-                    borderColor: amount ? colors.primary : colors.border,
-                    borderWidth: 2,
+                    borderColor: amount ? (type === 'gave' ? colors.error : colors.success) : colors.border,
+                    borderWidth: 3,
                     color: colors.text,
+                    borderRadius: 12,
                   }
                 ]}
                 value={amount}
@@ -213,14 +223,14 @@ export default function TransactionAmountScreen() {
                 autoFocus
               />
 
-              {/* Quick Amount Buttons - FIXED: Better visibility */}
+              {/* Quick Amount Buttons - Better visibility */}
               <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.sm, 
+                fontSize: fontSizes.md, 
                 marginBottom: spacing.md,
-                color: colors.textLight,
+                color: colors.text,
                 fontWeight: '600',
               }]}>
-                Montants rapides:
+                ⚡ Montants rapides
               </Text>
 
               <View style={{ 
@@ -237,15 +247,22 @@ export default function TransactionAmountScreen() {
                       buttonStyles.small, 
                       { 
                         minWidth: '30%',
-                        backgroundColor: colors.backgroundAlt,
-                        borderColor: colors.border,
-                        borderWidth: 1,
+                        backgroundColor: amount === quickAmount.toString() ? colors.primary + '20' : colors.backgroundAlt,
+                        borderColor: amount === quickAmount.toString() ? colors.primary : colors.border,
+                        borderWidth: 2,
+                        borderRadius: 10,
+                        paddingVertical: spacing.md,
                       }
                     ]}
                     onPress={() => setAmount(quickAmount.toString())}
                     activeOpacity={0.7}
                   >
-                    <Text style={{ color: colors.text, fontSize: fontSizes.sm, textAlign: 'center' }}>
+                    <Text style={{ 
+                      color: amount === quickAmount.toString() ? colors.primary : colors.text, 
+                      fontSize: fontSizes.sm, 
+                      textAlign: 'center',
+                      fontWeight: '600'
+                    }}>
                       {formatCurrency(quickAmount)}
                     </Text>
                   </TouchableOpacity>
@@ -253,46 +270,83 @@ export default function TransactionAmountScreen() {
               </View>
             </View>
 
-            {/* Note Input - FIXED: Better design */}
+            {/* Note Input - IMPROVED: Much more visible and prominent */}
             <View style={[
               commonStyles.card,
               {
                 backgroundColor: colors.background,
-                borderWidth: 1,
-                borderColor: colors.border,
+                borderWidth: 2,
+                borderColor: note ? colors.primary : colors.border,
                 marginBottom: spacing.lg,
+                borderRadius: 15,
               }
             ]}>
-              <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md, 
-                fontWeight: '600',
-                marginBottom: spacing.sm,
-                color: colors.text,
-              }]}>
-                📝 Note (optionnel)
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
+                <Text style={{ fontSize: 24, marginRight: spacing.sm }}>📝</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.text, { 
+                    fontSize: fontSizes.lg, 
+                    fontWeight: 'bold',
+                    color: colors.text,
+                  }]}>
+                    Note de transaction
+                  </Text>
+                  <Text style={[commonStyles.textLight, { 
+                    fontSize: fontSizes.sm,
+                    marginTop: spacing.xs
+                  }]}>
+                    Optionnel - Ajoutez des détails sur cette transaction
+                  </Text>
+                </View>
+              </View>
 
               <TextInput
                 style={[
                   commonStyles.input, 
                   { 
-                    height: 80, 
+                    height: 100, 
                     textAlignVertical: 'top',
                     backgroundColor: colors.backgroundAlt,
-                    borderColor: colors.border,
-                    borderWidth: 1,
+                    borderColor: note ? colors.primary : colors.border,
+                    borderWidth: 2,
                     color: colors.text,
+                    fontSize: fontSizes.md,
+                    borderRadius: 10,
+                    paddingTop: spacing.md,
                   }
                 ]}
                 value={note}
                 onChangeText={setNote}
-                placeholder="Ajoutez une note sur cette transaction..."
+                placeholder="Ex: Paiement partiel, Avance client, Retour produit, Remboursement..."
                 placeholderTextColor={colors.textLight}
                 multiline
+                numberOfLines={4}
               />
+
+              {/* Note Examples - Help users understand what to write */}
+              <View style={{ 
+                backgroundColor: colors.backgroundAlt, 
+                borderRadius: 8, 
+                padding: spacing.sm, 
+                marginTop: spacing.sm 
+              }}>
+                <Text style={[commonStyles.textLight, { 
+                  fontSize: fontSizes.xs, 
+                  marginBottom: spacing.xs,
+                  fontWeight: '600'
+                }]}>
+                  💡 Exemples de notes utiles:
+                </Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                  • "Paiement partiel pour commande du 15/01"
+                  {'\n'}• "Avance pour livraison prochaine"
+                  {'\n'}• "Remboursement produit défectueux"
+                  {'\n'}• "Règlement facture n°123"
+                </Text>
+              </View>
             </View>
 
-            {/* Preview - FIXED: Better visibility */}
+            {/* Preview - Better visibility */}
             {amount && parseFloat(amount) > 0 && (
               <View style={[
                 commonStyles.card, 
@@ -300,46 +354,74 @@ export default function TransactionAmountScreen() {
                   backgroundColor: type === 'gave' ? colors.error + '10' : colors.success + '10',
                   borderColor: type === 'gave' ? colors.error : colors.success,
                   borderWidth: 2,
-                  marginBottom: spacing.lg
+                  marginBottom: spacing.lg,
+                  borderRadius: 15,
                 }
               ]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+                  <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
+                    {type === 'gave' ? '📤' : '📥'}
+                  </Text>
+                  <Text style={[commonStyles.text, { 
+                    color: type === 'gave' ? colors.error : colors.success,
+                    fontSize: fontSizes.md,
+                    fontWeight: 'bold',
+                  }]}>
+                    Aperçu de la transaction
+                  </Text>
+                </View>
+                
                 <Text style={[commonStyles.text, { 
-                  color: type === 'gave' ? colors.error : colors.success,
-                  fontSize: fontSizes.sm,
-                  marginBottom: spacing.xs,
-                  fontWeight: '600',
-                }]}>
-                  Aperçu de la transaction:
-                </Text>
-                <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.lg,
+                  fontSize: fontSizes.xl,
                   fontWeight: 'bold',
-                  color: type === 'gave' ? colors.error : colors.success
+                  color: type === 'gave' ? colors.error : colors.success,
+                  marginBottom: spacing.sm
                 }]}>
                   {type === 'gave' ? 'Vous donnez' : 'Vous recevez'}: {formatCurrency(parseFloat(amount))}
                 </Text>
+                
                 {note && (
-                  <Text style={[commonStyles.textLight, { 
-                    fontSize: fontSizes.sm,
-                    marginTop: spacing.xs
-                  }]}>
-                    Note: {note}
-                  </Text>
+                  <View style={{
+                    backgroundColor: colors.background,
+                    borderRadius: 8,
+                    padding: spacing.sm,
+                    marginTop: spacing.sm,
+                  }}>
+                    <Text style={[commonStyles.textLight, { 
+                      fontSize: fontSizes.xs,
+                      marginBottom: spacing.xs,
+                      fontWeight: '600'
+                    }]}>
+                      📋 Note ajoutée:
+                    </Text>
+                    <Text style={[commonStyles.text, { 
+                      fontSize: fontSizes.sm,
+                      color: colors.text,
+                      fontStyle: 'italic'
+                    }]}>
+                      "{note}"
+                    </Text>
+                  </View>
                 )}
               </View>
             )}
           </View>
 
-          {/* Action Buttons - FIXED: Better contrast and visibility */}
+          {/* Action Buttons - Better contrast and visibility */}
           <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
             <TouchableOpacity
               style={[
                 buttonStyles.primary, 
                 { 
                   backgroundColor: type === 'gave' ? colors.error : colors.success,
-                  paddingVertical: spacing.lg,
+                  paddingVertical: spacing.xl,
                   borderRadius: 15,
                   marginBottom: spacing.md,
+                  shadowColor: colors.text,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.2,
+                  shadowRadius: 8,
+                  elevation: 4,
                 },
                 (!amount || parseFloat(amount) <= 0) && { opacity: 0.5 }
               ]}
@@ -349,11 +431,11 @@ export default function TransactionAmountScreen() {
             >
               <Text style={[commonStyles.text, { 
                 color: colors.secondary, 
-                fontSize: fontSizes.md, 
+                fontSize: fontSizes.lg, 
                 fontWeight: 'bold',
                 textAlign: 'center'
               }]}>
-                CONTINUER
+                ✅ CONTINUER VERS LE PAIEMENT
               </Text>
             </TouchableOpacity>
 
@@ -365,7 +447,7 @@ export default function TransactionAmountScreen() {
                   borderRadius: 15,
                   backgroundColor: colors.backgroundAlt,
                   borderColor: colors.border,
-                  borderWidth: 1,
+                  borderWidth: 2,
                 }
               ]}
               onPress={() => router.back()}
@@ -377,7 +459,7 @@ export default function TransactionAmountScreen() {
                 fontWeight: 'bold',
                 textAlign: 'center'
               }]}>
-                ANNULER
+                ❌ ANNULER
               </Text>
             </TouchableOpacity>
           </View>

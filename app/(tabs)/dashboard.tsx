@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { getSales, getProducts, getCustomers, getSettings } from '../../utils/storage';
 import { useAuthState } from '../../hooks/useAuth';
@@ -50,9 +50,44 @@ export default function DashboardScreen() {
 
   const { user } = useAuthState();
 
+  // CORRECTED: Real-time balance calculation function
+  const calculateCustomerBalance = useCallback((customerId: string, sales: Sale[]) => {
+    const customerSales = sales.filter(sale => sale.customerId === customerId);
+    let balance = 0;
+    
+    customerSales.forEach(sale => {
+      // Check if this is a manual transaction (J'ai pris/donné)
+      if (sale.items.length === 0 && sale.notes) {
+        if (sale.notes.includes("J'ai donné")) {
+          balance += sale.total; // "J'ai donné" increases debt (positive balance)
+        } else if (sale.notes.includes("J'ai pris")) {
+          balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+        }
+      } else {
+        // Regular sales transactions
+        if (sale.paymentStatus === 'credit') {
+          balance += sale.total; // Credit sale adds to debt
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          balance += unpaidAmount; // Only unpaid portion adds to debt
+        } else if (sale.paymentStatus === 'paid') {
+          // Check for overpayment
+          const overpayment = (sale.amountPaid || sale.total) - sale.total;
+          if (overpayment > 0) {
+            balance -= overpayment; // Overpayment creates credit for customer
+          }
+          // Fully paid sales with exact payment don't affect balance
+        }
+      }
+    });
+    
+    return balance;
+  }, []);
+
   const loadDashboardData = useCallback(async () => {
     try {
       setIsLoading(true);
+      console.log('Dashboard: Loading data...');
       
       const [sales, products, customers, appSettings] = await Promise.all([
         getSales(),
@@ -70,30 +105,36 @@ export default function DashboardScreen() {
       const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
 
       // Filter sales by date
-      const todaySales = sales.filter(sale => new Date(sale.date) >= today);
-      const weekSales = sales.filter(sale => new Date(sale.date) >= weekAgo);
-      const monthSales = sales.filter(sale => new Date(sale.date) >= monthAgo);
+      const todaySales = sales.filter(sale => new Date(sale.createdAt) >= today);
+      const weekSales = sales.filter(sale => new Date(sale.createdAt) >= weekAgo);
+      const monthSales = sales.filter(sale => new Date(sale.createdAt) >= monthAgo);
 
       // Calculate revenue (only from paid sales)
       const todayRevenue = todaySales
-        .filter(sale => sale.status === 'paid')
+        .filter(sale => sale.paymentStatus === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
       
       const weekRevenue = weekSales
-        .filter(sale => sale.status === 'paid')
+        .filter(sale => sale.paymentStatus === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
       
       const monthRevenue = monthSales
-        .filter(sale => sale.status === 'paid')
+        .filter(sale => sale.paymentStatus === 'paid')
         .reduce((sum, sale) => sum + sale.total, 0);
 
       // Calculate credit amount (unpaid sales)
       const creditAmount = sales
-        .filter(sale => sale.status === 'credit')
+        .filter(sale => sale.paymentStatus === 'credit')
         .reduce((sum, sale) => sum + sale.total, 0);
 
-      // Calculate general balance (customer balances)
-      const generalBalance = customers.reduce((sum, customer) => sum + (customer.creditBalance || 0), 0);
+      // CORRECTED: Calculate general balance using real-time calculation
+      let generalBalance = 0;
+      customers.forEach(customer => {
+        const customerBalance = calculateCustomerBalance(customer.id, sales);
+        generalBalance += customerBalance;
+      });
+
+      console.log('Dashboard: Calculated general balance:', generalBalance);
 
       // Find low stock products
       const lowStockProducts = products.filter(product => 
@@ -108,7 +149,7 @@ export default function DashboardScreen() {
           const existing = productSales.get(item.productId) || { quantity: 0, revenue: 0 };
           productSales.set(item.productId, {
             quantity: existing.quantity + item.quantity,
-            revenue: existing.revenue + (item.price * item.quantity),
+            revenue: existing.revenue + (item.unitPrice * item.quantity),
           });
         });
       });
@@ -127,7 +168,7 @@ export default function DashboardScreen() {
 
       // Get recent sales
       const recentSales = sales
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 10);
 
       setStats({
@@ -147,23 +188,29 @@ export default function DashboardScreen() {
       const status = await syncService.getSyncStatus();
       setSyncStatus(status);
 
+      console.log('Dashboard: Data loaded successfully');
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      console.error('Dashboard: Error loading data:', error);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [calculateCustomerBalance]);
+
+  // Use useFocusEffect to reload data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadDashboardData();
+    }, [loadDashboardData])
+  );
 
   useEffect(() => {
-    loadDashboardData();
-    
     // Start auto sync
     syncService.startAutoSync(15); // Every 15 minutes
     
     return () => {
       syncService.stopAutoSync();
     };
-  }, [loadDashboardData]);
+  }, []);
 
   const formatCurrency = useCallback((amount: number): string => {
     if (!settings) return `${amount.toLocaleString()} F CFA`;
@@ -195,7 +242,7 @@ export default function DashboardScreen() {
     {
       title: 'Nouvelle Vente',
       icon: 'add-circle',
-      color: colors.primary,
+      color: colors.success,
       onPress: () => router.push('/(tabs)/pos'),
     },
     {
@@ -207,7 +254,7 @@ export default function DashboardScreen() {
     {
       title: 'Nouveau Client',
       icon: 'person-add',
-      color: colors.success,
+      color: colors.primary,
       onPress: () => router.push('/(tabs)/customers'),
     },
     {
@@ -225,7 +272,16 @@ export default function DashboardScreen() {
     icon: string;
     color?: string;
   }) => (
-    <View style={[commonStyles.card, { flex: 1, marginHorizontal: spacing.xs }]}>
+    <View style={[
+      commonStyles.card, 
+      { 
+        flex: 1, 
+        marginHorizontal: spacing.xs,
+        backgroundColor: colors.background,
+        borderWidth: 1,
+        borderColor: colors.border,
+      }
+    ]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
         <View style={{
           width: 40,
@@ -242,7 +298,7 @@ export default function DashboardScreen() {
           {title}
         </Text>
       </View>
-      <Text style={[commonStyles.title, { fontSize: fontSizes.lg, marginBottom: 0 }]}>
+      <Text style={[commonStyles.title, { fontSize: fontSizes.lg, marginBottom: 0, color: colors.text }]}>
         {value}
       </Text>
       {subtitle && (
@@ -255,13 +311,20 @@ export default function DashboardScreen() {
 
   const QuickActionCard = ({ action }: { action: typeof quickActions[0] }) => (
     <TouchableOpacity
-      style={[commonStyles.card, { 
-        flex: 1, 
-        marginHorizontal: spacing.xs,
-        alignItems: 'center',
-        paddingVertical: spacing.lg,
-      }]}
+      style={[
+        commonStyles.card, 
+        { 
+          flex: 1, 
+          marginHorizontal: spacing.xs,
+          alignItems: 'center',
+          paddingVertical: spacing.lg,
+          backgroundColor: colors.background,
+          borderWidth: 1,
+          borderColor: colors.border,
+        }
+      ]}
       onPress={action.onPress}
+      activeOpacity={0.7}
     >
       <View style={{
         width: 50,
@@ -278,6 +341,7 @@ export default function DashboardScreen() {
         fontSize: fontSizes.sm, 
         textAlign: 'center',
         fontWeight: '600',
+        color: colors.text,
       }]}>
         {action.title}
       </Text>
@@ -285,11 +349,11 @@ export default function DashboardScreen() {
   );
 
   return (
-    <SafeAreaView style={commonStyles.container}>
+    <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
-      <View style={[commonStyles.header, { backgroundColor: colors.background }]}>
+      <View style={[commonStyles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
         <View>
-          <Text style={commonStyles.headerTitle}>Tableau de bord</Text>
+          <Text style={[commonStyles.headerTitle, { color: colors.text }]}>Tableau de bord</Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
             Bonjour, {user?.username}
           </Text>
@@ -305,8 +369,11 @@ export default function DashboardScreen() {
               borderRadius: 16,
               backgroundColor: syncStatus.isOnline ? colors.success + '20' : colors.error + '20',
               marginRight: spacing.sm,
+              borderWidth: 1,
+              borderColor: syncStatus.isOnline ? colors.success + '40' : colors.error + '40',
             }}
             onPress={handleSyncNow}
+            activeOpacity={0.7}
           >
             <Icon 
               name={syncStatus.isOnline ? 'cloud-done' : 'cloud-offline'} 
@@ -323,21 +390,32 @@ export default function DashboardScreen() {
             </Text>
           </TouchableOpacity>
           
-          <TouchableOpacity onPress={() => router.push('/settings')}>
-            <Icon name="settings" size={24} color={colors.text} />
+          <TouchableOpacity 
+            onPress={() => router.push('/settings')}
+            style={{
+              backgroundColor: colors.backgroundAlt,
+              borderRadius: 20,
+              padding: spacing.sm,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+            activeOpacity={0.7}
+          >
+            <Icon name="settings" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
 
       <ScrollView
-        style={commonStyles.content}
+        style={[commonStyles.content, { backgroundColor: colors.backgroundAlt }]}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={loadDashboardData} />
         }
+        showsVerticalScrollIndicator={false}
       >
         <View style={{ padding: spacing.lg }}>
           {/* Quick Actions */}
-          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md, color: colors.text }]}>
             Actions rapides
           </Text>
           <View style={{ 
@@ -356,7 +434,7 @@ export default function DashboardScreen() {
           </View>
 
           {/* Revenue Stats */}
-          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md, color: colors.text }]}>
             Revenus
           </Text>
           <View style={{ 
@@ -385,7 +463,7 @@ export default function DashboardScreen() {
           </View>
 
           {/* Business Stats */}
-          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+          <Text style={[commonStyles.subtitle, { marginBottom: spacing.md, color: colors.text }]}>
             Statistiques
           </Text>
           <View style={{ 
@@ -413,11 +491,30 @@ export default function DashboardScreen() {
             />
           </View>
 
-          {/* Balance générale */}
-          <View style={[commonStyles.card, { marginBottom: spacing.xl }]}>
+          {/* CORRECTED: Balance générale avec calcul en temps réel */}
+          <View style={[
+            commonStyles.card, 
+            { 
+              marginBottom: spacing.xl,
+              backgroundColor: colors.background,
+              borderWidth: 2,
+              borderColor: stats.generalBalance >= 0 ? colors.success + '40' : colors.error + '40',
+            }
+          ]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-              <Icon name="wallet" size={24} color={colors.primary} />
-              <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0 }]}>
+              <View style={{
+                backgroundColor: stats.generalBalance >= 0 ? colors.success + '20' : colors.error + '20',
+                borderRadius: 20,
+                padding: spacing.sm,
+                marginRight: spacing.sm,
+              }}>
+                <Icon 
+                  name="wallet" 
+                  size={24} 
+                  color={stats.generalBalance >= 0 ? colors.success : colors.error} 
+                />
+              </View>
+              <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0, color: colors.text }]}>
                 Balance générale
               </Text>
             </View>
@@ -426,20 +523,34 @@ export default function DashboardScreen() {
               { 
                 fontSize: fontSizes.xl,
                 color: stats.generalBalance >= 0 ? colors.success : colors.error,
-                marginBottom: 0,
+                marginBottom: spacing.xs,
+                fontWeight: 'bold',
               }
             ]}>
-              {formatCurrency(stats.generalBalance)}
+              {formatCurrency(Math.abs(stats.generalBalance))}
             </Text>
             <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-              {stats.generalBalance >= 0 ? 'Solde positif' : 'Solde négatif'}
+              {stats.generalBalance > 0 ? 'Solde positif (dettes clients)' : 
+               stats.generalBalance < 0 ? 'Solde négatif (avances clients)' : 
+               'Solde équilibré'}
+            </Text>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.xs }]}>
+              Calculé en temps réel depuis toutes les transactions
             </Text>
           </View>
 
           {/* Top Products */}
           {stats.topProducts.length > 0 && (
-            <View style={[commonStyles.card, { marginBottom: spacing.xl }]}>
-              <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+            <View style={[
+              commonStyles.card, 
+              { 
+                marginBottom: spacing.xl,
+                backgroundColor: colors.background,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }
+            ]}>
+              <Text style={[commonStyles.subtitle, { marginBottom: spacing.md, color: colors.text }]}>
                 Produits les plus vendus
               </Text>
               {stats.topProducts.map((product, index) => (
@@ -464,14 +575,14 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[commonStyles.text, { fontWeight: '600' }]}>
+                    <Text style={[commonStyles.text, { fontWeight: '600', color: colors.text }]}>
                       {product.name}
                     </Text>
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                       {product.quantity} vendus
                     </Text>
                   </View>
-                  <Text style={[commonStyles.text, { fontWeight: '600' }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', color: colors.text }]}>
                     {formatCurrency(product.revenue)}
                   </Text>
                 </View>
@@ -481,14 +592,19 @@ export default function DashboardScreen() {
 
           {/* Sync Status Details */}
           {syncStatus.pendingCount > 0 && (
-            <View style={[commonStyles.card, { 
-              backgroundColor: colors.warning + '10',
-              borderLeftWidth: 4,
-              borderLeftColor: colors.warning,
-            }]}>
+            <View style={[
+              commonStyles.card, 
+              { 
+                backgroundColor: colors.warning + '10',
+                borderLeftWidth: 4,
+                borderLeftColor: colors.warning,
+                borderWidth: 1,
+                borderColor: colors.warning + '30',
+              }
+            ]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
                 <Icon name="sync" size={20} color={colors.warning} />
-                <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0 }]}>
+                <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0, color: colors.text }]}>
                   Synchronisation en attente
                 </Text>
               </View>
@@ -504,6 +620,7 @@ export default function DashboardScreen() {
                   alignSelf: 'flex-start',
                 }}
                 onPress={handleSyncNow}
+                activeOpacity={0.7}
               >
                 <Text style={{ color: colors.secondary, fontSize: fontSizes.sm, fontWeight: '600' }}>
                   Synchroniser maintenant

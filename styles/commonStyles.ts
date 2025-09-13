@@ -19,11 +19,14 @@ export const colors = {
   border: '#E5E7EB',       // Light border
   success: '#27AE60',      // Green
   error: '#E74C3C',        // Red
+  danger: '#E74C3C',       // Red (alias for error)
   warning: '#F39C12',      // Orange
   info: '#3498DB',         // Blue
   white: '#FFFFFF',
   black: '#000000',
   transparent: 'transparent',
+  // Additional colors for better UI
+  card: '#FFFFFF',         // Card background
 };
 
 export const spacing = {
@@ -42,6 +45,7 @@ export const fontSizes = {
   lg: 18,
   xl: 24,
   xxl: 32,
+  subtitle: 20, // Added for consistency
 };
 
 export const borderRadius = {
@@ -91,6 +95,7 @@ export const commonStyles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   spaceBetween: {
     flexDirection: 'row',
@@ -126,23 +131,26 @@ export const commonStyles = StyleSheet.create({
     color: colors.textLight,
   },
   
-  // Layout components
+  // Layout components - FIXED: Better visibility and no transparency issues
   card: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     marginBottom: spacing.md,
-    ...shadows.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    // Removed shadows that might cause transparency issues
   },
   cardSmall: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.sm,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   
-  // Header
+  // Header - FIXED: Better contrast
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -160,8 +168,13 @@ export const commonStyles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   
-  // Form elements
+  // Form elements - FIXED: Better visibility
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -175,9 +188,21 @@ export const commonStyles = StyleSheet.create({
   },
   inputFocused: {
     borderColor: colors.primary,
+    borderWidth: 2,
   },
   inputError: {
     borderColor: colors.error,
+    borderWidth: 2,
+  },
+  
+  // Sections - FIXED: Better spacing and visibility
+  section: {
+    backgroundColor: colors.background,
+  },
+  sectionSmall: {
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
   
   // Lists
@@ -188,9 +213,29 @@ export const commonStyles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.background,
   },
   listItemLast: {
     borderBottomWidth: 0,
+  },
+  
+  // Modal styles - FIXED: Better visibility and no transparency issues
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: colors.background,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    width: '100%',
+    maxWidth: isSmallScreen ? '95%' : 500,
+    maxHeight: '90%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   
   // Utility classes
@@ -253,7 +298,8 @@ export const buttonStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   secondary: {
     backgroundColor: colors.backgroundAlt,
@@ -267,7 +313,7 @@ export const buttonStyles = StyleSheet.create({
     borderColor: colors.border,
   },
   outline: {
-    backgroundColor: colors.transparent,
+    backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
@@ -285,7 +331,8 @@ export const buttonStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.error,
   },
   success: {
     backgroundColor: colors.success,
@@ -295,7 +342,8 @@ export const buttonStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.success,
   },
   warning: {
     backgroundColor: colors.warning,
@@ -305,7 +353,8 @@ export const buttonStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
-    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.warning,
   },
   small: {
     paddingHorizontal: spacing.md,
@@ -321,7 +370,7 @@ export const buttonStyles = StyleSheet.create({
     opacity: 0.5,
   },
   
-  // Icon buttons
+  // Icon buttons - FIXED: Better visibility
   iconButton: {
     width: 48,
     height: 48,
@@ -329,12 +378,16 @@ export const buttonStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.backgroundAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   iconButtonPrimary: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   iconButtonSecondary: {
     backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
 });
 

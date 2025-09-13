@@ -261,6 +261,17 @@ export default function CustomerDetailsScreen() {
     });
   };
 
+  const openTransactionDetails = (transactionId: string) => {
+    console.log('Opening transaction details for:', transactionId);
+    router.push({
+      pathname: '/transaction-details',
+      params: {
+        customerId,
+        transactionId,
+      },
+    });
+  };
+
   const getPaymentMethodLabel = (method: string): string => {
     const labels = {
       cash: 'Espèces',
@@ -389,7 +400,12 @@ export default function CustomerDetailsScreen() {
 
           <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 120 }}>
             {transactions.map(transaction => (
-              <View key={transaction.id} style={[commonStyles.card, { marginBottom: spacing.sm }]}>
+              <TouchableOpacity 
+                key={transaction.id} 
+                style={[commonStyles.card, { marginBottom: spacing.sm }]}
+                onPress={() => openTransactionDetails(transaction.id)}
+                activeOpacity={0.7}
+              >
                 <View style={[commonStyles.row, { alignItems: 'flex-start' }]}>
                   {/* Transaction Icon */}
                   <View style={{
@@ -431,9 +447,12 @@ export default function CustomerDetailsScreen() {
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: 2 }]}>
                       {transaction.type === 'gave' ? "J'ai donné" : "J'ai pris"} • {getPaymentMethodLabel(transaction.paymentMethod)}
                     </Text>
+                    <View style={{ alignItems: 'center', marginTop: spacing.xs }}>
+                      <Icon name="chevron-forward" size={16} color={colors.textLight} />
+                    </View>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
 
             {transactions.length === 0 && (

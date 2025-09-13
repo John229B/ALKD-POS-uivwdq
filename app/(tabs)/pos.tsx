@@ -596,7 +596,7 @@ export default function POSScreen() {
     const realTimeBalance = getCustomerBalance(selectedCustomer);
     // Negative balance means advance (J'ai pris)
     return realTimeBalance < 0 ? Math.abs(realTimeBalance) : 0;
-  }, [selectedCustomer, getCustomerBalance]);
+  }, [selectedCustomer, getCustomerBalance, sales]); // Add sales dependency for real-time updates
 
   // Calculate payment breakdown when using advances
   const paymentBreakdown = useMemo(() => {
@@ -967,7 +967,7 @@ export default function POSScreen() {
         paymentStatus = 'partial';
       }
 
-      // Create sale
+      // Create sale - CORRECTED for advance payments
       const sale: Sale = {
         id: uuid.v4() as string,
         customerId: selectedCustomer?.id,
@@ -990,9 +990,41 @@ export default function POSScreen() {
         receiptNumber,
       };
 
-      // Save sale
+      // If using advance payment, we need to create an additional transaction record
+      // to properly track the advance usage
+      const salesToSave = [sale];
+      
+      if (paymentMethod === 'advance' && advanceUsed > 0) {
+        // Create a separate "J'ai pris" transaction to consume the advance
+        const advanceConsumptionSale: Sale = {
+          id: uuid.v4() as string,
+          customerId: selectedCustomer!.id,
+          customer: selectedCustomer,
+          items: [], // Empty items indicates manual transaction
+          subtotal: advanceUsed,
+          discount: 0,
+          tax: 0,
+          total: advanceUsed,
+          paymentMethod: 'cash',
+          paymentStatus: 'paid',
+          amountPaid: advanceUsed,
+          change: 0,
+          notes: `J'ai pris - Utilisation d'avance pour vente ${receiptNumber}`,
+          cashierId: user.id,
+          cashier: user,
+          createdAt: new Date(),
+          receiptNumber: `ADV-${Date.now()}`,
+        };
+        
+        salesToSave.push(advanceConsumptionSale);
+        console.log('POS: Created advance consumption transaction:', advanceUsed);
+      }
+
+      // Save sale(s) - including advance consumption if applicable
       const salesData = await getSales();
-      await storeSales([...salesData, sale]);
+      const newSalesData = [...salesData, ...salesToSave];
+      await storeSales(newSalesData);
+      setSales(newSalesData); // Update local sales state for real-time balance calculation
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -1011,61 +1043,43 @@ export default function POSScreen() {
 
       // Update customer balance based on payment scenario
       if (selectedCustomer) {
+        // Calculate the current real-time balance from sales
+        const currentRealTimeBalance = getCustomerBalance(selectedCustomer);
+        
         const updatedCustomers = customers.map(customer => {
           if (customer.id === selectedCustomer.id) {
-            let newCreditBalance = customer.creditBalance;
+            // We don't need to update creditBalance here since we calculate from sales
+            // But we keep it for compatibility with existing code
+            let newCreditBalance = currentRealTimeBalance;
             
             console.log('POS: Processing payment for customer:', customer.name);
             console.log('POS: Payment method:', paymentMethod);
             console.log('POS: Total amount:', total);
             console.log('POS: Effective paid amount:', effectivePaidAmount);
             console.log('POS: Advance used:', advanceUsed);
-            console.log('POS: Current credit balance:', customer.creditBalance);
+            console.log('POS: Current real-time balance:', currentRealTimeBalance);
             
             if (paymentMethod === 'advance') {
-              // Using customer advance
-              if (advanceUsed > 0) {
-                // Reduce the advance (increase creditBalance towards 0)
-                newCreditBalance += advanceUsed;
-                console.log('POS: Used advance, new balance after advance usage:', newCreditBalance);
-              }
-              
-              // Handle any remaining amount
-              const remainingAmount = total - advanceUsed;
-              if (remainingAmount > 0) {
-                const additionalPaid = effectivePaidAmount - advanceUsed;
-                if (additionalPaid < remainingAmount) {
-                  // Partial payment - add unpaid amount to debt
-                  newCreditBalance += (remainingAmount - additionalPaid);
-                  console.log('POS: Partial payment after advance, adding to debt:', remainingAmount - additionalPaid);
-                } else if (additionalPaid > remainingAmount) {
-                  // Overpayment - create new advance
-                  newCreditBalance -= (additionalPaid - remainingAmount);
-                  console.log('POS: Overpayment after advance, creating new advance:', additionalPaid - remainingAmount);
-                }
-              }
+              // Using customer advance - the sale record will handle the balance calculation
+              // The sale is already created above with the correct payment details
+              console.log('POS: Advance payment processed via sale record');
             } else if (paymentMethod === 'credit') {
-              // Vente à crédit : ajouter le montant total à la dette
-              newCreditBalance += total;
-              console.log('POS: Credit sale - adding total to debt. New balance:', newCreditBalance);
+              // Credit sale - the sale record will handle the balance calculation
+              console.log('POS: Credit sale processed via sale record');
             } else if (effectivePaidAmount < total) {
-              // Paiement partiel : ajouter le reste non payé à la dette
-              const unpaidAmount = total - effectivePaidAmount;
-              newCreditBalance += unpaidAmount;
-              console.log('POS: Partial payment - adding unpaid amount to debt:', unpaidAmount, 'New balance:', newCreditBalance);
+              // Partial payment - the sale record will handle the balance calculation
+              console.log('POS: Partial payment processed via sale record');
             } else if (effectivePaidAmount > total) {
-              // Paiement supérieur : créer une avance avec l'excédent
-              const overpayment = effectivePaidAmount - total;
-              newCreditBalance -= overpayment;
-              console.log('POS: Overpayment - creating advance with excess:', overpayment, 'New balance:', newCreditBalance);
+              // Overpayment - the sale record will handle the balance calculation
+              console.log('POS: Overpayment processed via sale record');
             } else {
-              // Paiement total exact : pas de changement de balance
-              console.log('POS: Full payment - no balance change. Balance remains:', newCreditBalance);
+              // Full payment - the sale record will handle the balance calculation
+              console.log('POS: Full payment processed via sale record');
             }
 
             return {
               ...customer,
-              creditBalance: newCreditBalance,
+              creditBalance: newCreditBalance, // Keep for compatibility but not used for calculation
               totalPurchases: customer.totalPurchases + total,
               updatedAt: new Date(),
             };

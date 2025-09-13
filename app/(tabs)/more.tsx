@@ -46,12 +46,12 @@ export default function MoreScreen() {
       permission: { module: 'tickets', action: 'view' },
     },
     {
-      id: 'categories',
-      title: 'Catégories',
-      subtitle: 'Gérer les catégories de produits',
-      icon: 'folder',
-      route: '/categories',
-      permission: { module: 'products', action: 'edit' },
+      id: 'inventory',
+      title: 'Inventaire',
+      subtitle: 'Gestion complète du stock et des mouvements',
+      icon: 'cube',
+      route: '/inventory',
+      permission: { module: 'products', action: 'view' },
     },
     {
       id: 'reports',

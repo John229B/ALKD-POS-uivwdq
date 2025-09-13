@@ -268,6 +268,46 @@ const checkoutStyles = StyleSheet.create({
     fontWeight: '600',
     color: colors.textLight,
   },
+  customerCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  customerName: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  customerBalance: {
+    fontSize: fontSizes.sm,
+    fontWeight: '600',
+  },
+  amountInput: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    fontSize: fontSizes.lg,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  amountInputFocused: {
+    borderColor: colors.primary,
+  },
+  paymentBreakdown: {
+    backgroundColor: colors.primary + '10',
+    borderRadius: 12,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
 });
 
 export default function POSScreen() {
@@ -291,7 +331,7 @@ export default function POSScreen() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [customQuantity, setCustomQuantity] = useState('1');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [useAdvanceAmount, setUseAdvanceAmount] = useState(0);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -395,6 +435,16 @@ export default function POSScreen() {
       canPayFully: false,
     };
   }, [cartTotals.total, customerAdvanceBalance, paymentMethod]);
+
+  // Filter customers for search
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery.trim()) return customers;
+    
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+      customer.phone?.includes(customerSearchQuery)
+    );
+  }, [customers, customerSearchQuery]);
 
   const openQuantityModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -549,6 +599,23 @@ export default function POSScreen() {
   const clearCartWithoutConfirmation = useCallback(() => {
     setCart([]);
   }, []);
+
+  // Reset form when opening checkout modal
+  const openCheckoutModal = useCallback(() => {
+    // Reset form state
+    setSelectedCustomer(null);
+    setPaymentMethod('cash');
+    setAmountPaid('');
+    setDiscountType('percentage');
+    setDiscountValue('0');
+    setNotes('');
+    setCustomerSearchQuery('');
+    
+    // Set default amount to total
+    setAmountPaid(cartTotals.total.toString());
+    
+    setShowCheckoutModal(true);
+  }, [cartTotals.total]);
 
   const processCheckout = useCallback(async () => {
     if (isProcessing) {
@@ -765,7 +832,6 @@ export default function POSScreen() {
       setSelectedCustomer(null);
       setPaymentMethod('cash');
       setAmountPaid('');
-      setUseAdvanceAmount(0);
       setDiscountType('percentage');
       setDiscountValue('0');
       setNotes('');
@@ -799,6 +865,20 @@ export default function POSScreen() {
     }
   }, [selectedCustomer, paymentMethod, customerAdvanceBalance]);
 
+  // Auto-set amount when payment method or total changes
+  useEffect(() => {
+    if (paymentMethod === 'advance') {
+      // Set amount to remaining amount after advance
+      setAmountPaid(paymentBreakdown.remainingAmount.toString());
+    } else if (paymentMethod !== 'credit') {
+      // Set amount to total for other payment methods
+      setAmountPaid(cartTotals.total.toString());
+    } else {
+      // Credit sale - no amount needed
+      setAmountPaid('0');
+    }
+  }, [paymentMethod, cartTotals.total, paymentBreakdown.remainingAmount]);
+
   return (
     <SafeAreaView style={commonStyles.container}>
       <View style={commonStyles.content}>
@@ -828,7 +908,7 @@ export default function POSScreen() {
                   buttonStyles.outline,
                   (cart.length === 0 || isProcessing) && { opacity: 0.5 }
                 ]}
-                onPress={() => setShowCheckoutModal(true)}
+                onPress={openCheckoutModal}
                 disabled={cart.length === 0 || isProcessing}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
@@ -1260,7 +1340,7 @@ export default function POSScreen() {
         </View>
       </Modal>
 
-      {/* NOUVELLE PAGE DE FINALISATION MODERNE ET RESPONSIVE */}
+      {/* NOUVELLE PAGE DE FINALISATION CORRIGÉE */}
       <Modal
         visible={showCheckoutModal}
         animationType="slide"
@@ -1337,37 +1417,70 @@ export default function POSScreen() {
                   )}
                   
                   <View style={[checkoutStyles.summaryRow, checkoutStyles.totalRow]}>
-                    <Text style={checkoutStyles.totalLabel}>Total:</Text>
+                    <Text style={checkoutStyles.totalLabel}>Total à payer:</Text>
                     <Text style={checkoutStyles.totalValue}>
                       {formatCurrency(cartTotals.total)}
                     </Text>
                   </View>
                 </View>
 
-                {/* Sélection client */}
+                {/* 1. SÉLECTION CLIENT AMÉLIORÉE */}
                 <View style={checkoutStyles.sectionCard}>
                   <Text style={checkoutStyles.sectionTitle}>
                     👤 Client (optionnel)
                   </Text>
+                  
+                  {/* Bouton de sélection client */}
                   <TouchableOpacity
-                    style={[commonStyles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
+                    style={[
+                      commonStyles.input, 
+                      { 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        backgroundColor: selectedCustomer ? colors.primary + '10' : colors.backgroundAlt,
+                        borderColor: selectedCustomer ? colors.primary : colors.border,
+                        borderWidth: 2,
+                      }
+                    ]}
                     onPress={() => setShowCustomerModal(true)}
                   >
-                    <Text style={{ 
-                      color: selectedCustomer ? colors.text : colors.textLight, 
-                      fontSize: fontSizes.md,
-                      flex: 1
-                    }} numberOfLines={1}>
-                      {selectedCustomer ? selectedCustomer.name : 'Sélectionner un client'}
-                    </Text>
+                    <View style={{ flex: 1 }}>
+                      {selectedCustomer ? (
+                        <View>
+                          <Text style={{ 
+                            color: colors.text, 
+                            fontSize: fontSizes.md,
+                            fontWeight: '600',
+                          }}>
+                            {selectedCustomer.name}
+                          </Text>
+                          {selectedCustomer.phone && (
+                            <Text style={{ 
+                              color: colors.textLight, 
+                              fontSize: fontSizes.sm,
+                            }}>
+                              📞 {selectedCustomer.phone}
+                            </Text>
+                          )}
+                        </View>
+                      ) : (
+                        <Text style={{ 
+                          color: colors.textLight, 
+                          fontSize: fontSizes.md,
+                        }}>
+                          Sélectionner un client
+                        </Text>
+                      )}
+                    </View>
                     <Icon name="chevron-down" size={20} color={colors.textLight} />
                   </TouchableOpacity>
                   
-                  {/* Solde client */}
+                  {/* Informations du client sélectionné */}
                   {selectedCustomer && (
-                    <View style={{ marginTop: spacing.sm }}>
+                    <View style={checkoutStyles.customerCard}>
                       <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Solde du client:</Text>
+                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Solde actuel:</Text>
                         <Text style={[
                           commonStyles.text, 
                           { 
@@ -1379,7 +1492,7 @@ export default function POSScreen() {
                         ]}>
                           {selectedCustomer.creditBalance > 0 ? `Dette: ${formatCurrency(selectedCustomer.creditBalance)}` :
                            selectedCustomer.creditBalance < 0 ? `Avance: ${formatCurrency(Math.abs(selectedCustomer.creditBalance))}` :
-                           'Équilibré'}
+                           'Équilibré (0 FCFA)'}
                         </Text>
                       </View>
                       
@@ -1401,7 +1514,7 @@ export default function POSScreen() {
                   )}
                 </View>
 
-                {/* Mode de paiement moderne */}
+                {/* 2. MODE DE PAIEMENT MODERNE */}
                 <View style={checkoutStyles.sectionCard}>
                   <Text style={checkoutStyles.sectionTitle}>
                     💳 Mode de paiement
@@ -1411,15 +1524,28 @@ export default function POSScreen() {
                       { id: 'cash', label: 'Espèces', icon: 'cash' },
                       { id: 'mobile_money', label: 'Mobile Money', icon: 'phone-portrait' },
                       { id: 'credit', label: 'À crédit', icon: 'time' },
-                      ...(selectedCustomer && customerAdvanceBalance > 0 ? [{ id: 'advance', label: 'Avance client', icon: 'wallet' }] : []),
+                      ...(selectedCustomer && customerAdvanceBalance > 0 ? [{ id: 'advance', label: 'Utiliser avance', icon: 'wallet' }] : []),
                     ].map(method => (
                       <TouchableOpacity
                         key={method.id}
                         style={[
                           checkoutStyles.paymentMethodButton,
-                          paymentMethod === method.id && checkoutStyles.paymentMethodButtonActive
+                          paymentMethod === method.id && checkoutStyles.paymentMethodButtonActive,
+                          method.id === 'credit' && !selectedCustomer && { opacity: 0.5 },
+                          method.id === 'advance' && (!selectedCustomer || customerAdvanceBalance === 0) && { opacity: 0.5 },
                         ]}
-                        onPress={() => setPaymentMethod(method.id as any)}
+                        onPress={() => {
+                          if (method.id === 'credit' && !selectedCustomer) {
+                            Alert.alert('Client requis', 'Veuillez sélectionner un client pour une vente à crédit.');
+                            return;
+                          }
+                          if (method.id === 'advance' && (!selectedCustomer || customerAdvanceBalance === 0)) {
+                            Alert.alert('Avance non disponible', 'Ce client n\'a pas d\'avance disponible.');
+                            return;
+                          }
+                          setPaymentMethod(method.id as any);
+                        }}
+                        disabled={(method.id === 'credit' && !selectedCustomer) || (method.id === 'advance' && (!selectedCustomer || customerAdvanceBalance === 0))}
                       >
                         <View style={checkoutStyles.paymentMethodIcon}>
                           <Icon 
@@ -1439,59 +1565,149 @@ export default function POSScreen() {
                   </View>
                 </View>
 
-                {/* Détail paiement avec avance */}
+                {/* 3. DÉTAIL PAIEMENT AVEC AVANCE */}
                 {paymentMethod === 'advance' && selectedCustomer && customerAdvanceBalance > 0 && (
                   <View style={checkoutStyles.sectionCard}>
                     <Text style={checkoutStyles.sectionTitle}>
                       💰 Utilisation de l'avance
                     </Text>
                     
-                    <View style={[checkoutStyles.summaryRow, { marginBottom: spacing.sm }]}>
-                      <Text style={checkoutStyles.summaryLabel}>Avance utilisée:</Text>
-                      <Text style={[checkoutStyles.summaryValue, { color: colors.success }]}>
-                        {formatCurrency(paymentBreakdown.advanceUsed)}
-                      </Text>
-                    </View>
-                    
-                    {paymentBreakdown.remainingAmount > 0 && (
+                    <View style={checkoutStyles.paymentBreakdown}>
                       <View style={[checkoutStyles.summaryRow, { marginBottom: spacing.sm }]}>
-                        <Text style={checkoutStyles.summaryLabel}>Reste à payer:</Text>
-                        <Text style={[checkoutStyles.summaryValue, { color: colors.warning }]}>
-                          {formatCurrency(paymentBreakdown.remainingAmount)}
+                        <Text style={checkoutStyles.summaryLabel}>Montant total:</Text>
+                        <Text style={checkoutStyles.summaryValue}>
+                          {formatCurrency(cartTotals.total)}
                         </Text>
                       </View>
-                    )}
-                    
-                    {paymentBreakdown.canPayFully && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, textAlign: 'center' }]}>
-                        ✅ L'avance couvre entièrement cet achat
-                      </Text>
-                    )}
+                      
+                      <View style={[checkoutStyles.summaryRow, { marginBottom: spacing.sm }]}>
+                        <Text style={checkoutStyles.summaryLabel}>Avance utilisée:</Text>
+                        <Text style={[checkoutStyles.summaryValue, { color: colors.success }]}>
+                          -{formatCurrency(paymentBreakdown.advanceUsed)}
+                        </Text>
+                      </View>
+                      
+                      <View style={[checkoutStyles.summaryRow, checkoutStyles.totalRow]}>
+                        <Text style={checkoutStyles.totalLabel}>
+                          {paymentBreakdown.remainingAmount > 0 ? 'Reste à payer:' : 'Nouvelle avance:'}
+                        </Text>
+                        <Text style={[
+                          checkoutStyles.totalValue, 
+                          { 
+                            color: paymentBreakdown.remainingAmount > 0 ? colors.warning : colors.success,
+                            fontSize: fontSizes.lg 
+                          }
+                        ]}>
+                          {paymentBreakdown.remainingAmount > 0 
+                            ? formatCurrency(paymentBreakdown.remainingAmount)
+                            : formatCurrency(customerAdvanceBalance - cartTotals.total)
+                          }
+                        </Text>
+                      </View>
+                      
+                      {paymentBreakdown.canPayFully && (
+                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, textAlign: 'center', marginTop: spacing.sm }]}>
+                          ✅ L'avance couvre entièrement cet achat
+                        </Text>
+                      )}
+                    </View>
                   </View>
                 )}
 
-                {/* Montant payé */}
-                {(paymentMethod !== 'credit' && paymentMethod !== 'advance') || (paymentMethod === 'advance' && paymentBreakdown.remainingAmount > 0) && (
+                {/* 4. MONTANT PAYÉ - TOUJOURS VISIBLE ET MODIFIABLE */}
+                {paymentMethod !== 'credit' && (
                   <View style={checkoutStyles.sectionCard}>
                     <Text style={checkoutStyles.sectionTitle}>
-                      💰 {paymentMethod === 'advance' ? 'Montant supplémentaire' : 'Montant payé'}
+                      💰 {paymentMethod === 'advance' && paymentBreakdown.remainingAmount > 0 
+                        ? `Montant supplémentaire (${formatCurrency(paymentBreakdown.remainingAmount)} requis)`
+                        : 'Montant payé'
+                      }
                     </Text>
+                    
                     <TextInput
-                      style={[commonStyles.input, { fontSize: fontSizes.md }]}
+                      style={[
+                        checkoutStyles.amountInput,
+                        { 
+                          borderColor: parseFloat(amountPaid) >= (paymentMethod === 'advance' ? paymentBreakdown.remainingAmount : cartTotals.total) 
+                            ? colors.success 
+                            : colors.warning 
+                        }
+                      ]}
                       value={amountPaid}
                       onChangeText={setAmountPaid}
                       placeholder={formatCurrency(paymentMethod === 'advance' ? paymentBreakdown.remainingAmount : cartTotals.total)}
                       keyboardType="numeric"
+                      selectTextOnFocus={true}
                     />
-                    {paymentMethod === 'advance' && parseFloat(amountPaid) > paymentBreakdown.remainingAmount && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
-                        Nouvelle avance: {formatCurrency(parseFloat(amountPaid) - paymentBreakdown.remainingAmount)}
-                      </Text>
-                    )}
-                    {paymentMethod !== 'advance' && parseFloat(amountPaid) > cartTotals.total && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
-                        Monnaie à rendre: {formatCurrency(parseFloat(amountPaid) - cartTotals.total)}
-                      </Text>
+                    
+                    {/* Boutons rapides pour montants */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm }}>
+                      {paymentMethod === 'advance' ? (
+                        // Montants pour le reste à payer
+                        [paymentBreakdown.remainingAmount, paymentBreakdown.remainingAmount + 1000, paymentBreakdown.remainingAmount + 5000].map(amount => (
+                          amount > 0 && (
+                            <TouchableOpacity
+                              key={amount}
+                              style={[buttonStyles.outline, buttonStyles.small]}
+                              onPress={() => setAmountPaid(amount.toString())}
+                            >
+                              <Text style={{ color: colors.primary, fontSize: fontSizes.sm }}>
+                                {formatCurrency(amount)}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        ))
+                      ) : (
+                        // Montants pour paiement normal
+                        [cartTotals.total, cartTotals.total + 1000, cartTotals.total + 5000, cartTotals.total + 10000].map(amount => (
+                          <TouchableOpacity
+                            key={amount}
+                            style={[buttonStyles.outline, buttonStyles.small]}
+                            onPress={() => setAmountPaid(amount.toString())}
+                          >
+                            <Text style={{ color: colors.primary, fontSize: fontSizes.sm }}>
+                              {formatCurrency(amount)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </View>
+                    
+                    {/* Informations sur le paiement */}
+                    {parseFloat(amountPaid) > 0 && (
+                      <View style={{ marginTop: spacing.sm }}>
+                        {paymentMethod === 'advance' ? (
+                          // Logique pour paiement avec avance
+                          parseFloat(amountPaid) > paymentBreakdown.remainingAmount ? (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                              Nouvelle avance créée: {formatCurrency(parseFloat(amountPaid) - paymentBreakdown.remainingAmount)}
+                            </Text>
+                          ) : parseFloat(amountPaid) < paymentBreakdown.remainingAmount ? (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.warning }]}>
+                              Montant insuffisant: {formatCurrency(paymentBreakdown.remainingAmount - parseFloat(amountPaid))} manquant
+                            </Text>
+                          ) : (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                              ✅ Montant exact
+                            </Text>
+                          )
+                        ) : (
+                          // Logique pour paiement normal
+                          parseFloat(amountPaid) > cartTotals.total ? (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                              Monnaie à rendre: {formatCurrency(parseFloat(amountPaid) - cartTotals.total)}
+                            </Text>
+                          ) : parseFloat(amountPaid) < cartTotals.total ? (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.warning }]}>
+                              Montant insuffisant: {formatCurrency(cartTotals.total - parseFloat(amountPaid))} manquant
+                            </Text>
+                          ) : (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                              ✅ Montant exact
+                            </Text>
+                          )
+                        )}
+                      </View>
                     )}
                   </View>
                 )}
@@ -1599,7 +1815,7 @@ export default function POSScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Customer Selection Modal */}
+      {/* Customer Selection Modal AMÉLIORÉ */}
       <Modal
         visible={showCustomerModal}
         animationType="slide"
@@ -1617,7 +1833,18 @@ export default function POSScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Recherche de client */}
+            <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+              <TextInput
+                style={commonStyles.input}
+                placeholder="Rechercher un client..."
+                value={customerSearchQuery}
+                onChangeText={setCustomerSearchQuery}
+              />
+            </View>
+
             <ScrollView style={{ flex: 1 }} contentContainerStyle={modalStyles.scrollContent}>
+              {/* Option "Vente sans client" */}
               <TouchableOpacity
                 style={[
                   commonStyles.card,
@@ -1634,11 +1861,19 @@ export default function POSScreen() {
                   { fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md },
                   !selectedCustomer && { color: colors.secondary }
                 ]}>
-                  Vente sans client
+                  🚶 Vente sans client
+                </Text>
+                <Text style={[
+                  commonStyles.textLight,
+                  { fontSize: fontSizes.sm },
+                  !selectedCustomer && { color: colors.secondary, opacity: 0.8 }
+                ]}>
+                  Paiement comptant uniquement
                 </Text>
               </TouchableOpacity>
 
-              {customers.map(customer => {
+              {/* Liste des clients filtrés */}
+              {filteredCustomers.map(customer => {
                 const hasAdvance = customer.creditBalance < 0;
                 const advanceAmount = hasAdvance ? Math.abs(customer.creditBalance) : 0;
                 const hasDebt = customer.creditBalance > 0;
@@ -1672,32 +1907,80 @@ export default function POSScreen() {
                         📞 {customer.phone}
                       </Text>
                     )}
-                    {hasAdvance && (
-                      <Text style={[
-                        commonStyles.textLight,
-                        { fontSize: fontSizes.sm, color: colors.success, fontWeight: '600' },
-                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
-                      ]}>
-                        💰 Avance: {formatCurrency(advanceAmount)}
-                      </Text>
-                    )}
-                    {hasDebt && (
-                      <Text style={[
-                        commonStyles.textLight,
-                        { fontSize: fontSizes.sm, color: colors.danger, fontWeight: '600' },
-                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
-                      ]}>
-                        💳 Dette: {formatCurrency(customer.creditBalance)}
-                      </Text>
-                    )}
+                    
+                    {/* Solde du client */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                      {hasAdvance && (
+                        <View style={{ 
+                          backgroundColor: colors.success + '20', 
+                          paddingHorizontal: spacing.xs, 
+                          paddingVertical: 2, 
+                          borderRadius: 6 
+                        }}>
+                          <Text style={[
+                            commonStyles.textLight,
+                            { fontSize: fontSizes.xs, color: colors.success, fontWeight: '600' },
+                            selectedCustomer?.id === customer.id && { color: colors.secondary }
+                          ]}>
+                            💰 Avance: {formatCurrency(advanceAmount)}
+                          </Text>
+                        </View>
+                      )}
+                      {hasDebt && (
+                        <View style={{ 
+                          backgroundColor: colors.danger + '20', 
+                          paddingHorizontal: spacing.xs, 
+                          paddingVertical: 2, 
+                          borderRadius: 6 
+                        }}>
+                          <Text style={[
+                            commonStyles.textLight,
+                            { fontSize: fontSizes.xs, color: colors.danger, fontWeight: '600' },
+                            selectedCustomer?.id === customer.id && { color: colors.secondary }
+                          ]}>
+                            💳 Dette: {formatCurrency(customer.creditBalance)}
+                          </Text>
+                        </View>
+                      )}
+                      {!hasAdvance && !hasDebt && (
+                        <View style={{ 
+                          backgroundColor: colors.textLight + '20', 
+                          paddingHorizontal: spacing.xs, 
+                          paddingVertical: 2, 
+                          borderRadius: 6 
+                        }}>
+                          <Text style={[
+                            commonStyles.textLight,
+                            { fontSize: fontSizes.xs, fontWeight: '600' },
+                            selectedCustomer?.id === customer.id && { color: colors.secondary }
+                          ]}>
+                            ⚖️ Équilibré
+                          </Text>
+                        </View>
+                      )}
+                    </View>
                   </TouchableOpacity>
                 );
               })}
+
+              {filteredCustomers.length === 0 && customerSearchQuery.trim() && (
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
+                    Aucun client trouvé
+                  </Text>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                    Essayez un autre terme de recherche
+                  </Text>
+                </View>
+              )}
 
               {customers.length === 0 && (
                 <View style={{ alignItems: 'center', marginTop: 40 }}>
                   <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
                     Aucun client enregistré
+                  </Text>
+                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                    Ajoutez des clients depuis l'onglet Clients
                   </Text>
                 </View>
               )}
@@ -1717,7 +2000,7 @@ export default function POSScreen() {
               fabStyles.button,
               { opacity: isProcessing ? 0.7 : 1 }
             ]}
-            onPress={() => setShowCheckoutModal(true)}
+            onPress={openCheckoutModal}
             disabled={isProcessing}
             activeOpacity={0.8}
           >

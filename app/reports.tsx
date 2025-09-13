@@ -20,6 +20,7 @@ import * as Sharing from 'expo-sharing';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
 import Icon from '../components/Icon';
 import { getSales, getProducts, getCustomers, getSettings } from '../utils/storage';
+import { useCustomersSync } from '../hooks/useCustomersSync';
 import { Sale, Product, Customer, AppSettings } from '../types';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -68,11 +69,11 @@ interface ReportData {
 }
 
 export default function ReportsScreen() {
+  const { customers } = useCustomersSync(); // Use real-time customer sync
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [activeChart, setActiveChart] = useState<'revenue' | 'sales' | 'products' | 'payments'>('revenue');
@@ -86,25 +87,23 @@ export default function ReportsScreen() {
   const loadData = useCallback(async () => {
     try {
       console.log('Loading reports data...');
-      const [salesData, productsData, customersData, settingsData] = await Promise.all([
+      const [salesData, productsData, settingsData] = await Promise.all([
         getSales(),
         getProducts(),
-        getCustomers(),
         getSettings()
       ]);
       
       setSales(salesData || []);
       setProducts(productsData || []);
-      setCustomers(customersData || []);
       setSettings(settingsData);
-      console.log('Reports data loaded successfully');
+      console.log(`Reports data loaded successfully - ${customers.length} customers (from sync)`);
     } catch (error) {
       console.error('Error loading reports data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données des rapports');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [customers.length]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

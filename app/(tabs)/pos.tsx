@@ -8,7 +8,9 @@ import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen }
 import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, Category, UNITS_OF_MEASUREMENT } from '../../types';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers, formatQuantityWithUnit } from '../../utils/storage';
 import { useAuthState } from '../../hooks/useAuth';
+import { useCustomersSync } from '../../hooks/useCustomersSync';
 import Icon from '../../components/Icon';
+import AddCustomerModal from '../../components/AddCustomerModal';
 import uuid from 'react-native-uuid';
 
 // Floating Action Button styles
@@ -441,8 +443,8 @@ const customerListStyles = StyleSheet.create({
 
 export default function POSScreen() {
   const { user } = useAuthState();
+  const { customers, lastUpdate } = useCustomersSync(); // Use real-time customer sync with last update
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -462,27 +464,26 @@ export default function POSScreen() {
   const [customQuantity, setCustomQuantity] = useState('1');
   const [isProcessing, setIsProcessing] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
       console.log('POS: Loading data...');
-      const [productsData, customersData, salesData, categoriesData, settingsData] = await Promise.all([
+      const [productsData, salesData, categoriesData, settingsData] = await Promise.all([
         getProducts(),
-        getCustomers(),
         getSales(),
         getCategories(),
         getSettings(),
       ]);
       setProducts(productsData.filter(p => p.isActive));
-      setCustomers(customersData);
       setSales(salesData);
       setCategories(categoriesData.filter(c => c.isActive));
       setSettings(settingsData);
-      console.log(`POS: Loaded ${productsData.length} products, ${customersData.length} customers, ${salesData.length} sales, ${categoriesData.length} categories`);
+      console.log(`POS: Loaded ${productsData.length} products, ${customers.length} customers (from sync), ${salesData.length} sales, ${categoriesData.length} categories`);
     } catch (error) {
       console.error('POS: Error loading data:', error);
     }
-  }, []);
+  }, [customers.length]);
 
   useEffect(() => {
     loadData();
@@ -866,6 +867,21 @@ export default function POSScreen() {
     }
   }, [paymentMethod, getCustomerBalanceInfo]);
 
+  // Fonction pour ouvrir le modal d'ajout de client
+  const openAddCustomerModal = useCallback(() => {
+    console.log('POS: Opening add customer modal from POS');
+    setShowAddCustomerModal(true);
+  }, []);
+
+  // Fonction appelée quand un nouveau client est ajouté
+  const handleCustomerAdded = useCallback((newCustomer: Customer) => {
+    console.log('POS: New customer added:', newCustomer.name);
+    // Sélectionner automatiquement le nouveau client
+    setSelectedCustomer(newCustomer);
+    // Fermer le modal de sélection client s'il est ouvert
+    setShowCustomerModal(false);
+  }, []);
+
   const processCheckout = useCallback(async () => {
     if (isProcessing) {
       console.log('POS: Checkout already in progress, ignoring duplicate request');
@@ -1159,6 +1175,9 @@ export default function POSScreen() {
             <Text style={commonStyles.title}>Point de Vente</Text>
             <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
               {cart.length} article(s) • {formatCurrency(cartTotals.total)}
+            </Text>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.success }]}>
+              👥 {customers.length} clients • Sync: {lastUpdate.toLocaleTimeString()}
             </Text>
           </View>
           <View style={commonStyles.headerActions}>
@@ -2122,6 +2141,30 @@ export default function POSScreen() {
                 value={customerSearchQuery}
                 onChangeText={setCustomerSearchQuery}
               />
+              
+              {/* Bouton Ajouter nouveau client */}
+              <TouchableOpacity
+                style={[
+                  buttonStyles.primary,
+                  { 
+                    marginTop: spacing.sm,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: spacing.sm
+                  }
+                ]}
+                onPress={openAddCustomerModal}
+              >
+                <Icon name="person-add" size={20} color={colors.secondary} />
+                <Text style={{ 
+                  color: colors.secondary, 
+                  fontSize: fontSizes.md, 
+                  fontWeight: '600' 
+                }}>
+                  Ajouter un nouveau client
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {/* Liste complète des clients */}
@@ -2275,6 +2318,13 @@ export default function POSScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        visible={showAddCustomerModal}
+        onClose={() => setShowAddCustomerModal(false)}
+        onCustomerAdded={handleCustomerAdded}
+      />
     </SafeAreaView>
   );
 }

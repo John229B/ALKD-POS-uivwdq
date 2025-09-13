@@ -11,6 +11,7 @@ import { Customer, AppSettings, Sale } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import uuid from 'react-native-uuid';
+import { useCustomersUpdater } from '../../hooks/useCustomersSync';
 
 interface FilterOptions {
   filterBy: 'all' | 'gave' | 'took' | 'balanced';
@@ -18,6 +19,7 @@ interface FilterOptions {
 }
 
 export default function CustomersScreen() {
+  const { triggerCustomersUpdate } = useCustomersUpdater();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -289,6 +291,10 @@ export default function CustomersScreen() {
               // Refresh data
               await loadData();
               
+              // Trigger real-time sync across all screens
+              const updatedCustomers = await getCustomers();
+              triggerCustomersUpdate(updatedCustomers);
+              
               Alert.alert('Succès', 'Client supprimé avec succès');
             } catch (error) {
               console.error('Error deleting customer:', error);
@@ -342,6 +348,10 @@ export default function CustomersScreen() {
 
       await storeCustomers(updatedCustomers);
       setCustomers(updatedCustomers);
+      
+      // Trigger real-time sync across all screens
+      triggerCustomersUpdate(updatedCustomers);
+      
       setShowAddModal(false);
       resetForm();
 

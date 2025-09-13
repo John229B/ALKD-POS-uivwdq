@@ -9,6 +9,7 @@ import { getCustomers, getSales, getSettings, storeCustomers } from '../utils/st
 import { Customer, Sale, AppSettings } from '../types';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { useCustomersUpdater } from '../hooks/useCustomersSync';
 
 interface CustomerTransaction {
   id: string;
@@ -23,6 +24,7 @@ interface CustomerTransaction {
 
 export default function CustomerDetailsScreen() {
   const { customerId } = useLocalSearchParams<{ customerId: string }>();
+  const { triggerCustomersUpdate } = useCustomersUpdater();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerTransaction[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -335,6 +337,10 @@ export default function CustomerDetailsScreen() {
 
       await storeCustomers(updatedCustomers);
       setCustomer(updatedCustomer);
+      
+      // Trigger real-time sync across all screens
+      triggerCustomersUpdate(updatedCustomers);
+      
       setShowEditModal(false);
 
       Alert.alert('Succès', 'Informations du client mises à jour avec succès');

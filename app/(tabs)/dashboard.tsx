@@ -19,9 +19,10 @@ interface DashboardStats {
   totalCustomers: number;
   lowStockProducts: number;
   creditAmount: number;
-  generalBalance: number;
-  dailyJaiPris: number;
-  dailyJaiDonne: number;
+  // CORRECTED: New fields for daily totals
+  totalDailySales: number; // Total des ventes de la journée (Espèces + Crédits + toutes transactions)
+  dailyJaiPris: number; // Total des "J'ai pris" de la journée
+  dailyJaiDonne: number; // Total des "J'ai donné" de la journée
   topProducts: {
     name: string;
     quantity: number;
@@ -39,7 +40,7 @@ export default function DashboardScreen() {
     totalCustomers: 0,
     lowStockProducts: 0,
     creditAmount: 0,
-    generalBalance: 0,
+    totalDailySales: 0,
     dailyJaiPris: 0,
     dailyJaiDonne: 0,
     topProducts: [],
@@ -72,40 +73,6 @@ export default function DashboardScreen() {
     // For admin or users without specific roles, show username
     return `Bonjour, ${user.username} 👋`;
   }, [user]);
-
-  // CORRECTED: Real-time balance calculation function
-  const calculateCustomerBalance = useCallback((customerId: string, sales: Sale[]) => {
-    const customerSales = sales.filter(sale => sale.customerId === customerId);
-    let balance = 0;
-    
-    customerSales.forEach(sale => {
-      // Check if this is a manual transaction (J'ai pris/donné)
-      if (sale.items.length === 0 && sale.notes) {
-        if (sale.notes.includes("J'ai donné")) {
-          balance += sale.total; // "J'ai donné" increases debt (positive balance)
-        } else if (sale.notes.includes("J'ai pris")) {
-          balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
-        }
-      } else {
-        // Regular sales transactions
-        if (sale.paymentStatus === 'credit') {
-          balance += sale.total; // Credit sale adds to debt
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          balance += unpaidAmount; // Only unpaid portion adds to debt
-        } else if (sale.paymentStatus === 'paid') {
-          // Check for overpayment
-          const overpayment = (sale.amountPaid || sale.total) - sale.total;
-          if (overpayment > 0) {
-            balance -= overpayment; // Overpayment creates credit for customer
-          }
-          // Fully paid sales with exact payment don't affect balance
-        }
-      }
-    });
-    
-    return balance;
-  }, []);
 
   const loadDashboardData = useCallback(async () => {
     try {
@@ -150,16 +117,10 @@ export default function DashboardScreen() {
         .filter(sale => sale.paymentStatus === 'credit')
         .reduce((sum, sale) => sum + sale.total, 0);
 
-      // CORRECTED: Calculate general balance using real-time calculation
-      let generalBalance = 0;
-      customers.forEach(customer => {
-        const customerBalance = calculateCustomerBalance(customer.id, sales);
-        generalBalance += customerBalance;
-      });
-
-      // CORRECTED: Calculate daily "J'ai pris" and "J'ai donné" totals
-      let dailyJaiPris = 0;
-      let dailyJaiDonne = 0;
+      // CORRECTED: Calculate daily totals according to requirements
+      let totalDailySales = 0; // Total des ventes de la journée (Espèces + Crédits + toutes transactions)
+      let dailyJaiPris = 0; // Total des "J'ai pris" de la journée
+      let dailyJaiDonne = 0; // Total des "J'ai donné" de la journée
 
       todaySales.forEach(sale => {
         // Check if this is a manual transaction (J'ai pris/donné)
@@ -169,11 +130,14 @@ export default function DashboardScreen() {
           } else if (sale.notes.includes("J'ai pris")) {
             dailyJaiPris += sale.total;
           }
+        } else {
+          // Regular sales transactions - add to total daily sales regardless of payment status
+          totalDailySales += sale.total;
         }
       });
 
-      console.log('Dashboard: Calculated balances:', {
-        generalBalance,
+      console.log('Dashboard: Calculated daily totals:', {
+        totalDailySales,
         dailyJaiPris,
         dailyJaiDonne
       });
@@ -221,7 +185,7 @@ export default function DashboardScreen() {
         totalCustomers: customers.length,
         lowStockProducts,
         creditAmount,
-        generalBalance,
+        totalDailySales,
         dailyJaiPris,
         dailyJaiDonne,
         topProducts,
@@ -238,7 +202,7 @@ export default function DashboardScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [calculateCustomerBalance]);
+  }, []);
 
   // Use useFocusEffect to reload data when screen comes into focus
   useFocusEffect(
@@ -247,7 +211,7 @@ export default function DashboardScreen() {
     }, [loadDashboardData])
   );
 
-  // CORRECTED: Initialize sync service properly
+  // Initialize sync service properly
   useEffect(() => {
     const initializeSync = async () => {
       try {
@@ -432,7 +396,7 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
-      {/* RESTORED: Clean header with prominent title and personalized greeting */}
+      {/* Clean header with prominent title and personalized greeting */}
       <View style={{
         backgroundColor: colors.background,
         paddingHorizontal: spacing.lg,
@@ -541,19 +505,20 @@ export default function DashboardScreen() {
             ))}
           </View>
 
-          {/* CORRECTED: Balance générale avec réinitialisation journalière et affichage correct */}
+          {/* CORRECTED: Balance générale selon les nouvelles exigences */}
           <View style={[
             commonStyles.card, 
             { 
               marginBottom: spacing.xl,
               backgroundColor: colors.background,
-              borderWidth: 2,
-              borderColor: stats.generalBalance < 0 ? colors.success + '40' : stats.generalBalance > 0 ? colors.error + '40' : colors.border,
+              borderWidth: 3,
+              borderColor: colors.success,
+              padding: spacing.lg,
             }
           ]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
               <View style={{
-                backgroundColor: stats.generalBalance < 0 ? colors.success + '20' : stats.generalBalance > 0 ? colors.error + '20' : colors.textLight + '20',
+                backgroundColor: colors.error + '20',
                 borderRadius: 20,
                 padding: spacing.sm,
                 marginRight: spacing.sm,
@@ -561,7 +526,7 @@ export default function DashboardScreen() {
                 <Icon 
                   name="wallet" 
                   size={24} 
-                  color={stats.generalBalance < 0 ? colors.success : stats.generalBalance > 0 ? colors.error : colors.textLight} 
+                  color={colors.error} 
                 />
               </View>
               <Text style={[commonStyles.subtitle, { marginLeft: spacing.sm, marginBottom: 0, color: colors.text }]}>
@@ -569,28 +534,25 @@ export default function DashboardScreen() {
               </Text>
             </View>
             
-            {/* Montant principal de la journée */}
+            {/* CORRECTED: Montant principal - Total des ventes de la journée */}
             <Text style={[
               commonStyles.title, 
               { 
-                fontSize: fontSizes.xxl,
-                color: stats.generalBalance < 0 ? colors.success : stats.generalBalance > 0 ? colors.error : colors.text,
+                fontSize: fontSizes.xxl * 1.2,
+                color: colors.error,
                 marginBottom: spacing.sm,
                 fontWeight: 'bold',
                 textAlign: 'center',
               }
             ]}>
-              {formatCurrency(Math.abs(stats.generalBalance))}
+              {formatCurrency(stats.totalDailySales)}
             </Text>
             
-            {/* CORRECTED: Libellé correct selon le signe */}
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.md, textAlign: 'center', marginBottom: spacing.md }]}>
-              {stats.generalBalance < 0 ? 'J\'ai pris (avance/crédit)' : 
-               stats.generalBalance > 0 ? 'J\'ai donné (dette)' : 
-               'Solde équilibré'}
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.md, textAlign: 'center', marginBottom: spacing.lg }]}>
+              Totalité des ventes de la journée
             </Text>
             
-            {/* Détails journaliers séparés */}
+            {/* CORRECTED: Détails journaliers avec couleurs correctes */}
             <View style={{ 
               flexDirection: 'row', 
               justifyContent: 'space-around',
@@ -598,26 +560,46 @@ export default function DashboardScreen() {
               borderTopWidth: 1,
               borderTopColor: colors.border,
             }}>
-              <View style={{ alignItems: 'center', flex: 1 }}>
+              {/* Zone encerclée en vert - J'ai pris */}
+              <View style={{ 
+                alignItems: 'center', 
+                flex: 1,
+                backgroundColor: colors.success + '10',
+                borderRadius: 15,
+                padding: spacing.md,
+                marginRight: spacing.sm,
+                borderWidth: 2,
+                borderColor: colors.success,
+              }}>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
                   J'ai pris aujourd'hui
                 </Text>
                 <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.md, 
-                  fontWeight: '600',
+                  fontSize: fontSizes.lg, 
+                  fontWeight: 'bold',
                   color: colors.success 
                 }]}>
                   {formatCurrency(stats.dailyJaiPris)}
                 </Text>
               </View>
               
-              <View style={{ alignItems: 'center', flex: 1 }}>
+              {/* Zone encerclée en rouge - J'ai donné */}
+              <View style={{ 
+                alignItems: 'center', 
+                flex: 1,
+                backgroundColor: colors.error + '10',
+                borderRadius: 15,
+                padding: spacing.md,
+                marginLeft: spacing.sm,
+                borderWidth: 2,
+                borderColor: colors.error,
+              }}>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginBottom: spacing.xs }]}>
                   J'ai donné aujourd'hui
                 </Text>
                 <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.md, 
-                  fontWeight: '600',
+                  fontSize: fontSizes.lg, 
+                  fontWeight: 'bold',
                   color: colors.error 
                 }]}>
                   {formatCurrency(stats.dailyJaiDonne)}
@@ -625,7 +607,7 @@ export default function DashboardScreen() {
               </View>
             </View>
             
-            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.sm, textAlign: 'center' }]}>
+            <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, marginTop: spacing.md, textAlign: 'center' }]}>
               Se réinitialise automatiquement chaque jour à zéro
             </Text>
           </View>

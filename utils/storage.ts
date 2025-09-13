@@ -337,13 +337,8 @@ export const deleteProduct = async (productId: string): Promise<void> => {
 // Customer management with real-time sync support
 export const storeCustomers = async (customers: Customer[]): Promise<void> => {
   await storeData(STORAGE_KEYS.CUSTOMERS, customers);
-  // Trigger real-time sync event
-  if (typeof window !== 'undefined' && window.dispatchEvent) {
-    window.dispatchEvent(new CustomEvent('customersUpdated', { detail: customers }));
-    console.log('✅ Real-time sync event triggered for customers update, count:', customers.length);
-  } else {
-    console.log('⚠️ Window not available for real-time sync event');
-  }
+  // Note: Real-time sync event will be triggered by the component that calls this function
+  // using the useCustomersUpdater hook to maintain React Native compatibility
   console.log('Customers stored successfully:', customers.length);
 };
 

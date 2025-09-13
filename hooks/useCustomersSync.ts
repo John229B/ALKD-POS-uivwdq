@@ -2,6 +2,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Customer } from '../types';
 import { getCustomers } from '../utils/storage';
+import { AppState } from 'react-native';
+
+// Simple event emitter for React Native
+class CustomersEventEmitter {
+  private listeners: ((customers: Customer[]) => void)[] = [];
+
+  addListener(callback: (customers: Customer[]) => void) {
+    this.listeners.push(callback);
+    console.log('CustomersEventEmitter: Listener added, total:', this.listeners.length);
+  }
+
+  removeListener(callback: (customers: Customer[]) => void) {
+    this.listeners = this.listeners.filter(listener => listener !== callback);
+    console.log('CustomersEventEmitter: Listener removed, total:', this.listeners.length);
+  }
+
+  emit(customers: Customer[]) {
+    console.log('CustomersEventEmitter: Emitting update to', this.listeners.length, 'listeners');
+    this.listeners.forEach(listener => {
+      try {
+        listener(customers);
+      } catch (error) {
+        console.error('CustomersEventEmitter: Error in listener:', error);
+      }
+    });
+  }
+}
+
+// Global event emitter instance
+const customersEmitter = new CustomersEventEmitter();
 
 // Hook for real-time customer synchronization
 export const useCustomersSync = () => {
@@ -28,12 +58,12 @@ export const useCustomersSync = () => {
     // Initial load
     refreshCustomers();
 
-    // Listen for real-time updates
-    const handleCustomersUpdate = (event: any) => {
+    // Listen for real-time updates using React Native compatible event system
+    const handleCustomersUpdate = (updatedCustomers: Customer[]) => {
       console.log('useCustomersSync: Received customers update event');
-      if (event.detail && Array.isArray(event.detail)) {
-        console.log('useCustomersSync: Updating customers from event, count:', event.detail.length);
-        setCustomers(event.detail);
+      if (updatedCustomers && Array.isArray(updatedCustomers)) {
+        console.log('useCustomersSync: Updating customers from event, count:', updatedCustomers.length);
+        setCustomers(updatedCustomers);
         setLastUpdate(new Date());
         setIsLoading(false);
       } else {
@@ -44,17 +74,24 @@ export const useCustomersSync = () => {
     };
 
     // Add event listener for real-time sync
-    if (typeof window !== 'undefined') {
-      window.addEventListener('customersUpdated', handleCustomersUpdate);
-      console.log('useCustomersSync: Event listener added for customersUpdated');
-    }
+    customersEmitter.addListener(handleCustomersUpdate);
+    console.log('useCustomersSync: Event listener added for customersUpdated');
+
+    // Listen for app state changes to refresh data when app becomes active
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        console.log('useCustomersSync: App became active, refreshing customers');
+        refreshCustomers();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     // Cleanup
     return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('customersUpdated', handleCustomersUpdate);
-        console.log('useCustomersSync: Event listener removed');
-      }
+      customersEmitter.removeListener(handleCustomersUpdate);
+      subscription.remove();
+      console.log('useCustomersSync: Event listeners removed');
     };
   }, [refreshCustomers]);
 
@@ -70,9 +107,7 @@ export const useCustomersSync = () => {
 export const useCustomersUpdater = () => {
   const triggerCustomersUpdate = useCallback((customers: Customer[]) => {
     console.log('useCustomersUpdater: Triggering customers update event, count:', customers.length);
-    if (typeof window !== 'undefined' && window.dispatchEvent) {
-      window.dispatchEvent(new CustomEvent('customersUpdated', { detail: customers }));
-    }
+    customersEmitter.emit(customers);
   }, []);
 
   return {

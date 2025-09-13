@@ -8,7 +8,7 @@ import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen }
 import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, Category, UNITS_OF_MEASUREMENT } from '../../types';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers, formatQuantityWithUnit } from '../../utils/storage';
 import { useAuthState } from '../../hooks/useAuth';
-import { useCustomersSync } from '../../hooks/useCustomersSync';
+import { useCustomersSync, useCustomersUpdater } from '../../hooks/useCustomersSync';
 import Icon from '../../components/Icon';
 import AddCustomerModal from '../../components/AddCustomerModal';
 import uuid from 'react-native-uuid';
@@ -444,6 +444,7 @@ const customerListStyles = StyleSheet.create({
 export default function POSScreen() {
   const { user } = useAuthState();
   const { customers, lastUpdate } = useCustomersSync(); // Use real-time customer sync with last update
+  const { triggerCustomersUpdate } = useCustomersUpdater(); // For triggering customer updates
   const [products, setProducts] = useState<Product[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -1111,7 +1112,8 @@ export default function POSScreen() {
           return customer;
         });
         await storeCustomers(updatedCustomers);
-        setCustomers(updatedCustomers);
+        // Trigger real-time sync event for other components
+        triggerCustomersUpdate(updatedCustomers);
       }
 
       // Reset form

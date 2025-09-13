@@ -69,20 +69,37 @@ export default function CustomersScreen() {
     const customerSales = sales.filter(sale => sale.customerId === customer.id);
     let balance = 0;
     
+    // FIXED: Calculate balance based on transaction types
     customerSales.forEach(sale => {
-      if (sale.paymentStatus === 'credit') {
-        balance += sale.total; // Credit sale adds to debt
-      } else if (sale.paymentStatus === 'partial') {
-        const unpaidAmount = sale.total - (sale.amountPaid || 0);
-        balance += unpaidAmount; // Only unpaid portion adds to debt
+      // Check if this is a manual transaction (J'ai pris/donné)
+      if (sale.items.length === 0 && sale.notes) {
+        if (sale.notes.includes("J'ai donné")) {
+          balance += sale.total; // "J'ai donné" increases debt (positive balance)
+        } else if (sale.notes.includes("J'ai pris")) {
+          balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+        }
+      } else {
+        // Regular sales transactions
+        if (sale.paymentStatus === 'credit') {
+          balance += sale.total; // Credit sale adds to debt
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          balance += unpaidAmount; // Only unpaid portion adds to debt
+        }
+        // Fully paid sales don't affect balance (payment = purchase amount)
       }
-      // Fully paid sales don't affect balance (payment = purchase amount)
     });
     
     console.log(`Customer ${customer.name} balance:`, { 
       balance, 
       salesCount: customerSales.length,
-      sales: customerSales.map(s => ({ status: s.paymentStatus, total: s.total, amountPaid: s.amountPaid }))
+      sales: customerSales.map(s => ({ 
+        status: s.paymentStatus, 
+        total: s.total, 
+        amountPaid: s.amountPaid,
+        notes: s.notes,
+        items: s.items.length 
+      }))
     });
     
     return balance;
@@ -171,17 +188,30 @@ export default function CustomersScreen() {
 
   // FIXED: Calculate summary statistics based on actual customer balances
   const calculateSummary = () => {
-    let totalDebt = 0; // Total amount customers owe
+    let totalDebt = 0; // Total amount customers owe (positive balances)
+    let totalCredit = 0; // Total amount we owe customers (negative balances)
 
     customers.forEach(customer => {
       const customerBalance = getCustomerBalance(customer);
       if (customerBalance > 0) {
-        totalDebt += customerBalance;
+        totalDebt += customerBalance; // Customer owes us money
+      } else if (customerBalance < 0) {
+        totalCredit += Math.abs(customerBalance); // We owe customer money
       }
     });
 
-    console.log('Summary calculation:', { totalDebt, customersCount: customers.length, salesCount: sales.length });
-    return { totalDebt };
+    // General balance = total debt - total credit
+    const generalBalance = totalDebt - totalCredit;
+
+    console.log('Summary calculation:', { 
+      totalDebt, 
+      totalCredit, 
+      generalBalance,
+      customersCount: customers.length, 
+      salesCount: sales.length 
+    });
+    
+    return { totalDebt, totalCredit, generalBalance };
   };
 
   const getBalanceColor = (balance: number): string => {
@@ -317,7 +347,7 @@ export default function CustomersScreen() {
     setFilters(newFilters);
   };
 
-  const { totalDebt } = calculateSummary();
+  const { totalDebt, totalCredit, generalBalance } = calculateSummary();
   
   console.log('General balance calculation:', { 
     totalDebt,
@@ -351,16 +381,32 @@ export default function CustomersScreen() {
             Balance générale
           </Text>
           <Text style={[commonStyles.title, { 
-            color: totalDebt > 0 ? colors.danger : colors.success, 
+            color: generalBalance > 0 ? colors.danger : generalBalance < 0 ? colors.success : colors.text, 
             fontSize: fontSizes.xl,
             fontWeight: 'bold',
             marginBottom: spacing.sm
           }]}>
-            {formatCurrency(totalDebt)}
+            {generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(generalBalance))}
           </Text>
           <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-            {totalDebt > 0 ? `Montant total des dettes clients` : 'Tous les comptes sont équilibrés'}
+            {generalBalance > 0 ? `J'ai donné - Montant total des dettes` : 
+             generalBalance < 0 ? `J'ai pris - Montant total des avances` : 
+             'Équilibré - Tous les comptes sont à zéro'}
           </Text>
+          {(totalDebt > 0 || totalCredit > 0) && (
+            <View style={{ marginTop: spacing.sm, flexDirection: 'row', justifyContent: 'space-between' }}>
+              {totalDebt > 0 && (
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.danger }]}>
+                  Dettes: {formatCurrency(totalDebt)}
+                </Text>
+              )}
+              {totalCredit > 0 && (
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.success }]}>
+                  Avances: {formatCurrency(totalCredit)}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Clients Section */}

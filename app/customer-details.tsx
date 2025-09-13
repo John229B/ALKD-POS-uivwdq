@@ -74,72 +74,92 @@ export default function CustomerDetailsScreen() {
           total: sale.total,
           paymentStatus: sale.paymentStatus,
           amountPaid: sale.amountPaid,
-          paymentMethod: sale.paymentMethod
+          paymentMethod: sale.paymentMethod,
+          notes: sale.notes,
+          itemsCount: sale.items.length
         });
 
-        if (sale.paymentStatus === 'credit') {
-          // Credit sale = "J'ai donné" (debt) - customer owes the full amount
-          generatedTransactions.push({
-            id: `sale-${sale.id}`,
-            date: new Date(sale.createdAt),
-            amount: sale.total,
-            type: 'gave',
-            paymentMethod: 'credit',
-            description: `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
-            balance: 0, // Will be calculated later
-          });
-        } else if (sale.paymentStatus === 'partial') {
-          // Partial payment = "J'ai donné" for unpaid amount
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          
-          if (unpaidAmount > 0) {
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
             generatedTransactions.push({
-              id: `sale-debt-${sale.id}`,
+              id: `manual-gave-${sale.id}`,
               date: new Date(sale.createdAt),
-              amount: unpaidAmount,
+              amount: sale.total,
               type: 'gave',
-              paymentMethod: 'credit',
-              description: `Vente partielle ${sale.receiptNumber} - Reste à payer`,
+              paymentMethod: sale.paymentMethod,
+              description: sale.notes,
               balance: 0, // Will be calculated later
             });
-          }
-          
-          // Also show the payment received
-          const paidAmount = sale.amountPaid || 0;
-          if (paidAmount > 0) {
+          } else if (sale.notes.includes("J'ai pris")) {
             generatedTransactions.push({
-              id: `sale-payment-${sale.id}`,
+              id: `manual-took-${sale.id}`,
               date: new Date(sale.createdAt),
-              amount: paidAmount,
+              amount: sale.total,
               type: 'took',
               paymentMethod: sale.paymentMethod,
-              description: `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
+              description: sale.notes,
               balance: 0, // Will be calculated later
             });
           }
-        } else if (sale.paymentStatus === 'paid') {
-          // Fully paid sale - show both the purchase and the payment
-          // First, the purchase (what was given)
-          generatedTransactions.push({
-            id: `sale-purchase-${sale.id}`,
-            date: new Date(sale.createdAt),
-            amount: sale.total,
-            type: 'gave',
-            paymentMethod: 'credit',
-            description: `Achat ${sale.receiptNumber} - ${sale.items.length} article(s)`,
-            balance: 0, // Will be calculated later
-          });
-          
-          // Then, the payment (what was received)
-          generatedTransactions.push({
-            id: `sale-fullpayment-${sale.id}`,
-            date: new Date(sale.createdAt),
-            amount: sale.total,
-            type: 'took',
-            paymentMethod: sale.paymentMethod,
-            description: `Paiement complet ${sale.receiptNumber}`,
-            balance: 0, // Will be calculated later
-          });
+        } else {
+          // Regular sales transactions
+          if (sale.paymentStatus === 'credit') {
+            // Credit sale = "J'ai donné" (debt) - customer owes the full amount
+            generatedTransactions.push({
+              id: `sale-${sale.id}`,
+              date: new Date(sale.createdAt),
+              amount: sale.total,
+              type: 'gave',
+              paymentMethod: 'credit',
+              description: `Vente à crédit ${sale.receiptNumber} - ${sale.items.length} article(s)`,
+              balance: 0, // Will be calculated later
+            });
+          } else if (sale.paymentStatus === 'partial') {
+            // Partial payment = "J'ai donné" for unpaid amount
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            
+            if (unpaidAmount > 0) {
+              generatedTransactions.push({
+                id: `sale-debt-${sale.id}`,
+                date: new Date(sale.createdAt),
+                amount: unpaidAmount,
+                type: 'gave',
+                paymentMethod: 'credit',
+                description: `Vente partielle ${sale.receiptNumber} - Reste à payer`,
+                balance: 0, // Will be calculated later
+              });
+            }
+            
+            // Also show the payment received
+            const paidAmount = sale.amountPaid || 0;
+            if (paidAmount > 0) {
+              generatedTransactions.push({
+                id: `sale-payment-${sale.id}`,
+                date: new Date(sale.createdAt),
+                amount: paidAmount,
+                type: 'took',
+                paymentMethod: sale.paymentMethod,
+                description: `Vente partielle ${sale.receiptNumber} - Paiement reçu`,
+                balance: 0, // Will be calculated later
+              });
+            }
+          } else if (sale.paymentStatus === 'paid') {
+            // Fully paid sale - NO TRANSACTIONS NEEDED (balanced)
+            // Only show if there was an overpayment
+            const overpayment = (sale.amountPaid || sale.total) - sale.total;
+            if (overpayment > 0) {
+              generatedTransactions.push({
+                id: `sale-overpayment-${sale.id}`,
+                date: new Date(sale.createdAt),
+                amount: overpayment,
+                type: 'took',
+                paymentMethod: sale.paymentMethod,
+                description: `Vente ${sale.receiptNumber} - Surplus de paiement`,
+                balance: 0, // Will be calculated later
+              });
+            }
+          }
         }
       });
 
@@ -151,13 +171,28 @@ export default function CustomerDetailsScreen() {
       
       // Calculate balance from all sales for this customer
       customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          runningBalance += sale.total; // Credit sale adds to debt
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          runningBalance += unpaidAmount; // Only unpaid portion adds to debt
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
+            runningBalance += sale.total; // "J'ai donné" increases debt (positive balance)
+          } else if (sale.notes.includes("J'ai pris")) {
+            runningBalance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          }
+        } else {
+          // Regular sales transactions
+          if (sale.paymentStatus === 'credit') {
+            runningBalance += sale.total; // Credit sale adds to debt
+          } else if (sale.paymentStatus === 'partial') {
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            runningBalance += unpaidAmount; // Only unpaid portion adds to debt
+          } else if (sale.paymentStatus === 'paid') {
+            // Check for overpayment
+            const overpayment = (sale.amountPaid || sale.total) - sale.total;
+            if (overpayment > 0) {
+              runningBalance -= overpayment; // Overpayment creates credit for customer
+            }
+          }
         }
-        // Fully paid sales don't affect final balance (payment = purchase amount)
       });
       
       // Apply balance to transactions for display (working backwards from current balance)
@@ -166,7 +201,7 @@ export default function CustomerDetailsScreen() {
         const transaction = generatedTransactions[i];
         transaction.balance = tempBalance;
         
-        // This is just for display - actual balance is calculated from sales above
+        // Calculate previous balance for display
         if (i < generatedTransactions.length - 1) {
           if (transaction.type === 'gave') {
             tempBalance -= transaction.amount;

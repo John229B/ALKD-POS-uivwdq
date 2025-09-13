@@ -87,7 +87,8 @@ export default function DashboardScreen() {
       const monthRevenue = monthSales.reduce((sum, sale) => sum + sale.total, 0);
 
       // FIXED: Calculate general balance correctly
-      let totalCustomerDebts = 0; // Total amount customers owe
+      let totalCustomerDebts = 0; // Total amount customers owe (positive balances)
+      let totalCustomerCredits = 0; // Total amount we owe customers (negative balances)
       let totalOutstandingCredit = 0; // Total credit given to customers
 
       customers.forEach(customer => {
@@ -95,28 +96,47 @@ export default function DashboardScreen() {
         let customerBalance = 0;
         
         customerSales.forEach(sale => {
-          if (sale.paymentStatus === 'credit') {
-            customerBalance += sale.total; // Full amount is debt
-          } else if (sale.paymentStatus === 'partial') {
-            const unpaidAmount = sale.total - (sale.amountPaid || 0);
-            customerBalance += unpaidAmount; // Only unpaid portion is debt
+          // Check if this is a manual transaction (J'ai pris/donné)
+          if (sale.items.length === 0 && sale.notes) {
+            if (sale.notes.includes("J'ai donné")) {
+              customerBalance += sale.total; // "J'ai donné" increases debt (positive balance)
+            } else if (sale.notes.includes("J'ai pris")) {
+              customerBalance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+            }
+          } else {
+            // Regular sales transactions
+            if (sale.paymentStatus === 'credit') {
+              customerBalance += sale.total; // Full amount is debt
+            } else if (sale.paymentStatus === 'partial') {
+              const unpaidAmount = sale.total - (sale.amountPaid || 0);
+              customerBalance += unpaidAmount; // Only unpaid portion is debt
+            } else if (sale.paymentStatus === 'paid') {
+              // Check for overpayment
+              const overpayment = (sale.amountPaid || sale.total) - sale.total;
+              if (overpayment > 0) {
+                customerBalance -= overpayment; // Overpayment creates credit for customer
+              }
+            }
           }
-          // Fully paid sales don't contribute to debt
         });
         
         if (customerBalance > 0) {
           totalCustomerDebts += customerBalance;
           totalOutstandingCredit += customerBalance;
+        } else if (customerBalance < 0) {
+          totalCustomerCredits += Math.abs(customerBalance);
         }
       });
 
-      // General balance = total amount owed by all customers
-      // If positive: customers owe money (we gave more than we received)
+      // General balance = total debt - total credit
+      // If positive: customers owe us money (we gave more than we received)
+      // If negative: we owe customers money (we received more than we gave)
       // If zero: all accounts are balanced
-      const generalBalance = totalCustomerDebts;
+      const generalBalance = totalCustomerDebts - totalCustomerCredits;
 
       console.log('Dashboard balance calculation:', {
         totalCustomerDebts,
+        totalCustomerCredits,
         generalBalance,
         customersCount: customers.length,
         salesCount: sales.length
@@ -371,22 +391,24 @@ export default function DashboardScreen() {
           <View style={[commonStyles.card, { backgroundColor: colors.backgroundAlt, padding: spacing.lg }]}>
             <View style={{ alignItems: 'center', marginBottom: spacing.md }}>
               <Text style={[commonStyles.text, { 
-                color: stats.generalBalance > 0 ? colors.danger : colors.success, 
+                color: stats.generalBalance > 0 ? colors.danger : stats.generalBalance < 0 ? colors.success : colors.text, 
                 fontSize: fontSizes.xl,
                 fontWeight: 'bold',
                 marginBottom: spacing.xs
               }]}>
-                {formatCurrency(stats.generalBalance)}
+                {stats.generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(stats.generalBalance))}
               </Text>
               <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                {stats.generalBalance > 0 ? 'Montant total des dettes clients' : 'Tous les comptes sont équilibrés'}
+                {stats.generalBalance > 0 ? `J'ai donné - Montant total des dettes` : 
+                 stats.generalBalance < 0 ? `J'ai pris - Montant total des avances` : 
+                 'Équilibré - Tous les comptes sont à zéro'}
               </Text>
             </View>
             
-            {stats.generalBalance > 0 && (
+            {stats.creditAmount > 0 && (
               <View style={{ alignItems: 'center' }}>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                  {stats.totalCustomers} client(s) • {stats.creditAmount > 0 ? `${formatCurrency(stats.creditAmount)} en crédit` : 'Aucun crédit en cours'}
+                  {stats.totalCustomers} client(s) • {formatCurrency(stats.creditAmount)} en crédit
                 </Text>
               </View>
             )}

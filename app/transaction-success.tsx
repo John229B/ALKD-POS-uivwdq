@@ -54,28 +54,43 @@ export default function TransactionSuccessScreen() {
       let currentBalance = 0;
       
       customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          currentBalance += sale.total; // Credit sale adds to debt
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          currentBalance += unpaidAmount; // Only unpaid portion adds to debt
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
+            currentBalance += sale.total; // "J'ai donné" increases debt (positive balance)
+          } else if (sale.notes.includes("J'ai pris")) {
+            currentBalance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          }
+        } else {
+          // Regular sales transactions
+          if (sale.paymentStatus === 'credit') {
+            currentBalance += sale.total; // Credit sale adds to debt
+          } else if (sale.paymentStatus === 'partial') {
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            currentBalance += unpaidAmount; // Only unpaid portion adds to debt
+          } else if (sale.paymentStatus === 'paid') {
+            // Check for overpayment
+            const overpayment = (sale.amountPaid || sale.total) - sale.total;
+            if (overpayment > 0) {
+              currentBalance -= overpayment; // Overpayment creates credit for customer
+            }
+          }
         }
-        // Fully paid sales don't affect balance (payment = purchase amount)
       });
 
-      // Create a new sale record for this transaction
+      // Create a new sale record for this transaction - FIXED
       const newSale: Sale = {
         id: uuid.v4() as string,
         customerId: foundCustomer.id,
         customer: foundCustomer,
-        items: [],
+        items: [], // Empty items array indicates manual transaction
         subtotal: numAmount,
         discount: 0,
         tax: 0,
         total: numAmount,
         paymentMethod: paymentMethod as any,
-        paymentStatus: type === 'gave' ? 'credit' : 'paid',
-        amountPaid: type === 'took' ? numAmount : 0,
+        paymentStatus: 'paid', // Always mark manual transactions as paid
+        amountPaid: numAmount,
         change: 0,
         notes: note || `Transaction ${type === 'gave' ? "J'ai donné" : "J'ai pris"}`,
         cashierId: 'admin-001', // TODO: Get from auth context

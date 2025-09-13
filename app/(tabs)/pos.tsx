@@ -443,6 +443,7 @@ export default function POSScreen() {
   const { user } = useAuthState();
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -465,17 +466,19 @@ export default function POSScreen() {
   const loadData = useCallback(async () => {
     try {
       console.log('POS: Loading data...');
-      const [productsData, customersData, categoriesData, settingsData] = await Promise.all([
+      const [productsData, customersData, salesData, categoriesData, settingsData] = await Promise.all([
         getProducts(),
         getCustomers(),
+        getSales(),
         getCategories(),
         getSettings(),
       ]);
       setProducts(productsData.filter(p => p.isActive));
       setCustomers(customersData);
+      setSales(salesData);
       setCategories(categoriesData.filter(c => c.isActive));
       setSettings(settingsData);
-      console.log(`POS: Loaded ${productsData.length} products, ${customersData.length} customers, ${categoriesData.length} categories`);
+      console.log(`POS: Loaded ${productsData.length} products, ${customersData.length} customers, ${salesData.length} sales, ${categoriesData.length} categories`);
     } catch (error) {
       console.error('POS: Error loading data:', error);
     }
@@ -497,13 +500,66 @@ export default function POSScreen() {
   // Memoize currency formatter
   const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
-      return '0 FCFA';
+      return '0 F CFA';
     }
     
     const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
+    const currencySymbols = { XOF: 'F CFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   }, [settings?.currency]);
+
+  // CORRECTED: Calculate real-time customer balance
+  const getCustomerBalance = useCallback((customer: Customer) => {
+    const customerSales = sales.filter(sale => sale.customerId === customer.id);
+    let balance = 0;
+    
+    console.log(`POS: Calculating balance for customer ${customer.name}:`, {
+      salesCount: customerSales.length,
+      sales: customerSales.map(s => ({
+        id: s.id,
+        receiptNumber: s.receiptNumber,
+        total: s.total,
+        paymentStatus: s.paymentStatus,
+        amountPaid: s.amountPaid,
+        notes: s.notes,
+        itemsCount: s.items.length
+      }))
+    });
+    
+    customerSales.forEach(sale => {
+      // Check if this is a manual transaction (J'ai pris/donné)
+      if (sale.items.length === 0 && sale.notes) {
+        if (sale.notes.includes("J'ai donné")) {
+          balance += sale.total; // "J'ai donné" increases debt (positive balance)
+          console.log(`POS: Manual "J'ai donné": +${sale.total}, new balance: ${balance}`);
+        } else if (sale.notes.includes("J'ai pris")) {
+          balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          console.log(`POS: Manual "J'ai pris": -${sale.total}, new balance: ${balance}`);
+        }
+      } else {
+        // Regular sales transactions
+        if (sale.paymentStatus === 'credit') {
+          balance += sale.total; // Credit sale adds to debt
+          console.log(`POS: Credit sale: +${sale.total}, new balance: ${balance}`);
+        } else if (sale.paymentStatus === 'partial') {
+          const unpaidAmount = sale.total - (sale.amountPaid || 0);
+          balance += unpaidAmount; // Only unpaid portion adds to debt
+          console.log(`POS: Partial payment: unpaid ${unpaidAmount}, new balance: ${balance}`);
+        } else if (sale.paymentStatus === 'paid') {
+          // Check for overpayment
+          const overpayment = (sale.amountPaid || sale.total) - sale.total;
+          if (overpayment > 0) {
+            balance -= overpayment; // Overpayment creates credit for customer
+            console.log(`POS: Overpayment: -${overpayment}, new balance: ${balance}`);
+          }
+          // Fully paid sales with exact payment don't affect balance
+        }
+      }
+    });
+    
+    console.log(`POS: Final balance for ${customer.name}: ${balance}`);
+    return balance;
+  }, [sales]);
 
   // Memoize filtered products
   const filteredProducts = useMemo(() => {
@@ -534,13 +590,13 @@ export default function POSScreen() {
     };
   }, [cart, discountType, discountValue, settings]);
 
-  // Calculate customer advance balance (positive balance = "J'ai pris")
+  // CORRECTED: Calculate customer advance balance (positive balance = "J'ai pris")
   const customerAdvanceBalance = useMemo(() => {
     if (!selectedCustomer) return 0;
-    // Positive creditBalance means debt (J'ai donné)
-    // Negative creditBalance means advance (J'ai pris)
-    return selectedCustomer.creditBalance < 0 ? Math.abs(selectedCustomer.creditBalance) : 0;
-  }, [selectedCustomer]);
+    const realTimeBalance = getCustomerBalance(selectedCustomer);
+    // Negative balance means advance (J'ai pris)
+    return realTimeBalance < 0 ? Math.abs(realTimeBalance) : 0;
+  }, [selectedCustomer, getCustomerBalance]);
 
   // Calculate payment breakdown when using advances
   const paymentBreakdown = useMemo(() => {
@@ -575,16 +631,18 @@ export default function POSScreen() {
     );
   }, [customers, customerSearchQuery]);
 
-  // Fonction pour obtenir le statut du solde d'un client
+  // CORRECTED: Fonction pour obtenir le statut du solde d'un client avec calcul en temps réel
   const getCustomerBalanceInfo = useCallback((customer: Customer) => {
-    const balance = customer.creditBalance;
+    const balance = getCustomerBalance(customer);
+    
+    console.log(`POS: Getting balance info for ${customer.name}, balance: ${balance}`);
     
     if (balance > 0) {
       // Dette (J'ai donné)
       return {
         type: 'debt' as const,
         amount: balance,
-        label: `Dette: ${formatCurrency(balance)}`,
+        label: `Solde : +${formatCurrency(balance)}`,
         icon: '💳',
         color: colors.danger,
       };
@@ -594,7 +652,7 @@ export default function POSScreen() {
       return {
         type: 'advance' as const,
         amount: advanceAmount,
-        label: `Avance: ${formatCurrency(advanceAmount)}`,
+        label: `Solde : +${formatCurrency(advanceAmount)}`,
         icon: '💰',
         color: colors.success,
       };
@@ -608,7 +666,7 @@ export default function POSScreen() {
         color: colors.textLight,
       };
     }
-  }, [formatCurrency]);
+  }, [getCustomerBalance, formatCurrency]);
 
   const openQuantityModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -933,8 +991,8 @@ export default function POSScreen() {
       };
 
       // Save sale
-      const sales = await getSales();
-      await storeSales([...sales, sale]);
+      const salesData = await getSales();
+      await storeSales([...salesData, sale]);
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -1667,7 +1725,7 @@ export default function POSScreen() {
                     <Icon name="people" size={20} color={colors.primary} />
                   </TouchableOpacity>
                   
-                  {/* Informations du client sélectionné */}
+                  {/* CORRECTED: Informations du client sélectionné avec affichage du solde exact */}
                   {selectedCustomer && (
                     <View style={checkoutStyles.customerCard}>
                       <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
@@ -1677,13 +1735,22 @@ export default function POSScreen() {
                           { 
                             fontSize: fontSizes.sm, 
                             fontWeight: '600',
-                            color: selectedCustomer.creditBalance > 0 ? colors.danger : 
-                                   selectedCustomer.creditBalance < 0 ? colors.success : colors.text
+                            color: (() => {
+                              const balance = getCustomerBalance(selectedCustomer);
+                              return balance > 0 ? colors.danger : balance < 0 ? colors.success : colors.text;
+                            })()
                           }
                         ]}>
-                          {selectedCustomer.creditBalance > 0 ? `Dette: ${formatCurrency(selectedCustomer.creditBalance)}` :
-                           selectedCustomer.creditBalance < 0 ? `Avance: ${formatCurrency(Math.abs(selectedCustomer.creditBalance))}` :
-                           'Équilibré (0 FCFA)'}
+                          {(() => {
+                            const balance = getCustomerBalance(selectedCustomer);
+                            if (balance > 0) {
+                              return `Solde : +${formatCurrency(balance)}`;
+                            } else if (balance < 0) {
+                              return `Solde : +${formatCurrency(Math.abs(balance))}`;
+                            } else {
+                              return 'Équilibré';
+                            }
+                          })()}
                         </Text>
                       </View>
                       
@@ -2101,7 +2168,7 @@ export default function POSScreen() {
                         </Text>
                       )}
                       
-                      {/* Solde avec couleurs et icônes */}
+                      {/* CORRECTED: Solde avec couleurs et icônes - affichage exact */}
                       <View style={customerListStyles.balanceContainer}>
                         <View style={[
                           customerListStyles.balanceChip,

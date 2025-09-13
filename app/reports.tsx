@@ -93,6 +93,17 @@ interface ReportData {
   };
 }
 
+// Fonction utilitaire pour les libellés des moyens de paiement
+const getPaymentMethodLabel = (method: string): string => {
+  const labels: { [key: string]: string } = {
+    cash: 'Espèces',
+    mobile_money: 'Mobile Money',
+    credit: 'Crédit',
+    advance: 'Avance'
+  };
+  return labels[method] || method;
+};
+
 export default function ReportsScreen() {
   const { customers } = useCustomersSync();
   const [loading, setLoading] = useState(true);
@@ -496,16 +507,6 @@ export default function ReportsScreen() {
     const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   }, [settings]);
-
-  const getPaymentMethodLabel = (method: string) => {
-    const labels = {
-      cash: 'Espèces',
-      mobile_money: 'Mobile Money',
-      credit: 'Crédit',
-      advance: 'Avance'
-    };
-    return labels[method] || method;
-  };
 
   const ensureDirectoryExists = useCallback(async (dirPath: string): Promise<boolean> => {
     try {

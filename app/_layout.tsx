@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { initializeDefaultData } from '../utils/storage';
-import { initializeSyncService } from '../utils/syncService';
+import { syncService } from '../utils/syncService';
 
 export default function RootLayout() {
   useEffect(() => {
@@ -15,7 +15,7 @@ export default function RootLayout() {
         await initializeDefaultData();
         
         // Initialize sync service for offline/online functionality
-        await initializeSyncService();
+        await syncService.initializeSyncService();
         
         console.log('ALKD-POS application initialized successfully');
       } catch (error) {

@@ -350,14 +350,28 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
-      <View style={[commonStyles.header, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <View>
-          <Text style={[commonStyles.headerTitle, { color: colors.text }]}>Tableau de bord</Text>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+      {/* FIXED: Header with better alignment and centering */}
+      <View style={[
+        commonStyles.header, 
+        { 
+          backgroundColor: colors.background, 
+          borderBottomColor: colors.border,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.md,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexDirection: 'row',
+        }
+      ]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[commonStyles.headerTitle, { color: colors.text, fontSize: fontSizes.xl, fontWeight: 'bold' }]}>
+            Tableau de bord
+          </Text>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginTop: spacing.xs }]}>
             Bonjour, {user?.username}
           </Text>
         </View>
+        
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {/* Sync Status */}
           <TouchableOpacity

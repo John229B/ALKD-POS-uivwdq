@@ -363,9 +363,16 @@ export default function CustomerDetailsScreen() {
         <View style={[commonStyles.section, commonStyles.header]}>
           <TouchableOpacity 
             onPress={() => router.push('/(tabs)/customers')} 
-            style={{ marginRight: spacing.md }}
+            style={{ 
+              marginRight: spacing.md,
+              backgroundColor: colors.backgroundAlt,
+              borderRadius: 20,
+              padding: spacing.sm,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
           >
-            <Icon name="arrow-back" size={24} color={colors.text} />
+            <Icon name="arrow-back" size={20} color={colors.text} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={[commonStyles.title, { 
@@ -377,8 +384,17 @@ export default function CustomerDetailsScreen() {
               {customer.name.toUpperCase()}
             </Text>
           </View>
-          <TouchableOpacity onPress={openEditModal}>
-            <Icon name="person" size={24} color={colors.primary} />
+          <TouchableOpacity 
+            onPress={openEditModal}
+            style={{
+              backgroundColor: colors.backgroundAlt,
+              borderRadius: 20,
+              padding: spacing.sm,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Icon name="person" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -522,7 +538,7 @@ export default function CustomerDetailsScreen() {
           </ScrollView>
         </View>
 
-        {/* Add new operation button */}
+        {/* FIXED: Redesigned Action Buttons - Modern, elegant, and properly sized */}
         <View style={{
           position: 'absolute',
           bottom: 20,
@@ -530,78 +546,79 @@ export default function CustomerDetailsScreen() {
           right: 20,
           backgroundColor: 'transparent',
         }}>
-          <TouchableOpacity
-            style={{
-              backgroundColor: colors.background,
-              borderRadius: 25,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-              alignItems: 'center',
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={[commonStyles.text, { marginRight: spacing.xs }]}>
-                Ajoutez une nouvelle opération
-              </Text>
-              <Text style={{ fontSize: 20 }}>👆</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Action Buttons with improved functionality descriptions */}
-          <View style={{ flexDirection: 'row', gap: spacing.md }}>
+          {/* Action Buttons with modern design */}
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <TouchableOpacity
-              style={[buttonStyles.primary, { 
-                flex: 1, 
+              style={{
+                flex: 1,
                 backgroundColor: colors.success,
-                borderRadius: 15,
-                paddingVertical: spacing.lg
-              }]}
+                borderRadius: 12,
+                paddingVertical: spacing.md,
+                paddingHorizontal: spacing.sm,
+                alignItems: 'center',
+                shadowColor: colors.text,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3,
+              }}
               onPress={() => openTransactionFlow('took')}
+              activeOpacity={0.8}
             >
-              <Text style={[commonStyles.text, { 
-                color: colors.secondary, 
-                fontSize: fontSizes.md, 
-                fontWeight: 'bold',
-                textAlign: 'center'
-              }]}>
-                J'AI PRIS
-              </Text>
-              <Text style={[commonStyles.text, { 
-                color: colors.secondary, 
-                fontSize: fontSizes.xs, 
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                <Icon name="arrow-down" size={16} color={colors.secondary} style={{ marginRight: spacing.xs }} />
+                <Text style={{
+                  color: colors.secondary,
+                  fontSize: fontSizes.sm,
+                  fontWeight: 'bold',
+                }}>
+                  J'AI PRIS
+                </Text>
+              </View>
+              <Text style={{
+                color: colors.secondary,
+                fontSize: fontSizes.xs,
                 textAlign: 'center',
-                opacity: 0.8
-              }]}>
-                Paiement reçu / Réduire dette
+                opacity: 0.9,
+              }}>
+                Paiement reçu
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[buttonStyles.primary, { 
-                flex: 1, 
+              style={{
+                flex: 1,
                 backgroundColor: colors.danger,
-                borderRadius: 15,
-                paddingVertical: spacing.lg
-              }]}
+                borderRadius: 12,
+                paddingVertical: spacing.md,
+                paddingHorizontal: spacing.sm,
+                alignItems: 'center',
+                shadowColor: colors.text,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3,
+              }}
               onPress={() => openTransactionFlow('gave')}
+              activeOpacity={0.8}
             >
-              <Text style={[commonStyles.text, { 
-                color: colors.secondary, 
-                fontSize: fontSizes.md, 
-                fontWeight: 'bold',
-                textAlign: 'center'
-              }]}>
-                J'AI DONNÉ
-              </Text>
-              <Text style={[commonStyles.text, { 
-                color: colors.secondary, 
-                fontSize: fontSizes.xs, 
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                <Icon name="arrow-up" size={16} color={colors.secondary} style={{ marginRight: spacing.xs }} />
+                <Text style={{
+                  color: colors.secondary,
+                  fontSize: fontSizes.sm,
+                  fontWeight: 'bold',
+                }}>
+                  J'AI DONNÉ
+                </Text>
+              </View>
+              <Text style={{
+                color: colors.secondary,
+                fontSize: fontSizes.xs,
                 textAlign: 'center',
-                opacity: 0.8
-              }]}>
-                Crédit accordé / Monnaie rendue
+                opacity: 0.9,
+              }}>
+                Crédit accordé
               </Text>
             </TouchableOpacity>
           </View>

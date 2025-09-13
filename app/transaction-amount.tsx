@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes } from '../styles/commonStyles';
@@ -88,84 +88,93 @@ export default function TransactionAmountScreen() {
         style={{ flex: 1 }} 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={commonStyles.content}>
-          {/* Header - Better contrast and visibility */}
-          <View style={[
-            commonStyles.header, 
-            { 
-              backgroundColor: colors.background, 
-              borderBottomColor: colors.border,
-              borderBottomWidth: 1,
-              paddingVertical: spacing.lg,
-            }
-          ]}>
-            <TouchableOpacity 
-              onPress={() => router.back()} 
-              style={{ 
-                marginRight: spacing.md,
-                backgroundColor: colors.backgroundAlt,
-                borderRadius: 20,
-                padding: spacing.sm,
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-              activeOpacity={0.7}
-            >
-              <Icon name="arrow-back" size={20} color={colors.text} />
-            </TouchableOpacity>
-            <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={[commonStyles.title, { 
-                color: type === 'gave' ? colors.error : colors.success,
-                fontSize: fontSizes.xl,
-                fontWeight: 'bold',
-                textAlign: 'center'
-              }]}>
-                {type === 'gave' ? "J'AI DONNÉ" : "J'AI PRIS"}
-              </Text>
-              <Text style={[commonStyles.textLight, { 
-                fontSize: fontSizes.sm,
-                textAlign: 'center',
-                marginTop: spacing.xs
-              }]}>
-                {type === 'gave' 
-                  ? 'Crédit accordé ou monnaie rendue'
-                  : 'Paiement reçu ou remboursement de dette'
-                }
-              </Text>
-            </View>
-            <View style={{ width: 44 }} />
+        {/* FIXED: Header with better contrast and alignment */}
+        <View style={[
+          commonStyles.header, 
+          { 
+            backgroundColor: colors.background, 
+            borderBottomColor: colors.border,
+            borderBottomWidth: 1,
+            paddingVertical: spacing.lg,
+            paddingHorizontal: spacing.lg,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }
+        ]}>
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={{ 
+              backgroundColor: colors.backgroundAlt,
+              borderRadius: 20,
+              padding: spacing.sm,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+            activeOpacity={0.7}
+          >
+            <Icon name="arrow-back" size={20} color={colors.text} />
+          </TouchableOpacity>
+          
+          <View style={{ flex: 1, alignItems: 'center', paddingHorizontal: spacing.md }}>
+            <Text style={[commonStyles.title, { 
+              color: type === 'gave' ? colors.error : colors.success,
+              fontSize: fontSizes.lg,
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }]}>
+              {type === 'gave' ? "J'AI DONNÉ" : "J'AI PRIS"}
+            </Text>
+            <Text style={[commonStyles.textLight, { 
+              fontSize: fontSizes.sm,
+              textAlign: 'center',
+              marginTop: spacing.xs
+            }]}>
+              {type === 'gave' 
+                ? 'Crédit accordé ou monnaie rendue'
+                : 'Paiement reçu ou remboursement de dette'
+              }
+            </Text>
           </View>
+          
+          <View style={{ width: 44 }} />
+        </View>
 
-          {/* Customer Info - Better visibility */}
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* FIXED: Customer Info with better visibility and layout */}
           <View style={[
             commonStyles.card, 
             { 
               backgroundColor: colors.background, 
               margin: spacing.lg,
-              borderWidth: 2,
-              borderColor: type === 'gave' ? colors.error + '30' : colors.success + '30',
-              borderRadius: 15,
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 12,
             }
           ]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{
                 backgroundColor: colors.primary + '20',
-                borderRadius: 25,
-                padding: spacing.md,
+                borderRadius: 20,
+                padding: spacing.sm,
                 marginRight: spacing.md,
               }}>
-                <Icon name="person" size={24} color={colors.primary} />
+                <Icon name="person" size={20} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[commonStyles.text, { 
-                  color: colors.textLight, 
+                <Text style={[commonStyles.textLight, { 
                   fontSize: fontSizes.sm, 
                   marginBottom: spacing.xs 
                 }]}>
                   Client sélectionné
                 </Text>
                 <Text style={[commonStyles.title, { 
-                  fontSize: fontSizes.lg,
+                  fontSize: fontSizes.md,
                   fontWeight: 'bold',
                   marginBottom: 0,
                   color: colors.text,
@@ -176,28 +185,27 @@ export default function TransactionAmountScreen() {
             </View>
           </View>
 
-          {/* Amount Input - Better design and visibility */}
-          <View style={{ flex: 1, paddingHorizontal: spacing.lg }}>
+          {/* FIXED: Amount Input Section - Clean and organized */}
+          <View style={{ paddingHorizontal: spacing.lg, flex: 1 }}>
             <View style={[
               commonStyles.card,
               {
                 backgroundColor: colors.background,
-                borderWidth: 2,
+                borderWidth: 1,
                 borderColor: colors.border,
                 marginBottom: spacing.lg,
-                borderRadius: 15,
+                borderRadius: 12,
               }
             ]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-                <Text style={{ fontSize: 24, marginRight: spacing.sm }}>💰</Text>
-                <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.lg, 
-                  fontWeight: 'bold',
-                  color: colors.text,
-                }]}>
-                  Montant de la transaction
-                </Text>
-              </View>
+              <Text style={[commonStyles.text, { 
+                fontSize: fontSizes.md, 
+                fontWeight: 'bold',
+                color: colors.text,
+                marginBottom: spacing.lg,
+                textAlign: 'center',
+              }]}>
+                💰 Montant de la transaction
+              </Text>
 
               <TextInput
                 style={[
@@ -210,9 +218,9 @@ export default function TransactionAmountScreen() {
                     marginBottom: spacing.lg,
                     backgroundColor: colors.backgroundAlt,
                     borderColor: amount ? (type === 'gave' ? colors.error : colors.success) : colors.border,
-                    borderWidth: 3,
+                    borderWidth: 2,
                     color: colors.text,
-                    borderRadius: 12,
+                    borderRadius: 10,
                   }
                 ]}
                 value={amount}
@@ -223,35 +231,36 @@ export default function TransactionAmountScreen() {
                 autoFocus
               />
 
-              {/* Quick Amount Buttons - Better visibility */}
+              {/* FIXED: Quick Amount Buttons - Better layout */}
               <Text style={[commonStyles.text, { 
-                fontSize: fontSizes.md, 
+                fontSize: fontSizes.sm, 
                 marginBottom: spacing.md,
-                color: colors.text,
-                fontWeight: '600',
+                color: colors.textLight,
+                textAlign: 'center',
               }]}>
-                ⚡ Montants rapides
+                Montants rapides
               </Text>
 
               <View style={{ 
                 flexDirection: 'row', 
                 flexWrap: 'wrap', 
+                justifyContent: 'space-between',
                 gap: spacing.sm, 
-                marginBottom: spacing.lg 
               }}>
                 {quickAmounts.map(quickAmount => (
                   <TouchableOpacity
                     key={quickAmount}
                     style={[
-                      buttonStyles.outline, 
-                      buttonStyles.small, 
                       { 
+                        flex: 1,
                         minWidth: '30%',
                         backgroundColor: amount === quickAmount.toString() ? colors.primary + '20' : colors.backgroundAlt,
                         borderColor: amount === quickAmount.toString() ? colors.primary : colors.border,
-                        borderWidth: 2,
-                        borderRadius: 10,
-                        paddingVertical: spacing.md,
+                        borderWidth: 1,
+                        borderRadius: 8,
+                        paddingVertical: spacing.sm,
+                        paddingHorizontal: spacing.xs,
+                        alignItems: 'center',
                       }
                     ]}
                     onPress={() => setAmount(quickAmount.toString())}
@@ -259,7 +268,7 @@ export default function TransactionAmountScreen() {
                   >
                     <Text style={{ 
                       color: amount === quickAmount.toString() ? colors.primary : colors.text, 
-                      fontSize: fontSizes.sm, 
+                      fontSize: fontSizes.xs, 
                       textAlign: 'center',
                       fontWeight: '600'
                     }}>
@@ -270,98 +279,72 @@ export default function TransactionAmountScreen() {
               </View>
             </View>
 
-            {/* Note Input - IMPROVED: Much more visible and prominent */}
+            {/* FIXED: Note Input - Clean and well-organized */}
             <View style={[
               commonStyles.card,
               {
                 backgroundColor: colors.background,
-                borderWidth: 2,
+                borderWidth: 1,
                 borderColor: note ? colors.primary : colors.border,
                 marginBottom: spacing.lg,
-                borderRadius: 15,
+                borderRadius: 12,
               }
             ]}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-                <Text style={{ fontSize: 24, marginRight: spacing.sm }}>📝</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[commonStyles.text, { 
-                    fontSize: fontSizes.lg, 
-                    fontWeight: 'bold',
-                    color: colors.text,
-                  }]}>
-                    Note de transaction
-                  </Text>
-                  <Text style={[commonStyles.textLight, { 
-                    fontSize: fontSizes.sm,
-                    marginTop: spacing.xs
-                  }]}>
-                    Optionnel - Ajoutez des détails sur cette transaction
-                  </Text>
-                </View>
-              </View>
+              <Text style={[commonStyles.text, { 
+                fontSize: fontSizes.md, 
+                fontWeight: 'bold',
+                color: colors.text,
+                marginBottom: spacing.sm,
+                textAlign: 'center',
+              }]}>
+                📝 Note (optionnelle)
+              </Text>
+              
+              <Text style={[commonStyles.textLight, { 
+                fontSize: fontSizes.sm,
+                marginBottom: spacing.md,
+                textAlign: 'center',
+              }]}>
+                Ajoutez des détails sur cette transaction
+              </Text>
 
               <TextInput
                 style={[
                   commonStyles.input, 
                   { 
-                    height: 100, 
+                    height: 80, 
                     textAlignVertical: 'top',
                     backgroundColor: colors.backgroundAlt,
                     borderColor: note ? colors.primary : colors.border,
-                    borderWidth: 2,
+                    borderWidth: 1,
                     color: colors.text,
-                    fontSize: fontSizes.md,
-                    borderRadius: 10,
-                    paddingTop: spacing.md,
+                    fontSize: fontSizes.sm,
+                    borderRadius: 8,
+                    paddingTop: spacing.sm,
                   }
                 ]}
                 value={note}
                 onChangeText={setNote}
-                placeholder="Ex: Paiement partiel, Avance client, Retour produit, Remboursement..."
+                placeholder="Ex: Paiement partiel, Avance client, Retour produit..."
                 placeholderTextColor={colors.textLight}
                 multiline
-                numberOfLines={4}
+                numberOfLines={3}
               />
-
-              {/* Note Examples - Help users understand what to write */}
-              <View style={{ 
-                backgroundColor: colors.backgroundAlt, 
-                borderRadius: 8, 
-                padding: spacing.sm, 
-                marginTop: spacing.sm 
-              }}>
-                <Text style={[commonStyles.textLight, { 
-                  fontSize: fontSizes.xs, 
-                  marginBottom: spacing.xs,
-                  fontWeight: '600'
-                }]}>
-                  💡 Exemples de notes utiles:
-                </Text>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                  • "Paiement partiel pour commande du 15/01"
-                  {'\n'}• "Avance pour livraison prochaine"
-                  {'\n'}• "Remboursement produit défectueux"
-                  {'\n'}• "Règlement facture n°123"
-                </Text>
-              </View>
             </View>
 
-            {/* Preview - Better visibility */}
+            {/* FIXED: Preview Section - Clean display */}
             {amount && parseFloat(amount) > 0 && (
               <View style={[
                 commonStyles.card, 
                 { 
                   backgroundColor: type === 'gave' ? colors.error + '10' : colors.success + '10',
                   borderColor: type === 'gave' ? colors.error : colors.success,
-                  borderWidth: 2,
+                  borderWidth: 1,
                   marginBottom: spacing.lg,
-                  borderRadius: 15,
+                  borderRadius: 12,
                 }
               ]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
-                  <Text style={{ fontSize: 20, marginRight: spacing.sm }}>
-                    {type === 'gave' ? '📤' : '📥'}
-                  </Text>
+                <View style={{ alignItems: 'center', marginBottom: spacing.sm }}>
                   <Text style={[commonStyles.text, { 
                     color: type === 'gave' ? colors.error : colors.success,
                     fontSize: fontSizes.md,
@@ -372,9 +355,10 @@ export default function TransactionAmountScreen() {
                 </View>
                 
                 <Text style={[commonStyles.text, { 
-                  fontSize: fontSizes.xl,
+                  fontSize: fontSizes.lg,
                   fontWeight: 'bold',
                   color: type === 'gave' ? colors.error : colors.success,
+                  textAlign: 'center',
                   marginBottom: spacing.sm
                 }]}>
                   {type === 'gave' ? 'Vous donnez' : 'Vous recevez'}: {formatCurrency(parseFloat(amount))}
@@ -390,14 +374,16 @@ export default function TransactionAmountScreen() {
                     <Text style={[commonStyles.textLight, { 
                       fontSize: fontSizes.xs,
                       marginBottom: spacing.xs,
-                      fontWeight: '600'
+                      fontWeight: '600',
+                      textAlign: 'center',
                     }]}>
-                      📋 Note ajoutée:
+                      Note ajoutée:
                     </Text>
                     <Text style={[commonStyles.text, { 
                       fontSize: fontSizes.sm,
                       color: colors.text,
-                      fontStyle: 'italic'
+                      fontStyle: 'italic',
+                      textAlign: 'center',
                     }]}>
                       "{note}"
                     </Text>
@@ -406,63 +392,63 @@ export default function TransactionAmountScreen() {
               </View>
             )}
           </View>
+        </ScrollView>
 
-          {/* Action Buttons - Better contrast and visibility */}
-          <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
-            <TouchableOpacity
-              style={[
-                buttonStyles.primary, 
-                { 
-                  backgroundColor: type === 'gave' ? colors.error : colors.success,
-                  paddingVertical: spacing.xl,
-                  borderRadius: 15,
-                  marginBottom: spacing.md,
-                  shadowColor: colors.text,
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.2,
-                  shadowRadius: 8,
-                  elevation: 4,
-                },
-                (!amount || parseFloat(amount) <= 0) && { opacity: 0.5 }
-              ]}
-              onPress={handleContinue}
-              disabled={!amount || parseFloat(amount) <= 0}
-              activeOpacity={0.8}
-            >
-              <Text style={[commonStyles.text, { 
-                color: colors.secondary, 
-                fontSize: fontSizes.lg, 
-                fontWeight: 'bold',
-                textAlign: 'center'
-              }]}>
-                ✅ CONTINUER VERS LE PAIEMENT
-              </Text>
-            </TouchableOpacity>
+        {/* FIXED: Action Buttons - Better contrast and modern design */}
+        <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.lg }}>
+          <TouchableOpacity
+            style={[
+              buttonStyles.primary, 
+              { 
+                backgroundColor: type === 'gave' ? colors.error : colors.success,
+                paddingVertical: spacing.lg,
+                borderRadius: 12,
+                marginBottom: spacing.sm,
+                shadowColor: colors.text,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.1,
+                shadowRadius: 4,
+                elevation: 3,
+              },
+              (!amount || parseFloat(amount) <= 0) && { opacity: 0.5 }
+            ]}
+            onPress={handleContinue}
+            disabled={!amount || parseFloat(amount) <= 0}
+            activeOpacity={0.8}
+          >
+            <Text style={[commonStyles.text, { 
+              color: colors.secondary, 
+              fontSize: fontSizes.md, 
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }]}>
+              CONTINUER
+            </Text>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                buttonStyles.outline, 
-                { 
-                  paddingVertical: spacing.lg,
-                  borderRadius: 15,
-                  backgroundColor: colors.backgroundAlt,
-                  borderColor: colors.border,
-                  borderWidth: 2,
-                }
-              ]}
-              onPress={() => router.back()}
-              activeOpacity={0.7}
-            >
-              <Text style={[commonStyles.text, { 
-                color: colors.text, 
-                fontSize: fontSizes.md, 
-                fontWeight: 'bold',
-                textAlign: 'center'
-              }]}>
-                ❌ ANNULER
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[
+              buttonStyles.outline, 
+              { 
+                paddingVertical: spacing.md,
+                borderRadius: 12,
+                backgroundColor: colors.backgroundAlt,
+                borderColor: colors.border,
+                borderWidth: 1,
+              }
+            ]}
+            onPress={() => router.back()}
+            activeOpacity={0.7}
+          >
+            <Text style={[commonStyles.text, { 
+              color: colors.text, 
+              fontSize: fontSizes.md, 
+              fontWeight: 'bold',
+              textAlign: 'center'
+            }]}>
+              ANNULER
+            </Text>
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

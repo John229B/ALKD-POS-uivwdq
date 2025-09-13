@@ -65,47 +65,60 @@ export default function CustomersScreen() {
     }, [loadData])
   );
 
-  const getCustomerBalance = (customer: Customer) => {
+  // CORRECTED: Real-time balance calculation for individual customers
+  const getCustomerBalance = useCallback((customer: Customer) => {
     const customerSales = sales.filter(sale => sale.customerId === customer.id);
     let balance = 0;
     
-    // FIXED: Calculate balance based on transaction types
+    console.log(`Calculating balance for customer ${customer.name}:`, {
+      salesCount: customerSales.length,
+      sales: customerSales.map(s => ({
+        id: s.id,
+        receiptNumber: s.receiptNumber,
+        total: s.total,
+        paymentStatus: s.paymentStatus,
+        amountPaid: s.amountPaid,
+        notes: s.notes,
+        itemsCount: s.items.length
+      }))
+    });
+    
     customerSales.forEach(sale => {
       // Check if this is a manual transaction (J'ai pris/donné)
       if (sale.items.length === 0 && sale.notes) {
         if (sale.notes.includes("J'ai donné")) {
           balance += sale.total; // "J'ai donné" increases debt (positive balance)
+          console.log(`Manual "J'ai donné": +${sale.total}, new balance: ${balance}`);
         } else if (sale.notes.includes("J'ai pris")) {
           balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          console.log(`Manual "J'ai pris": -${sale.total}, new balance: ${balance}`);
         }
       } else {
         // Regular sales transactions
         if (sale.paymentStatus === 'credit') {
           balance += sale.total; // Credit sale adds to debt
+          console.log(`Credit sale: +${sale.total}, new balance: ${balance}`);
         } else if (sale.paymentStatus === 'partial') {
           const unpaidAmount = sale.total - (sale.amountPaid || 0);
           balance += unpaidAmount; // Only unpaid portion adds to debt
+          console.log(`Partial payment: unpaid ${unpaidAmount}, new balance: ${balance}`);
+        } else if (sale.paymentStatus === 'paid') {
+          // Check for overpayment
+          const overpayment = (sale.amountPaid || sale.total) - sale.total;
+          if (overpayment > 0) {
+            balance -= overpayment; // Overpayment creates credit for customer
+            console.log(`Overpayment: -${overpayment}, new balance: ${balance}`);
+          }
+          // Fully paid sales with exact payment don't affect balance
         }
-        // Fully paid sales don't affect balance (payment = purchase amount)
       }
     });
     
-    console.log(`Customer ${customer.name} balance:`, { 
-      balance, 
-      salesCount: customerSales.length,
-      sales: customerSales.map(s => ({ 
-        status: s.paymentStatus, 
-        total: s.total, 
-        amountPaid: s.amountPaid,
-        notes: s.notes,
-        items: s.items.length 
-      }))
-    });
-    
+    console.log(`Final balance for ${customer.name}: ${balance}`);
     return balance;
-  };
+  }, [sales]);
 
-  const getCustomerLastOperation = (customer: Customer) => {
+  const getCustomerLastOperation = useCallback((customer: Customer) => {
     const customerSales = sales.filter(sale => sale.customerId === customer.id);
     if (customerSales.length === 0) return null;
     
@@ -114,10 +127,10 @@ export default function CustomersScreen() {
     )[0];
     
     return new Date(lastSale.createdAt);
-  };
+  }, [sales]);
 
   // Filter and sort customers based on current filters
-  const getFilteredAndSortedCustomers = () => {
+  const getFilteredAndSortedCustomers = useCallback(() => {
     let filtered = customers.filter(customer =>
       customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       customer.phone?.includes(searchQuery) ||
@@ -176,19 +189,19 @@ export default function CustomersScreen() {
     });
 
     return filtered;
-  };
+  }, [customers, searchQuery, filters, getCustomerBalance, getCustomerLastOperation]);
 
   const filteredCustomers = getFilteredAndSortedCustomers();
 
-  const formatCurrency = (amount: number): string => {
+  const formatCurrency = useCallback((amount: number): string => {
     const currency = settings?.currency || 'XOF';
     const currencySymbols = { XOF: 'F CFA', USD: '$', EUR: '€' };
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
-  };
+  }, [settings?.currency]);
 
-  // FIXED: Calculate summary statistics based on actual customer balances
-  const calculateSummary = () => {
-    let totalDebt = 0; // Total amount customers owe (positive balances)
+  // CORRECTED: Real-time general balance calculation
+  const calculateGeneralBalance = useCallback(() => {
+    let totalDebt = 0; // Total amount customers owe us (positive balances)
     let totalCredit = 0; // Total amount we owe customers (negative balances)
 
     customers.forEach(customer => {
@@ -203,7 +216,7 @@ export default function CustomersScreen() {
     // General balance = total debt - total credit
     const generalBalance = totalDebt - totalCredit;
 
-    console.log('Summary calculation:', { 
+    console.log('General balance calculation:', { 
       totalDebt, 
       totalCredit, 
       generalBalance,
@@ -212,21 +225,21 @@ export default function CustomersScreen() {
     });
     
     return { totalDebt, totalCredit, generalBalance };
-  };
+  }, [customers, getCustomerBalance]);
 
-  const getBalanceColor = (balance: number): string => {
+  const getBalanceColor = useCallback((balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt
-    if (balance === 0) return colors.success; // Green for zero balance
+    if (balance === 0) return colors.text; // Default color for zero balance
     return colors.success; // Green for credit (negative balance)
-  };
+  }, []);
 
-  const getBalanceLabel = (balance: number): string => {
+  const getBalanceLabel = useCallback((balance: number): string => {
     if (balance > 0) return "Dette";
     if (balance === 0) return "Équilibré";
     return "Crédit";
-  };
+  }, []);
 
-  const resetForm = () => {
+  const resetForm = useCallback(() => {
     setFormData({
       name: '',
       phone: '',
@@ -234,15 +247,15 @@ export default function CustomersScreen() {
       address: '',
     });
     setEditingCustomer(null);
-  };
+  }, []);
 
-  const openAddModal = () => {
+  const openAddModal = useCallback(() => {
     console.log('Opening add customer modal');
     resetForm();
     setShowAddModal(true);
-  };
+  }, [resetForm]);
 
-  const openEditModal = (customer: Customer) => {
+  const openEditModal = useCallback((customer: Customer) => {
     console.log('Opening edit modal for customer:', customer.name);
     setFormData({
       name: customer.name,
@@ -252,9 +265,9 @@ export default function CustomersScreen() {
     });
     setEditingCustomer(customer);
     setShowAddModal(true);
-  };
+  }, []);
 
-  const handleDeleteCustomer = (customer: Customer) => {
+  const handleDeleteCustomer = useCallback((customer: Customer) => {
     Alert.alert(
       'Supprimer le client',
       `Êtes-vous sûr de vouloir supprimer définitivement ${customer.name} ?\n\nCette action est irréversible et supprimera également toutes les transactions associées.`,
@@ -285,9 +298,9 @@ export default function CustomersScreen() {
         },
       ]
     );
-  };
+  }, [loadData]);
 
-  const saveCustomer = async () => {
+  const saveCustomer = useCallback(async () => {
     if (!formData.name.trim()) {
       Alert.alert('Erreur', 'Le nom du client est obligatoire');
       return;
@@ -340,20 +353,14 @@ export default function CustomersScreen() {
       console.error('Error saving customer:', error);
       Alert.alert('Erreur', 'Erreur lors de la sauvegarde du client');
     }
-  };
+  }, [formData, editingCustomer, customers, resetForm]);
 
-  const handleApplyFilters = (newFilters: FilterOptions) => {
+  const handleApplyFilters = useCallback((newFilters: FilterOptions) => {
     console.log('Applying new filters:', newFilters);
     setFilters(newFilters);
-  };
+  }, []);
 
-  const { totalDebt, totalCredit, generalBalance } = calculateSummary();
-  
-  console.log('General balance calculation:', { 
-    totalDebt,
-    customersCount: customers.length,
-    salesCount: sales.length 
-  });
+  const { totalDebt, totalCredit, generalBalance } = calculateGeneralBalance();
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -371,15 +378,27 @@ export default function CustomersScreen() {
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Summary Section - FIXED DISPLAY */}
-        <View style={[commonStyles.section, { backgroundColor: colors.background, padding: spacing.lg }]}>
+        {/* Balance générale Section - CORRECTED DISPLAY */}
+        <View style={[
+          commonStyles.section, 
+          { 
+            backgroundColor: colors.background, 
+            padding: spacing.lg,
+            borderWidth: 2,
+            borderColor: colors.primary,
+            borderRadius: 12,
+            margin: spacing.md
+          }
+        ]}>
           <Text style={[commonStyles.text, { 
             color: colors.primary, 
             fontSize: fontSizes.md, 
-            marginBottom: spacing.md 
+            marginBottom: spacing.md,
+            fontWeight: '600'
           }]}>
             Balance générale
           </Text>
+          
           <Text style={[commonStyles.title, { 
             color: generalBalance > 0 ? colors.danger : generalBalance < 0 ? colors.success : colors.text, 
             fontSize: fontSizes.xl,
@@ -388,20 +407,38 @@ export default function CustomersScreen() {
           }]}>
             {generalBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(generalBalance))}
           </Text>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+          
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.sm }]}>
             {generalBalance > 0 ? `J'ai donné - Montant total des dettes` : 
              generalBalance < 0 ? `J'ai pris - Montant total des avances` : 
              'Équilibré - Tous les comptes sont à zéro'}
           </Text>
+          
+          {/* Detailed breakdown */}
           {(totalDebt > 0 || totalCredit > 0) && (
-            <View style={{ marginTop: spacing.sm, flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ 
+              flexDirection: 'row', 
+              justifyContent: 'space-between',
+              marginTop: spacing.sm,
+              paddingTop: spacing.sm,
+              borderTopWidth: 1,
+              borderTopColor: colors.border
+            }}>
               {totalDebt > 0 && (
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.danger }]}>
+                <Text style={[commonStyles.textLight, { 
+                  fontSize: fontSizes.xs, 
+                  color: colors.danger,
+                  fontWeight: '600'
+                }]}>
                   Dettes: {formatCurrency(totalDebt)}
                 </Text>
               )}
               {totalCredit > 0 && (
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs, color: colors.success }]}>
+                <Text style={[commonStyles.textLight, { 
+                  fontSize: fontSizes.xs, 
+                  color: colors.success,
+                  fontWeight: '600'
+                }]}>
                   Avances: {formatCurrency(totalCredit)}
                 </Text>
               )}
@@ -415,7 +452,8 @@ export default function CustomersScreen() {
             color: colors.primary, 
             fontSize: fontSizes.md, 
             marginBottom: spacing.md,
-            paddingHorizontal: spacing.lg 
+            paddingHorizontal: spacing.lg,
+            fontWeight: '600'
           }]}>
             Clients ({filteredCustomers.length})
           </Text>
@@ -445,8 +483,19 @@ export default function CustomersScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Customers List */}
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 100 }}>
+          {/* Customers List - CORRECTED DISPLAY */}
+          <ScrollView 
+            style={{ flex: 1 }} 
+            contentContainerStyle={{ 
+              paddingHorizontal: spacing.lg, 
+              paddingBottom: 100,
+              borderWidth: 2,
+              borderColor: colors.success,
+              borderRadius: 12,
+              margin: spacing.sm,
+              backgroundColor: colors.background
+            }}
+          >
             {filteredCustomers.map(customer => {
               const lastOperation = getCustomerLastOperation(customer);
               const balance = getCustomerBalance(customer);
@@ -455,7 +504,7 @@ export default function CustomersScreen() {
               return (
                 <TouchableOpacity
                   key={customer.id}
-                  style={[commonStyles.card, { marginBottom: spacing.sm }]}
+                  style={[commonStyles.card, { marginBottom: spacing.sm, marginTop: spacing.sm }]}
                   onPress={() => router.push(`/customer-details?customerId=${customer.id}`)}
                   onLongPress={() => {
                     Alert.alert(
@@ -512,7 +561,7 @@ export default function CustomersScreen() {
                       </Text>
                     </View>
 
-                    {/* Balance */}
+                    {/* Balance - CORRECTED DISPLAY */}
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={[commonStyles.text, { 
                         color: getBalanceColor(balance),
@@ -522,7 +571,11 @@ export default function CustomersScreen() {
                       }]}>
                         {balance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(balance))}
                       </Text>
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
+                      <Text style={[commonStyles.textLight, { 
+                        fontSize: fontSizes.xs,
+                        color: getBalanceColor(balance),
+                        fontWeight: '600'
+                      }]}>
                         {getBalanceLabel(balance)}
                       </Text>
                     </View>

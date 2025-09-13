@@ -310,6 +310,135 @@ const checkoutStyles = StyleSheet.create({
   },
 });
 
+// Styles pour la liste des clients améliorée
+const customerListStyles = StyleSheet.create({
+  customerItem: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  customerItemSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  customerInfo: {
+    flex: 1,
+  },
+  customerName: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  customerNameSelected: {
+    color: colors.secondary,
+  },
+  customerPhone: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    marginBottom: spacing.xs,
+  },
+  customerPhoneSelected: {
+    color: colors.secondary,
+    opacity: 0.8,
+  },
+  balanceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  balanceChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  balanceChipAdvance: {
+    backgroundColor: colors.success + '20',
+  },
+  balanceChipDebt: {
+    backgroundColor: colors.danger + '20',
+  },
+  balanceChipBalanced: {
+    backgroundColor: colors.textLight + '20',
+  },
+  balanceText: {
+    fontSize: fontSizes.xs,
+    fontWeight: '600',
+  },
+  balanceTextAdvance: {
+    color: colors.success,
+  },
+  balanceTextDebt: {
+    color: colors.danger,
+  },
+  balanceTextBalanced: {
+    color: colors.textLight,
+  },
+  selectIcon: {
+    marginLeft: spacing.sm,
+  },
+  noClientOption: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  noClientOptionSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  noClientText: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.xs,
+  },
+  noClientTextSelected: {
+    color: colors.secondary,
+  },
+  noClientSubtext: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+  },
+  noClientSubtextSelected: {
+    color: colors.secondary,
+    opacity: 0.8,
+  },
+  searchContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  emptyState: {
+    alignItems: 'center',
+    marginTop: 40,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateText: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  emptyStateSubtext: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    textAlign: 'center',
+  },
+});
+
 export default function POSScreen() {
   const { user } = useAuthState();
   const [products, setProducts] = useState<Product[]>([]);
@@ -445,6 +574,41 @@ export default function POSScreen() {
       customer.phone?.includes(customerSearchQuery)
     );
   }, [customers, customerSearchQuery]);
+
+  // Fonction pour obtenir le statut du solde d'un client
+  const getCustomerBalanceInfo = useCallback((customer: Customer) => {
+    const balance = customer.creditBalance;
+    
+    if (balance > 0) {
+      // Dette (J'ai donné)
+      return {
+        type: 'debt' as const,
+        amount: balance,
+        label: `Dette: ${formatCurrency(balance)}`,
+        icon: '💳',
+        color: colors.danger,
+      };
+    } else if (balance < 0) {
+      // Avance (J'ai pris)
+      const advanceAmount = Math.abs(balance);
+      return {
+        type: 'advance' as const,
+        amount: advanceAmount,
+        label: `Avance: ${formatCurrency(advanceAmount)}`,
+        icon: '💰',
+        color: colors.success,
+      };
+    } else {
+      // Équilibré
+      return {
+        type: 'balanced' as const,
+        amount: 0,
+        label: 'Équilibré',
+        icon: '⚖️',
+        color: colors.textLight,
+      };
+    }
+  }, [formatCurrency]);
 
   const openQuantityModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -616,6 +780,33 @@ export default function POSScreen() {
     
     setShowCheckoutModal(true);
   }, [cartTotals.total]);
+
+  // Fonction pour ouvrir le modal de sélection client avec liste complète
+  const openCustomerSelectionModal = useCallback(() => {
+    console.log('POS: Opening customer selection modal with full list');
+    setCustomerSearchQuery(''); // Reset search
+    setShowCustomerModal(true);
+  }, []);
+
+  // Fonction pour sélectionner un client
+  const selectCustomer = useCallback((customer: Customer | null) => {
+    console.log('POS: Selecting customer:', customer?.name || 'No customer');
+    setSelectedCustomer(customer);
+    setShowCustomerModal(false);
+    
+    // Reset payment method if advance is no longer available
+    if (customer) {
+      const balanceInfo = getCustomerBalanceInfo(customer);
+      if (paymentMethod === 'advance' && balanceInfo.type !== 'advance') {
+        setPaymentMethod('cash');
+      }
+    } else {
+      // No customer selected, reset to cash if was credit or advance
+      if (paymentMethod === 'credit' || paymentMethod === 'advance') {
+        setPaymentMethod('cash');
+      }
+    }
+  }, [paymentMethod, getCustomerBalanceInfo]);
 
   const processCheckout = useCallback(async () => {
     if (isProcessing) {
@@ -1424,13 +1615,13 @@ export default function POSScreen() {
                   </View>
                 </View>
 
-                {/* 1. SÉLECTION CLIENT AMÉLIORÉE */}
+                {/* 1. SÉLECTION CLIENT AMÉLIORÉE - AFFICHAGE DIRECT DE LA LISTE */}
                 <View style={checkoutStyles.sectionCard}>
                   <Text style={checkoutStyles.sectionTitle}>
                     👤 Client (optionnel)
                   </Text>
                   
-                  {/* Bouton de sélection client */}
+                  {/* Bouton de sélection client - OUVERTURE DIRECTE DE LA LISTE */}
                   <TouchableOpacity
                     style={[
                       commonStyles.input, 
@@ -1443,7 +1634,7 @@ export default function POSScreen() {
                         borderWidth: 2,
                       }
                     ]}
-                    onPress={() => setShowCustomerModal(true)}
+                    onPress={openCustomerSelectionModal}
                   >
                     <View style={{ flex: 1 }}>
                       {selectedCustomer ? (
@@ -1469,11 +1660,11 @@ export default function POSScreen() {
                           color: colors.textLight, 
                           fontSize: fontSizes.md,
                         }}>
-                          Sélectionner un client
+                          Cliquer pour sélectionner un client
                         </Text>
                       )}
                     </View>
-                    <Icon name="chevron-down" size={20} color={colors.textLight} />
+                    <Icon name="people" size={20} color={colors.primary} />
                   </TouchableOpacity>
                   
                   {/* Informations du client sélectionné */}
@@ -1815,18 +2006,19 @@ export default function POSScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Customer Selection Modal AMÉLIORÉ */}
+      {/* MODAL DE SÉLECTION CLIENT AMÉLIORÉ - AFFICHAGE DIRECT DE LA LISTE COMPLÈTE */}
       <Modal
         visible={showCustomerModal}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setShowCustomerModal(false)}
       >
-        <View style={modalStyles.overlayCenter}>
-          <View style={modalStyles.contentCenter}>
+        <View style={modalStyles.overlay}>
+          <View style={modalStyles.content}>
+            {/* Header */}
             <View style={modalStyles.header}>
-              <Text style={[commonStyles.subtitle, { fontSize: isSmallScreen ? fontSizes.lg : fontSizes.subtitle }]}>
-                👤 Sélectionner un client
+              <Text style={[commonStyles.subtitle, { fontSize: fontSizes.lg }]}>
+                👥 Sélectionner un client
               </Text>
               <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
                 <Icon name="close" size={24} color={colors.textLight} />
@@ -1834,152 +2026,130 @@ export default function POSScreen() {
             </View>
 
             {/* Recherche de client */}
-            <View style={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.md }}>
+            <View style={customerListStyles.searchContainer}>
               <TextInput
                 style={commonStyles.input}
-                placeholder="Rechercher un client..."
+                placeholder="Rechercher un client par nom ou téléphone..."
                 value={customerSearchQuery}
                 onChangeText={setCustomerSearchQuery}
               />
             </View>
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={modalStyles.scrollContent}>
+            {/* Liste complète des clients */}
+            <ScrollView 
+              style={{ flex: 1 }} 
+              contentContainerStyle={modalStyles.scrollContent}
+              showsVerticalScrollIndicator={false}
+            >
               {/* Option "Vente sans client" */}
               <TouchableOpacity
                 style={[
-                  commonStyles.card,
-                  { marginBottom: spacing.sm },
-                  !selectedCustomer && { backgroundColor: colors.primary }
+                  customerListStyles.noClientOption,
+                  !selectedCustomer && customerListStyles.noClientOptionSelected
                 ]}
-                onPress={() => {
-                  setSelectedCustomer(null);
-                  setShowCustomerModal(false);
-                }}
+                onPress={() => selectCustomer(null)}
               >
                 <Text style={[
-                  commonStyles.text,
-                  { fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md },
-                  !selectedCustomer && { color: colors.secondary }
+                  customerListStyles.noClientText,
+                  !selectedCustomer && customerListStyles.noClientTextSelected
                 ]}>
                   🚶 Vente sans client
                 </Text>
                 <Text style={[
-                  commonStyles.textLight,
-                  { fontSize: fontSizes.sm },
-                  !selectedCustomer && { color: colors.secondary, opacity: 0.8 }
+                  customerListStyles.noClientSubtext,
+                  !selectedCustomer && customerListStyles.noClientSubtextSelected
                 ]}>
                   Paiement comptant uniquement
                 </Text>
+                {!selectedCustomer && (
+                  <View style={customerListStyles.selectIcon}>
+                    <Icon name="checkmark-circle" size={24} color={colors.secondary} />
+                  </View>
+                )}
               </TouchableOpacity>
 
-              {/* Liste des clients filtrés */}
+              {/* Liste des clients avec informations complètes */}
               {filteredCustomers.map(customer => {
-                const hasAdvance = customer.creditBalance < 0;
-                const advanceAmount = hasAdvance ? Math.abs(customer.creditBalance) : 0;
-                const hasDebt = customer.creditBalance > 0;
+                const balanceInfo = getCustomerBalanceInfo(customer);
+                const isSelected = selectedCustomer?.id === customer.id;
                 
                 return (
                   <TouchableOpacity
                     key={customer.id}
                     style={[
-                      commonStyles.card,
-                      { marginBottom: spacing.sm },
-                      selectedCustomer?.id === customer.id && { backgroundColor: colors.primary }
+                      customerListStyles.customerItem,
+                      isSelected && customerListStyles.customerItemSelected
                     ]}
-                    onPress={() => {
-                      setSelectedCustomer(customer);
-                      setShowCustomerModal(false);
-                    }}
+                    onPress={() => selectCustomer(customer)}
                   >
-                    <Text style={[
-                      commonStyles.text,
-                      { fontWeight: '600', marginBottom: spacing.xs, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md },
-                      selectedCustomer?.id === customer.id && { color: colors.secondary }
-                    ]}>
-                      {customer.name}
-                    </Text>
-                    {customer.phone && (
+                    <View style={customerListStyles.customerInfo}>
+                      {/* Nom du client */}
                       <Text style={[
-                        commonStyles.textLight,
-                        { fontSize: fontSizes.sm, marginBottom: spacing.xs },
-                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
+                        customerListStyles.customerName,
+                        isSelected && customerListStyles.customerNameSelected
                       ]}>
-                        📞 {customer.phone}
+                        {customer.name}
                       </Text>
-                    )}
-                    
-                    {/* Solde du client */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                      {hasAdvance && (
-                        <View style={{ 
-                          backgroundColor: colors.success + '20', 
-                          paddingHorizontal: spacing.xs, 
-                          paddingVertical: 2, 
-                          borderRadius: 6 
-                        }}>
+                      
+                      {/* Téléphone */}
+                      {customer.phone && (
+                        <Text style={[
+                          customerListStyles.customerPhone,
+                          isSelected && customerListStyles.customerPhoneSelected
+                        ]}>
+                          📞 {customer.phone}
+                        </Text>
+                      )}
+                      
+                      {/* Solde avec couleurs et icônes */}
+                      <View style={customerListStyles.balanceContainer}>
+                        <View style={[
+                          customerListStyles.balanceChip,
+                          balanceInfo.type === 'advance' && customerListStyles.balanceChipAdvance,
+                          balanceInfo.type === 'debt' && customerListStyles.balanceChipDebt,
+                          balanceInfo.type === 'balanced' && customerListStyles.balanceChipBalanced,
+                        ]}>
                           <Text style={[
-                            commonStyles.textLight,
-                            { fontSize: fontSizes.xs, color: colors.success, fontWeight: '600' },
-                            selectedCustomer?.id === customer.id && { color: colors.secondary }
+                            customerListStyles.balanceText,
+                            balanceInfo.type === 'advance' && customerListStyles.balanceTextAdvance,
+                            balanceInfo.type === 'debt' && customerListStyles.balanceTextDebt,
+                            balanceInfo.type === 'balanced' && customerListStyles.balanceTextBalanced,
+                            isSelected && { color: colors.secondary }
                           ]}>
-                            💰 Avance: {formatCurrency(advanceAmount)}
+                            {balanceInfo.icon} {balanceInfo.label}
                           </Text>
                         </View>
-                      )}
-                      {hasDebt && (
-                        <View style={{ 
-                          backgroundColor: colors.danger + '20', 
-                          paddingHorizontal: spacing.xs, 
-                          paddingVertical: 2, 
-                          borderRadius: 6 
-                        }}>
-                          <Text style={[
-                            commonStyles.textLight,
-                            { fontSize: fontSizes.xs, color: colors.danger, fontWeight: '600' },
-                            selectedCustomer?.id === customer.id && { color: colors.secondary }
-                          ]}>
-                            💳 Dette: {formatCurrency(customer.creditBalance)}
-                          </Text>
-                        </View>
-                      )}
-                      {!hasAdvance && !hasDebt && (
-                        <View style={{ 
-                          backgroundColor: colors.textLight + '20', 
-                          paddingHorizontal: spacing.xs, 
-                          paddingVertical: 2, 
-                          borderRadius: 6 
-                        }}>
-                          <Text style={[
-                            commonStyles.textLight,
-                            { fontSize: fontSizes.xs, fontWeight: '600' },
-                            selectedCustomer?.id === customer.id && { color: colors.secondary }
-                          ]}>
-                            ⚖️ Équilibré
-                          </Text>
-                        </View>
-                      )}
+                      </View>
                     </View>
+                    
+                    {/* Icône de sélection */}
+                    {isSelected && (
+                      <View style={customerListStyles.selectIcon}>
+                        <Icon name="checkmark-circle" size={24} color={colors.secondary} />
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
 
+              {/* États vides */}
               {filteredCustomers.length === 0 && customerSearchQuery.trim() && (
-                <View style={{ alignItems: 'center', marginTop: 40 }}>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
+                <View style={customerListStyles.emptyState}>
+                  <Text style={customerListStyles.emptyStateText}>
                     Aucun client trouvé
                   </Text>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                  <Text style={customerListStyles.emptyStateSubtext}>
                     Essayez un autre terme de recherche
                   </Text>
                 </View>
               )}
 
               {customers.length === 0 && (
-                <View style={{ alignItems: 'center', marginTop: 40 }}>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.md }]}>
+                <View style={customerListStyles.emptyState}>
+                  <Text style={customerListStyles.emptyStateText}>
                     Aucun client enregistré
                   </Text>
-                  <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                  <Text style={customerListStyles.emptyStateSubtext}>
                     Ajoutez des clients depuis l'onglet Clients
                   </Text>
                 </View>

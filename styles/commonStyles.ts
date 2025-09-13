@@ -9,6 +9,7 @@ export const colors = {
   secondary: '#000000',    // Black
   background: '#FFFFFF',   // White background
   backgroundAlt: '#F8F9FA', // Light grey background
+  backgroundLight: '#FAFBFC', // Even lighter background
   text: '#000000',         // Black text
   textLight: '#666666',    // Grey text
   textWhite: '#FFFFFF',    // White text

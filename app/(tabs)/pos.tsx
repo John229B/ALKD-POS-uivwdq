@@ -59,27 +59,28 @@ const fabStyles = StyleSheet.create({
 const modalStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   overlayCenter: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
   },
   content: {
     backgroundColor: colors.card,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: '95%',
-    minHeight: '60%',
+    minHeight: '70%',
     width: '100%',
+    flex: 1,
   },
   contentCenter: {
     backgroundColor: colors.card,
-    borderRadius: 12,
+    borderRadius: 16,
     width: '100%',
     maxWidth: isSmallScreen ? '95%' : 500,
     maxHeight: '90%',
@@ -89,9 +90,10 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   scrollContent: {
     paddingHorizontal: spacing.lg,
@@ -99,14 +101,172 @@ const modalStyles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.background,
+    backgroundColor: colors.card,
     gap: spacing.sm,
   },
   footerSafeArea: {
-    paddingBottom: Platform.OS === 'ios' ? 20 : spacing.md,
+    paddingBottom: Platform.OS === 'ios' ? 34 : spacing.lg,
+  },
+});
+
+// New checkout modal styles for modern design
+const checkoutStyles = StyleSheet.create({
+  summaryCard: {
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 16,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  summaryTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.xs,
+  },
+  summaryLabel: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    flex: 1,
+  },
+  summaryValue: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  totalRow: {
+    borderTopWidth: 2,
+    borderTopColor: colors.primary,
+    paddingTop: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  totalLabel: {
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  totalValue: {
+    fontSize: fontSizes.xl,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  sectionCard: {
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  paymentMethodGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  paymentMethodButton: {
+    flex: 1,
+    minWidth: '48%',
+    backgroundColor: colors.backgroundAlt,
+    borderRadius: 12,
+    padding: spacing.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  paymentMethodButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  paymentMethodIcon: {
+    marginBottom: spacing.xs,
+  },
+  paymentMethodText: {
+    fontSize: fontSizes.sm,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  paymentMethodTextActive: {
+    color: colors.secondary,
+  },
+  advanceCard: {
+    backgroundColor: colors.success + '15',
+    borderRadius: 12,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.success + '30',
+  },
+  advanceTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.success,
+    marginBottom: spacing.xs,
+  },
+  advanceAmount: {
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+    color: colors.success,
+    marginBottom: spacing.xs,
+  },
+  advanceDescription: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+  },
+  confirmButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    minHeight: 56,
+  },
+  confirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  confirmButtonText: {
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
+    color: colors.secondary,
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  cancelButtonText: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.textLight,
   },
 });
 
@@ -1100,7 +1260,7 @@ export default function POSScreen() {
         </View>
       </Modal>
 
-      {/* Enhanced Checkout Modal with Keyboard Handling */}
+      {/* NOUVELLE PAGE DE FINALISATION MODERNE ET RESPONSIVE */}
       <Modal
         visible={showCheckoutModal}
         animationType="slide"
@@ -1110,13 +1270,13 @@ export default function POSScreen() {
         <KeyboardAvoidingView 
           style={{ flex: 1 }} 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          keyboardVerticalOffset={0}
         >
           <View style={modalStyles.overlay}>
             <View style={modalStyles.content}>
-              {/* Fixed Header */}
+              {/* Header fixe */}
               <View style={modalStyles.header}>
-                <Text style={[commonStyles.subtitle, { fontSize: isSmallScreen ? fontSizes.lg : fontSizes.subtitle }]}>
+                <Text style={checkoutStyles.summaryTitle}>
                   💳 Finaliser la vente
                 </Text>
                 <TouchableOpacity onPress={() => setShowCheckoutModal(false)}>
@@ -1124,97 +1284,129 @@ export default function POSScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Scrollable Content */}
+              {/* Contenu scrollable */}
               <KeyboardAwareScrollView
                 style={{ flex: 1 }}
-                contentContainerStyle={modalStyles.scrollContent}
+                contentContainerStyle={[modalStyles.scrollContent, { paddingTop: spacing.md }]}
                 enableOnAndroid={true}
                 keyboardShouldPersistTaps="handled"
-                extraScrollHeight={20}
+                extraScrollHeight={100}
                 showsVerticalScrollIndicator={false}
               >
-                {/* Order Summary */}
-                <View style={[commonStyles.card, { marginBottom: spacing.md }]}>
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                {/* Résumé de commande moderne */}
+                <View style={checkoutStyles.summaryCard}>
+                  <Text style={checkoutStyles.summaryTitle}>
                     📋 Résumé de la commande
                   </Text>
+                  
+                  {/* Articles */}
                   {cart.map(item => {
                     const unitInfo = getUnitInfo(item.product.unit);
                     return (
-                      <View key={item.product.id} style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.textLight, { flex: 1, fontSize: fontSizes.sm }]}>
+                      <View key={item.product.id} style={checkoutStyles.summaryRow}>
+                        <Text style={[checkoutStyles.summaryLabel, { flex: 1 }]} numberOfLines={1}>
                           {item.product.name} × {formatQuantityWithUnit(item.quantity, unitInfo.symbol)}
                         </Text>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>
+                        <Text style={checkoutStyles.summaryValue}>
                           {formatCurrency(item.subtotal)}
                         </Text>
                       </View>
                     );
                   })}
                   
-                  <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm, marginTop: spacing.sm }}>
-                    <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Sous-total:</Text>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(cartTotals.subtotal)}</Text>
-                    </View>
-                    {cartTotals.discountAmount > 0 && (
-                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Remise:</Text>
-                        <Text style={[commonStyles.text, { color: colors.success, fontSize: fontSizes.sm }]}>-{formatCurrency(cartTotals.discountAmount)}</Text>
-                      </View>
-                    )}
-                    {cartTotals.taxAmount > 0 && (
-                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Taxe:</Text>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>{formatCurrency(cartTotals.taxAmount)}</Text>
-                      </View>
-                    )}
-                    <View style={[commonStyles.row, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: isSmallScreen ? fontSizes.md : fontSizes.lg }]}>Total:</Text>
-                      <Text style={[commonStyles.text, { fontWeight: '600', fontSize: isSmallScreen ? fontSizes.md : fontSizes.lg, color: colors.primary }]}>
-                        {formatCurrency(cartTotals.total)}
+                  {/* Calculs */}
+                  <View style={checkoutStyles.summaryRow}>
+                    <Text style={checkoutStyles.summaryLabel}>Sous-total:</Text>
+                    <Text style={checkoutStyles.summaryValue}>{formatCurrency(cartTotals.subtotal)}</Text>
+                  </View>
+                  
+                  {cartTotals.discountAmount > 0 && (
+                    <View style={checkoutStyles.summaryRow}>
+                      <Text style={checkoutStyles.summaryLabel}>Remise:</Text>
+                      <Text style={[checkoutStyles.summaryValue, { color: colors.success }]}>
+                        -{formatCurrency(cartTotals.discountAmount)}
                       </Text>
                     </View>
+                  )}
+                  
+                  {cartTotals.taxAmount > 0 && (
+                    <View style={checkoutStyles.summaryRow}>
+                      <Text style={checkoutStyles.summaryLabel}>Taxe:</Text>
+                      <Text style={checkoutStyles.summaryValue}>{formatCurrency(cartTotals.taxAmount)}</Text>
+                    </View>
+                  )}
+                  
+                  <View style={[checkoutStyles.summaryRow, checkoutStyles.totalRow]}>
+                    <Text style={checkoutStyles.totalLabel}>Total:</Text>
+                    <Text style={checkoutStyles.totalValue}>
+                      {formatCurrency(cartTotals.total)}
+                    </Text>
                   </View>
                 </View>
 
-                {/* Customer Selection */}
-                <View style={{ marginBottom: spacing.md }}>
-                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                {/* Sélection client */}
+                <View style={checkoutStyles.sectionCard}>
+                  <Text style={checkoutStyles.sectionTitle}>
                     👤 Client (optionnel)
                   </Text>
                   <TouchableOpacity
                     style={[commonStyles.input, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}
                     onPress={() => setShowCustomerModal(true)}
                   >
-                    <Text style={{ color: selectedCustomer ? colors.text : colors.textLight, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }}>
+                    <Text style={{ 
+                      color: selectedCustomer ? colors.text : colors.textLight, 
+                      fontSize: fontSizes.md,
+                      flex: 1
+                    }} numberOfLines={1}>
                       {selectedCustomer ? selectedCustomer.name : 'Sélectionner un client'}
                     </Text>
                     <Icon name="chevron-down" size={20} color={colors.textLight} />
                   </TouchableOpacity>
                   
-                  {/* Show customer advance balance if available */}
-                  {selectedCustomer && customerAdvanceBalance > 0 && (
-                    <View style={[commonStyles.card, { marginTop: spacing.sm, backgroundColor: colors.success + '20' }]}>
-                      <Text style={[commonStyles.text, { color: colors.success, fontWeight: '600', marginBottom: spacing.xs, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
-                        💰 Avance disponible
-                      </Text>
-                      <Text style={[commonStyles.text, { fontSize: isSmallScreen ? fontSizes.md : fontSizes.lg, fontWeight: 'bold', color: colors.success }]}>
-                        {formatCurrency(customerAdvanceBalance)}
-                      </Text>
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginTop: spacing.xs }]}>
-                        Cette avance peut être utilisée pour payer tout ou partie de cet achat.
-                      </Text>
+                  {/* Solde client */}
+                  {selectedCustomer && (
+                    <View style={{ marginTop: spacing.sm }}>
+                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Solde du client:</Text>
+                        <Text style={[
+                          commonStyles.text, 
+                          { 
+                            fontSize: fontSizes.sm, 
+                            fontWeight: '600',
+                            color: selectedCustomer.creditBalance > 0 ? colors.danger : 
+                                   selectedCustomer.creditBalance < 0 ? colors.success : colors.text
+                          }
+                        ]}>
+                          {selectedCustomer.creditBalance > 0 ? `Dette: ${formatCurrency(selectedCustomer.creditBalance)}` :
+                           selectedCustomer.creditBalance < 0 ? `Avance: ${formatCurrency(Math.abs(selectedCustomer.creditBalance))}` :
+                           'Équilibré'}
+                        </Text>
+                      </View>
+                      
+                      {/* Avance disponible */}
+                      {customerAdvanceBalance > 0 && (
+                        <View style={checkoutStyles.advanceCard}>
+                          <Text style={checkoutStyles.advanceTitle}>
+                            💰 Avance disponible
+                          </Text>
+                          <Text style={checkoutStyles.advanceAmount}>
+                            {formatCurrency(customerAdvanceBalance)}
+                          </Text>
+                          <Text style={checkoutStyles.advanceDescription}>
+                            Cette avance peut être utilisée pour payer tout ou partie de cet achat.
+                          </Text>
+                        </View>
+                      )}
                     </View>
                   )}
                 </View>
 
-                {/* Payment Method */}
-                <View style={{ marginBottom: spacing.md }}>
-                  <Text style={[commonStyles.text, { marginBottom: spacing.sm, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                {/* Mode de paiement moderne */}
+                <View style={checkoutStyles.sectionCard}>
+                  <Text style={checkoutStyles.sectionTitle}>
                     💳 Mode de paiement
                   </Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                  <View style={checkoutStyles.paymentMethodGrid}>
                     {[
                       { id: 'cash', label: 'Espèces', icon: 'cash' },
                       { id: 'mobile_money', label: 'Mobile Money', icon: 'phone-portrait' },
@@ -1224,70 +1416,68 @@ export default function POSScreen() {
                       <TouchableOpacity
                         key={method.id}
                         style={[
-                          buttonStyles.outline,
-                          buttonStyles.small,
-                          { flex: 1, minWidth: '45%' },
-                          paymentMethod === method.id && { backgroundColor: colors.primary }
+                          checkoutStyles.paymentMethodButton,
+                          paymentMethod === method.id && checkoutStyles.paymentMethodButtonActive
                         ]}
                         onPress={() => setPaymentMethod(method.id as any)}
                       >
-                        <View style={{ alignItems: 'center', gap: spacing.xs }}>
+                        <View style={checkoutStyles.paymentMethodIcon}>
                           <Icon 
                             name={method.icon} 
-                            size={16} 
+                            size={24} 
                             color={paymentMethod === method.id ? colors.secondary : colors.primary} 
                           />
-                          <Text style={[
-                            { color: colors.primary, fontSize: fontSizes.xs, textAlign: 'center' },
-                            paymentMethod === method.id && { color: colors.secondary }
-                          ]}>
-                            {method.label}
-                          </Text>
                         </View>
+                        <Text style={[
+                          checkoutStyles.paymentMethodText,
+                          paymentMethod === method.id && checkoutStyles.paymentMethodTextActive
+                        ]}>
+                          {method.label}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                {/* Advance Payment Breakdown */}
+                {/* Détail paiement avec avance */}
                 {paymentMethod === 'advance' && selectedCustomer && customerAdvanceBalance > 0 && (
-                  <View style={[commonStyles.card, { marginBottom: spacing.md, backgroundColor: colors.success + '10' }]}>
-                    <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm, color: colors.success, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                  <View style={checkoutStyles.sectionCard}>
+                    <Text style={checkoutStyles.sectionTitle}>
                       💰 Utilisation de l'avance
                     </Text>
                     
-                    <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                      <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Avance utilisée:</Text>
-                      <Text style={[commonStyles.text, { color: colors.success, fontWeight: '600', fontSize: fontSizes.sm }]}>
+                    <View style={[checkoutStyles.summaryRow, { marginBottom: spacing.sm }]}>
+                      <Text style={checkoutStyles.summaryLabel}>Avance utilisée:</Text>
+                      <Text style={[checkoutStyles.summaryValue, { color: colors.success }]}>
                         {formatCurrency(paymentBreakdown.advanceUsed)}
                       </Text>
                     </View>
                     
                     {paymentBreakdown.remainingAmount > 0 && (
-                      <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
-                        <Text style={[commonStyles.text, { fontSize: fontSizes.sm }]}>Reste à payer:</Text>
-                        <Text style={[commonStyles.text, { color: colors.warning, fontWeight: '600', fontSize: fontSizes.sm }]}>
+                      <View style={[checkoutStyles.summaryRow, { marginBottom: spacing.sm }]}>
+                        <Text style={checkoutStyles.summaryLabel}>Reste à payer:</Text>
+                        <Text style={[checkoutStyles.summaryValue, { color: colors.warning }]}>
                           {formatCurrency(paymentBreakdown.remainingAmount)}
                         </Text>
                       </View>
                     )}
                     
                     {paymentBreakdown.canPayFully && (
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, textAlign: 'center' }]}>
                         ✅ L'avance couvre entièrement cet achat
                       </Text>
                     )}
                   </View>
                 )}
 
-                {/* Amount Paid */}
+                {/* Montant payé */}
                 {(paymentMethod !== 'credit' && paymentMethod !== 'advance') || (paymentMethod === 'advance' && paymentBreakdown.remainingAmount > 0) && (
-                  <View style={{ marginBottom: spacing.md }}>
-                    <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
-                      💰 {paymentMethod === 'advance' ? 'Montant supplémentaire à payer' : 'Montant payé'}
+                  <View style={checkoutStyles.sectionCard}>
+                    <Text style={checkoutStyles.sectionTitle}>
+                      💰 {paymentMethod === 'advance' ? 'Montant supplémentaire' : 'Montant payé'}
                     </Text>
                     <TextInput
-                      style={[commonStyles.input, { fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}
+                      style={[commonStyles.input, { fontSize: fontSizes.md }]}
                       value={amountPaid}
                       onChangeText={setAmountPaid}
                       placeholder={formatCurrency(paymentMethod === 'advance' ? paymentBreakdown.remainingAmount : cartTotals.total)}
@@ -1306,17 +1496,16 @@ export default function POSScreen() {
                   </View>
                 )}
 
-                {/* Discount */}
-                <View style={{ marginBottom: spacing.md }}>
-                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                {/* Remise */}
+                <View style={checkoutStyles.sectionCard}>
+                  <Text style={checkoutStyles.sectionTitle}>
                     🎯 Remise
                   </Text>
                   
-                  <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.sm }}>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
                     <TouchableOpacity
                       style={[
                         buttonStyles.outline,
-                        buttonStyles.small,
                         { flex: 1 },
                         discountType === 'percentage' && { backgroundColor: colors.primary }
                       ]}
@@ -1332,7 +1521,6 @@ export default function POSScreen() {
                     <TouchableOpacity
                       style={[
                         buttonStyles.outline,
-                        buttonStyles.small,
                         { flex: 1 },
                         discountType === 'fixed' && { backgroundColor: colors.primary }
                       ]}
@@ -1348,7 +1536,7 @@ export default function POSScreen() {
                   </View>
 
                   <TextInput
-                    style={[commonStyles.input, { fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}
+                    style={[commonStyles.input, { fontSize: fontSizes.md }]}
                     value={discountValue}
                     onChangeText={setDiscountValue}
                     placeholder={discountType === 'percentage' ? '0' : '0'}
@@ -1363,42 +1551,46 @@ export default function POSScreen() {
                 </View>
 
                 {/* Notes */}
-                <View style={{ marginBottom: spacing.xl }}>
-                  <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}>
+                <View style={checkoutStyles.sectionCard}>
+                  <Text style={checkoutStyles.sectionTitle}>
                     📝 Notes (optionnel)
                   </Text>
                   <TextInput
-                    style={[commonStyles.input, { height: isSmallScreen ? 60 : 80, textAlignVertical: 'top', fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md }]}
+                    style={[commonStyles.input, { height: 80, textAlignVertical: 'top', fontSize: fontSizes.md }]}
                     value={notes}
                     onChangeText={setNotes}
                     placeholder="Notes sur la vente..."
                     multiline
                   />
                 </View>
+
+                {/* Espace pour éviter que le contenu soit caché par le footer */}
+                <View style={{ height: spacing.xl }} />
               </KeyboardAwareScrollView>
 
-              {/* Fixed Footer with Confirm Button */}
+              {/* Footer fixe avec boutons */}
               <View style={[modalStyles.footer, modalStyles.footerSafeArea]}>
                 <TouchableOpacity
                   style={[
-                    buttonStyles.primary, 
-                    isProcessing && { opacity: 0.5 }
+                    checkoutStyles.confirmButton,
+                    isProcessing && checkoutStyles.confirmButtonDisabled
                   ]}
                   onPress={processCheckout}
                   disabled={isProcessing}
                 >
-                  <Text style={{ color: colors.secondary, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md, fontWeight: '600' }}>
-                    {isProcessing ? '⏳ Traitement en cours...' : `✅ Confirmer la vente - ${formatCurrency(cartTotals.total)}`}
+                  <Icon name="checkmark-circle" size={24} color={colors.secondary} />
+                  <Text style={checkoutStyles.confirmButtonText}>
+                    {isProcessing ? 'Traitement en cours...' : `Confirmer la vente - ${formatCurrency(cartTotals.total)}`}
                   </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[buttonStyles.outline, isProcessing && { opacity: 0.5 }]}
+                  style={[checkoutStyles.cancelButton, isProcessing && { opacity: 0.5 }]}
                   onPress={() => setShowCheckoutModal(false)}
                   disabled={isProcessing}
                 >
-                  <Text style={{ color: colors.primary, fontSize: isSmallScreen ? fontSizes.sm : fontSizes.md, fontWeight: '600' }}>
-                    ❌ Annuler
+                  <Text style={checkoutStyles.cancelButtonText}>
+                    Annuler
                   </Text>
                 </TouchableOpacity>
               </View>

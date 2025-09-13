@@ -35,7 +35,7 @@ export default function EmployeesScreen() {
 
   useEffect(() => {
     loadEmployees();
-  }, []);
+  }, [loadEmployees]);
 
   const loadEmployees = useCallback(async () => {
     try {

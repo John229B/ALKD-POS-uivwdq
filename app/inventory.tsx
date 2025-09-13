@@ -355,10 +355,12 @@ export default function InventoryScreen() {
 
       const csvContent = csvData.map(row => row.join(',')).join('\n');
       const fileName = `inventaire_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`;
-      const fileUri = FileSystem.documentDirectory + fileName;
+      const documentDir = (FileSystem as any).documentDirectory;
+      const fileUri = documentDir + fileName;
 
+      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
       await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: encodingType,
       });
 
       if (await Sharing.isAvailableAsync()) {

@@ -147,7 +147,7 @@ export default function TransactionSuccessScreen() {
       Alert.alert('Erreur', 'Erreur lors du traitement de la transaction');
       router.back();
     }
-  }, [customerId, type, amount, paymentMethod, date, note]);
+  }, [customerId, type, amount, paymentMethod, date, note, triggerDashboardUpdate]);
 
   useEffect(() => {
     processTransaction();

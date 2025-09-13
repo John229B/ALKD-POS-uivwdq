@@ -1164,7 +1164,7 @@ export default function POSScreen() {
     } finally {
       setIsProcessing(false);
     }
-  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, isProcessing, paymentBreakdown]);
+  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, isProcessing, paymentBreakdown, customerAdvanceBalance, formatCurrency, getCustomerBalance, triggerCustomersUpdate, triggerDashboardUpdate]);
 
   // Reset payment method when customer changes
   useEffect(() => {

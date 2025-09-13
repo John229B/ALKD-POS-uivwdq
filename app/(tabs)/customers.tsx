@@ -118,7 +118,7 @@ export default function CustomersScreen() {
     
     console.log(`Final balance for ${customer.name}: ${balance}`);
     return balance;
-  }, [sales]);
+  }, [sales, sales.length]);
 
   const getCustomerLastOperation = useCallback((customer: Customer) => {
     const customerSales = sales.filter(sale => sale.customerId === customer.id);
@@ -304,7 +304,7 @@ export default function CustomersScreen() {
         },
       ]
     );
-  }, [loadData]);
+  }, [loadData, triggerCustomersUpdate]);
 
   const saveCustomer = useCallback(async () => {
     if (!formData.name.trim()) {
@@ -363,7 +363,7 @@ export default function CustomersScreen() {
       console.error('Error saving customer:', error);
       Alert.alert('Erreur', 'Erreur lors de la sauvegarde du client');
     }
-  }, [formData, editingCustomer, customers, resetForm]);
+  }, [formData, editingCustomer, customers, resetForm, triggerCustomersUpdate]);
 
   const handleApplyFilters = useCallback((newFilters: FilterOptions) => {
     console.log('Applying new filters:', newFilters);

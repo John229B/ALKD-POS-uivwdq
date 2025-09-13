@@ -181,7 +181,7 @@ export default function ReportsScreen() {
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, [loadData]);
+  }, [loadData, animatedValue]);
 
   // Real-time updates when dashboard data changes
   useEffect(() => {
@@ -584,7 +584,7 @@ export default function ReportsScreen() {
       debtAnalysis,
       filterBreakdown
     };
-  }, [filteredSales, products, customers, categories, employees, sales]);
+  }, [filteredSales, products, customers, categories, employees, sales, filterColors]);
 
   const formatCurrency = useCallback((amount: number) => {
     const currency = settings?.currency || 'XOF';

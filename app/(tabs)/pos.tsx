@@ -66,7 +66,7 @@ export default function POSScreen() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit' | 'advance'>('cash');
   const [amountPaid, setAmountPaid] = useState('');
   const [discountType, setDiscountType] = useState<'percentage' | 'fixed'>('percentage');
   const [discountValue, setDiscountValue] = useState('0');
@@ -75,6 +75,7 @@ export default function POSScreen() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [customQuantity, setCustomQuantity] = useState('1');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [useAdvanceAmount, setUseAdvanceAmount] = useState(0);
 
   const loadData = useCallback(async () => {
     try {
@@ -147,6 +148,37 @@ export default function POSScreen() {
       total,
     };
   }, [cart, discountType, discountValue, settings]);
+
+  // Calculate customer advance balance (positive balance = "J'ai pris")
+  const customerAdvanceBalance = useMemo(() => {
+    if (!selectedCustomer) return 0;
+    // Positive creditBalance means debt (J'ai donné)
+    // Negative creditBalance means advance (J'ai pris)
+    return selectedCustomer.creditBalance < 0 ? Math.abs(selectedCustomer.creditBalance) : 0;
+  }, [selectedCustomer]);
+
+  // Calculate payment breakdown when using advances
+  const paymentBreakdown = useMemo(() => {
+    const total = cartTotals.total;
+    const availableAdvance = customerAdvanceBalance;
+    
+    if (paymentMethod === 'advance' && availableAdvance > 0) {
+      const advanceUsed = Math.min(availableAdvance, total);
+      const remainingAmount = Math.max(0, total - advanceUsed);
+      
+      return {
+        advanceUsed,
+        remainingAmount,
+        canPayFully: availableAdvance >= total,
+      };
+    }
+    
+    return {
+      advanceUsed: 0,
+      remainingAmount: total,
+      canPayFully: false,
+    };
+  }, [cartTotals.total, customerAdvanceBalance, paymentMethod]);
 
   const openQuantityModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -329,28 +361,55 @@ export default function POSScreen() {
       return;
     }
 
-    // Check if credit sale requires a customer
-    if (paymentMethod === 'credit' && !selectedCustomer) {
+    // Check if credit sale or advance payment requires a customer
+    if ((paymentMethod === 'credit' || paymentMethod === 'advance') && !selectedCustomer) {
       Alert.alert(
         'Client requis',
-        'Veuillez sélectionner un client pour effectuer une vente à crédit.',
+        'Veuillez sélectionner un client pour effectuer une vente à crédit ou utiliser des avances.',
         [{ text: 'OK' }]
       );
       return;
     }
 
-    const paidAmount = parseFloat(amountPaid) || 0;
     const total = cartTotals.total;
+    let effectivePaidAmount = 0;
+    let advanceUsed = 0;
 
-    if (paymentMethod !== 'credit' && paidAmount < total) {
-      Alert.alert('Erreur', 'Le montant payé est insuffisant');
-      return;
+    // Calculate payment amounts based on method
+    if (paymentMethod === 'advance') {
+      // Using customer advance
+      advanceUsed = paymentBreakdown.advanceUsed;
+      const remainingAmount = paymentBreakdown.remainingAmount;
+      
+      if (remainingAmount > 0) {
+        // Need additional payment
+        const additionalPaid = parseFloat(amountPaid) || 0;
+        if (additionalPaid < remainingAmount) {
+          Alert.alert('Erreur', `Montant insuffisant. Il reste ${formatCurrency(remainingAmount)} à payer après utilisation de l'avance.`);
+          return;
+        }
+        effectivePaidAmount = advanceUsed + additionalPaid;
+      } else {
+        // Fully covered by advance
+        effectivePaidAmount = total;
+      }
+    } else if (paymentMethod !== 'credit') {
+      // Regular payment methods
+      effectivePaidAmount = parseFloat(amountPaid) || 0;
+      if (effectivePaidAmount < total) {
+        Alert.alert('Erreur', 'Le montant payé est insuffisant');
+        return;
+      }
     }
 
     setIsProcessing(true);
 
     try {
       console.log('POS: Processing checkout...');
+      console.log('POS: Payment method:', paymentMethod);
+      console.log('POS: Total:', total);
+      console.log('POS: Advance used:', advanceUsed);
+      console.log('POS: Effective paid amount:', effectivePaidAmount);
 
       // Generate receipt number
       const receiptNumber = await getNextReceiptNumber();
@@ -370,7 +429,7 @@ export default function POSScreen() {
       let paymentStatus: 'paid' | 'partial' | 'credit';
       if (paymentMethod === 'credit') {
         paymentStatus = 'credit';
-      } else if (paidAmount >= total) {
+      } else if (effectivePaidAmount >= total) {
         paymentStatus = 'paid';
       } else {
         paymentStatus = 'partial';
@@ -386,11 +445,13 @@ export default function POSScreen() {
         discount: cartTotals.discountAmount,
         tax: cartTotals.taxAmount,
         total: cartTotals.total,
-        paymentMethod,
+        paymentMethod: paymentMethod === 'advance' ? 'cash' : paymentMethod, // Store as cash for advance payments
         paymentStatus,
-        amountPaid: paidAmount,
-        change: Math.max(0, paidAmount - total),
-        notes,
+        amountPaid: effectivePaidAmount,
+        change: Math.max(0, effectivePaidAmount - total),
+        notes: paymentMethod === 'advance' && advanceUsed > 0 
+          ? `${notes ? notes + ' - ' : ''}Paiement avec avance: ${formatCurrency(advanceUsed)}`
+          : notes,
         cashierId: user.id,
         cashier: user,
         createdAt: new Date(),
@@ -425,35 +486,48 @@ export default function POSScreen() {
             console.log('POS: Processing payment for customer:', customer.name);
             console.log('POS: Payment method:', paymentMethod);
             console.log('POS: Total amount:', total);
-            console.log('POS: Paid amount:', paidAmount);
+            console.log('POS: Effective paid amount:', effectivePaidAmount);
+            console.log('POS: Advance used:', advanceUsed);
             console.log('POS: Current credit balance:', customer.creditBalance);
             
-            // CORRECTION DU PROBLÈME : Gestion correcte des paiements
-            // 
-            // LOGIQUE CORRIGÉE :
-            // - Paiement total (paidAmount === total) → Aucune écriture, solde inchangé
-            // - Paiement partiel (paidAmount < total) → "J'ai donné" pour le reste non payé
-            // - Paiement supérieur (paidAmount > total) → "J'ai pris" pour l'excédent
-            // - Vente à crédit → "J'ai donné" pour le montant total
-            //
-            if (paymentMethod === 'credit') {
+            if (paymentMethod === 'advance') {
+              // Using customer advance
+              if (advanceUsed > 0) {
+                // Reduce the advance (increase creditBalance towards 0)
+                newCreditBalance += advanceUsed;
+                console.log('POS: Used advance, new balance after advance usage:', newCreditBalance);
+              }
+              
+              // Handle any remaining amount
+              const remainingAmount = total - advanceUsed;
+              if (remainingAmount > 0) {
+                const additionalPaid = effectivePaidAmount - advanceUsed;
+                if (additionalPaid < remainingAmount) {
+                  // Partial payment - add unpaid amount to debt
+                  newCreditBalance += (remainingAmount - additionalPaid);
+                  console.log('POS: Partial payment after advance, adding to debt:', remainingAmount - additionalPaid);
+                } else if (additionalPaid > remainingAmount) {
+                  // Overpayment - create new advance
+                  newCreditBalance -= (additionalPaid - remainingAmount);
+                  console.log('POS: Overpayment after advance, creating new advance:', additionalPaid - remainingAmount);
+                }
+              }
+            } else if (paymentMethod === 'credit') {
               // Vente à crédit : ajouter le montant total à la dette
               newCreditBalance += total;
               console.log('POS: Credit sale - adding total to debt. New balance:', newCreditBalance);
-            } else if (paidAmount < total) {
+            } else if (effectivePaidAmount < total) {
               // Paiement partiel : ajouter le reste non payé à la dette
-              const unpaidAmount = total - paidAmount;
+              const unpaidAmount = total - effectivePaidAmount;
               newCreditBalance += unpaidAmount;
               console.log('POS: Partial payment - adding unpaid amount to debt:', unpaidAmount, 'New balance:', newCreditBalance);
-            } else if (paidAmount > total) {
-              // Paiement supérieur : déduire l'excédent de la dette (avance)
-              const overpayment = paidAmount - total;
-              newCreditBalance = Math.max(0, newCreditBalance - overpayment);
-              console.log('POS: Overpayment - deducting excess from debt:', overpayment, 'New balance:', newCreditBalance);
+            } else if (effectivePaidAmount > total) {
+              // Paiement supérieur : créer une avance avec l'excédent
+              const overpayment = effectivePaidAmount - total;
+              newCreditBalance -= overpayment;
+              console.log('POS: Overpayment - creating advance with excess:', overpayment, 'New balance:', newCreditBalance);
             } else {
-              // Paiement total exact (paidAmount === total) : pas de changement de balance
-              // C'est ici que le bug était : le système n'enregistrait pas automatiquement
-              // une transaction "J'ai pris" pour les paiements totaux
+              // Paiement total exact : pas de changement de balance
               console.log('POS: Full payment - no balance change. Balance remains:', newCreditBalance);
             }
 
@@ -475,6 +549,7 @@ export default function POSScreen() {
       setSelectedCustomer(null);
       setPaymentMethod('cash');
       setAmountPaid('');
+      setUseAdvanceAmount(0);
       setDiscountType('percentage');
       setDiscountValue('0');
       setNotes('');
@@ -499,7 +574,14 @@ export default function POSScreen() {
     } finally {
       setIsProcessing(false);
     }
-  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, isProcessing]);
+  }, [cart, cartTotals, paymentMethod, amountPaid, selectedCustomer, notes, user, products, customers, clearCartWithoutConfirmation, isProcessing, paymentBreakdown]);
+
+  // Reset payment method when customer changes
+  useEffect(() => {
+    if (paymentMethod === 'advance' && customerAdvanceBalance === 0) {
+      setPaymentMethod('cash');
+    }
+  }, [selectedCustomer, paymentMethod, customerAdvanceBalance]);
 
   return (
     <SafeAreaView style={commonStyles.container}>
@@ -1030,6 +1112,21 @@ export default function POSScreen() {
                   </Text>
                   <Icon name="chevron-down" size={20} color={colors.textLight} />
                 </TouchableOpacity>
+                
+                {/* Show customer advance balance if available */}
+                {selectedCustomer && customerAdvanceBalance > 0 && (
+                  <View style={[commonStyles.card, { marginTop: spacing.sm, backgroundColor: colors.success + '20' }]}>
+                    <Text style={[commonStyles.text, { color: colors.success, fontWeight: '600', marginBottom: spacing.xs }]}>
+                      💰 Avance disponible
+                    </Text>
+                    <Text style={[commonStyles.text, { fontSize: fontSizes.lg, fontWeight: 'bold', color: colors.success }]}>
+                      {formatCurrency(customerAdvanceBalance)}
+                    </Text>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginTop: spacing.xs }]}>
+                      Cette avance peut être utilisée pour payer tout ou partie de cet achat.
+                    </Text>
+                  </View>
+                )}
               </View>
 
               {/* Payment Method */}
@@ -1037,18 +1134,19 @@ export default function POSScreen() {
                 <Text style={[commonStyles.text, { marginBottom: spacing.sm, fontWeight: '600' }]}>
                   💳 Mode de paiement
                 </Text>
-                <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
                   {[
                     { id: 'cash', label: 'Espèces', icon: 'cash' },
                     { id: 'mobile_money', label: 'Mobile Money', icon: 'phone-portrait' },
                     { id: 'credit', label: 'À crédit', icon: 'time' },
+                    ...(selectedCustomer && customerAdvanceBalance > 0 ? [{ id: 'advance', label: 'Avance client', icon: 'wallet' }] : []),
                   ].map(method => (
                     <TouchableOpacity
                       key={method.id}
                       style={[
                         buttonStyles.outline,
                         buttonStyles.small,
-                        { flex: 1 },
+                        { flex: 1, minWidth: '45%' },
                         paymentMethod === method.id && { backgroundColor: colors.primary }
                       ]}
                       onPress={() => setPaymentMethod(method.id as any)}
@@ -1071,20 +1169,56 @@ export default function POSScreen() {
                 </View>
               </View>
 
+              {/* Advance Payment Breakdown */}
+              {paymentMethod === 'advance' && selectedCustomer && customerAdvanceBalance > 0 && (
+                <View style={[commonStyles.card, { marginBottom: spacing.md, backgroundColor: colors.success + '10' }]}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm, color: colors.success }]}>
+                    💰 Utilisation de l'avance
+                  </Text>
+                  
+                  <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                    <Text style={commonStyles.text}>Avance utilisée:</Text>
+                    <Text style={[commonStyles.text, { color: colors.success, fontWeight: '600' }]}>
+                      {formatCurrency(paymentBreakdown.advanceUsed)}
+                    </Text>
+                  </View>
+                  
+                  {paymentBreakdown.remainingAmount > 0 && (
+                    <View style={[commonStyles.row, { marginBottom: spacing.xs }]}>
+                      <Text style={commonStyles.text}>Reste à payer:</Text>
+                      <Text style={[commonStyles.text, { color: colors.warning, fontWeight: '600' }]}>
+                        {formatCurrency(paymentBreakdown.remainingAmount)}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {paymentBreakdown.canPayFully && (
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
+                      ✅ L'avance couvre entièrement cet achat
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* Amount Paid */}
-              {paymentMethod !== 'credit' && (
+              {(paymentMethod !== 'credit' && paymentMethod !== 'advance') || (paymentMethod === 'advance' && paymentBreakdown.remainingAmount > 0) && (
                 <View style={{ marginBottom: spacing.md }}>
                   <Text style={[commonStyles.text, { marginBottom: spacing.xs, fontWeight: '600' }]}>
-                    💰 Montant payé
+                    💰 {paymentMethod === 'advance' ? 'Montant supplémentaire à payer' : 'Montant payé'}
                   </Text>
                   <TextInput
                     style={commonStyles.input}
                     value={amountPaid}
                     onChangeText={setAmountPaid}
-                    placeholder={formatCurrency(cartTotals.total)}
+                    placeholder={formatCurrency(paymentMethod === 'advance' ? paymentBreakdown.remainingAmount : cartTotals.total)}
                     keyboardType="numeric"
                   />
-                  {parseFloat(amountPaid) > cartTotals.total && (
+                  {paymentMethod === 'advance' && parseFloat(amountPaid) > paymentBreakdown.remainingAmount && (
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
+                      Nouvelle avance: {formatCurrency(parseFloat(amountPaid) - paymentBreakdown.remainingAmount)}
+                    </Text>
+                  )}
+                  {paymentMethod !== 'advance' && parseFloat(amountPaid) > cartTotals.total && (
                     <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success, marginTop: spacing.xs }]}>
                       Monnaie à rendre: {formatCurrency(parseFloat(amountPaid) - cartTotals.total)}
                     </Text>
@@ -1229,46 +1363,61 @@ export default function POSScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {customers.map(customer => (
-                <TouchableOpacity
-                  key={customer.id}
-                  style={[
-                    commonStyles.card,
-                    { marginBottom: spacing.sm },
-                    selectedCustomer?.id === customer.id && { backgroundColor: colors.primary }
-                  ]}
-                  onPress={() => {
-                    setSelectedCustomer(customer);
-                    setShowCustomerModal(false);
-                  }}
-                >
-                  <Text style={[
-                    commonStyles.text,
-                    { fontWeight: '600', marginBottom: spacing.xs },
-                    selectedCustomer?.id === customer.id && { color: colors.secondary }
-                  ]}>
-                    {customer.name}
-                  </Text>
-                  {customer.phone && (
+              {customers.map(customer => {
+                const hasAdvance = customer.creditBalance < 0;
+                const advanceAmount = hasAdvance ? Math.abs(customer.creditBalance) : 0;
+                const hasDebt = customer.creditBalance > 0;
+                
+                return (
+                  <TouchableOpacity
+                    key={customer.id}
+                    style={[
+                      commonStyles.card,
+                      { marginBottom: spacing.sm },
+                      selectedCustomer?.id === customer.id && { backgroundColor: colors.primary }
+                    ]}
+                    onPress={() => {
+                      setSelectedCustomer(customer);
+                      setShowCustomerModal(false);
+                    }}
+                  >
                     <Text style={[
-                      commonStyles.textLight,
-                      { fontSize: fontSizes.sm },
-                      selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
+                      commonStyles.text,
+                      { fontWeight: '600', marginBottom: spacing.xs },
+                      selectedCustomer?.id === customer.id && { color: colors.secondary }
                     ]}>
-                      📞 {customer.phone}
+                      {customer.name}
                     </Text>
-                  )}
-                  {customer.creditBalance > 0 && (
-                    <Text style={[
-                      commonStyles.textLight,
-                      { fontSize: fontSizes.sm, color: colors.warning },
-                      selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
-                    ]}>
-                      💳 Crédit: {formatCurrency(customer.creditBalance)}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              ))}
+                    {customer.phone && (
+                      <Text style={[
+                        commonStyles.textLight,
+                        { fontSize: fontSizes.sm, marginBottom: spacing.xs },
+                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
+                      ]}>
+                        📞 {customer.phone}
+                      </Text>
+                    )}
+                    {hasAdvance && (
+                      <Text style={[
+                        commonStyles.textLight,
+                        { fontSize: fontSizes.sm, color: colors.success, fontWeight: '600' },
+                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
+                      ]}>
+                        💰 Avance: {formatCurrency(advanceAmount)}
+                      </Text>
+                    )}
+                    {hasDebt && (
+                      <Text style={[
+                        commonStyles.textLight,
+                        { fontSize: fontSizes.sm, color: colors.danger, fontWeight: '600' },
+                        selectedCustomer?.id === customer.id && { color: colors.secondary, opacity: 0.8 }
+                      ]}>
+                        💳 Dette: {formatCurrency(customer.creditBalance)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
 
               {customers.length === 0 && (
                 <View style={{ alignItems: 'center', marginTop: 40 }}>

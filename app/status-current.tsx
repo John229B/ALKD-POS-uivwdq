@@ -19,9 +19,6 @@ export default function StatusCurrentScreen() {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [currentBalance, setCurrentBalance] = useState(0);
-  const [totalGave, setTotalGave] = useState(0);
-  const [totalTook, setTotalTook] = useState(0);
-  const [paymentsCount, setPaymentsCount] = useState(0);
   const cardRef = useRef<View>(null);
 
   const loadData = useCallback(async () => {
@@ -42,28 +39,36 @@ export default function StatusCurrentScreen() {
       setCustomer(foundCustomer);
       setSettings(settingsData);
 
-      // Calculate current balance and totals
+      // Calculate current balance
       const customerSales = salesData.filter(sale => sale.customerId === customerId);
       let balance = 0;
-      let gave = 0;
-      let took = 0;
-      let payments = 0;
       
       customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          balance += sale.total; // Debt increases balance
-          gave += sale.total;
-        } else if (sale.paymentStatus === 'paid') {
-          balance -= sale.total; // Payment decreases balance
-          took += sale.total;
-          payments++;
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
+            balance += sale.total; // "J'ai donné" increases debt (positive balance)
+          } else if (sale.notes.includes("J'ai pris")) {
+            balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          }
+        } else {
+          // Regular sales transactions
+          if (sale.paymentStatus === 'credit') {
+            balance += sale.total; // Credit sale adds to debt
+          } else if (sale.paymentStatus === 'partial') {
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            balance += unpaidAmount; // Only unpaid portion adds to debt
+          } else if (sale.paymentStatus === 'paid') {
+            // Check for overpayment
+            const overpayment = (sale.amountPaid || sale.total) - sale.total;
+            if (overpayment > 0) {
+              balance -= overpayment; // Overpayment creates credit for customer
+            }
+          }
         }
       });
 
       setCurrentBalance(balance);
-      setTotalGave(gave);
-      setTotalTook(took);
-      setPaymentsCount(payments);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -79,14 +84,30 @@ export default function StatusCurrentScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   };
 
+  const getBalanceLabel = (balance: number): string => {
+    if (balance > 0) return "J'ai donné";
+    if (balance < 0) return "J'ai pris";
+    return "Équilibré";
+  };
+
   const generateMessage = (): string => {
-    const balanceText = currentBalance === 0 
-      ? formatCurrency(0)
-      : formatCurrency(Math.abs(currentBalance));
+    let balanceText = '';
+    let statusText = '';
+    
+    if (currentBalance === 0) {
+      balanceText = formatCurrency(0);
+      statusText = 'Équilibré';
+    } else if (currentBalance > 0) {
+      balanceText = formatCurrency(Math.abs(currentBalance));
+      statusText = "J'ai donné : " + balanceText;
+    } else {
+      balanceText = formatCurrency(Math.abs(currentBalance));
+      statusText = "J'ai pris : " + balanceText;
+    }
     
     return `Bonjour ${customer?.name},
 Voici la situation actuelle de votre compte :
-Solde : ${balanceText}
+${statusText}
 Merci de vérifier vos opérations.`;
   };
 
@@ -248,57 +269,73 @@ Merci de vérifier vos opérations.`;
               marginBottom: spacing.sm,
               textAlign: 'center'
             }]}>
-              Balance nette
+              Solde actuel
             </Text>
 
-            <Text style={[commonStyles.text, { 
-              color: currentBalance > 0 ? colors.danger : colors.success,
-              fontSize: fontSizes.xl,
-              fontWeight: 'bold',
-              marginBottom: spacing.lg,
-              textAlign: 'center'
-            }]}>
-              {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
-            </Text>
-
-            {/* Balance Details */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
-              <View style={{ alignItems: 'center', flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
-                  <Icon name="arrow-up" size={16} color={colors.success} />
-                  <Text style={[commonStyles.text, { 
-                    color: colors.success,
-                    fontSize: fontSizes.md,
-                    fontWeight: 'bold',
-                    marginLeft: spacing.xs
-                  }]}>
-                    {formatCurrency(totalTook)}
-                  </Text>
-                </View>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                  {paymentsCount} Paiements
+            {/* Current Balance Display - Fixed to show only current balance */}
+            {currentBalance === 0 ? (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(0)}
                 </Text>
-              </View>
-
-              <View style={{ alignItems: 'center', flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
-                  <Icon name="arrow-down" size={16} color={colors.danger} />
-                  <Text style={[commonStyles.text, { 
-                    color: colors.danger,
-                    fontSize: fontSizes.md,
-                    fontWeight: 'bold',
-                    marginLeft: spacing.xs
-                  }]}>
-                    {formatCurrency(totalGave)}
-                  </Text>
-                </View>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
-                  Paiements
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  Équilibré
                 </Text>
-              </View>
-            </View>
+              </>
+            ) : currentBalance > 0 ? (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.danger,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(Math.abs(currentBalance))}
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.danger,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  J'ai donné
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(Math.abs(currentBalance))}
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  J'ai pris
+                </Text>
+              </>
+            )}
 
-            {/* Logo placeholder - Changed from "Mahaal" to "ALKD-POS" */}
+            {/* Logo placeholder */}
             <View style={{ 
               marginTop: spacing.lg,
               backgroundColor: colors.primary + '20',

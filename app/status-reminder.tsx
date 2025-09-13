@@ -44,10 +44,27 @@ export default function StatusReminderScreen() {
       let balance = 0;
       
       customerSales.forEach(sale => {
-        if (sale.paymentStatus === 'credit') {
-          balance += sale.total; // Debt increases balance
-        } else if (sale.paymentStatus === 'paid') {
-          balance -= sale.total; // Payment decreases balance
+        // Check if this is a manual transaction (J'ai pris/donné)
+        if (sale.items.length === 0 && sale.notes) {
+          if (sale.notes.includes("J'ai donné")) {
+            balance += sale.total; // "J'ai donné" increases debt (positive balance)
+          } else if (sale.notes.includes("J'ai pris")) {
+            balance -= sale.total; // "J'ai pris" reduces debt (negative balance)
+          }
+        } else {
+          // Regular sales transactions
+          if (sale.paymentStatus === 'credit') {
+            balance += sale.total; // Credit sale adds to debt
+          } else if (sale.paymentStatus === 'partial') {
+            const unpaidAmount = sale.total - (sale.amountPaid || 0);
+            balance += unpaidAmount; // Only unpaid portion adds to debt
+          } else if (sale.paymentStatus === 'paid') {
+            // Check for overpayment
+            const overpayment = (sale.amountPaid || sale.total) - sale.total;
+            if (overpayment > 0) {
+              balance -= overpayment; // Overpayment creates credit for customer
+            }
+          }
         }
       });
 
@@ -68,13 +85,23 @@ export default function StatusReminderScreen() {
   };
 
   const generateMessage = (): string => {
-    const balanceText = currentBalance === 0 
-      ? formatCurrency(0)
-      : formatCurrency(Math.abs(currentBalance));
+    let balanceText = '';
+    let statusText = '';
+    
+    if (currentBalance === 0) {
+      balanceText = formatCurrency(0);
+      statusText = 'Votre compte est équilibré : ' + balanceText;
+    } else if (currentBalance > 0) {
+      balanceText = formatCurrency(Math.abs(currentBalance));
+      statusText = "J'ai donné : " + balanceText;
+    } else {
+      balanceText = formatCurrency(Math.abs(currentBalance));
+      statusText = "J'ai pris : " + balanceText;
+    }
     
     return `Bonjour ${customer?.name},
-Ceci est un rappel pour le règlement de votre solde restant :
-Montant dû : ${balanceText}
+Ceci est un rappel concernant votre solde :
+${statusText}
 Merci de régulariser votre situation dès que possible.`;
   };
 
@@ -239,18 +266,72 @@ Merci de régulariser votre situation dès que possible.`;
               Rappel de paiement
             </Text>
 
-            <Text style={[commonStyles.text, { 
-              color: colors.danger,
-              fontSize: fontSizes.xl,
-              fontWeight: 'bold',
-              marginBottom: spacing.lg,
-              textAlign: 'center'
-            }]}>
-              {currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.abs(currentBalance))}
-            </Text>
+            {/* Current Balance Display - Fixed to show only current balance */}
+            {currentBalance === 0 ? (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(0)}
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  Équilibré
+                </Text>
+              </>
+            ) : currentBalance > 0 ? (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.danger,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(Math.abs(currentBalance))}
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.danger,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  J'ai donné
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.xl,
+                  fontWeight: 'bold',
+                  marginBottom: spacing.sm,
+                  textAlign: 'center'
+                }]}>
+                  {formatCurrency(Math.abs(currentBalance))}
+                </Text>
+                <Text style={[commonStyles.text, { 
+                  color: colors.success,
+                  fontSize: fontSizes.md,
+                  fontWeight: 'bold',
+                  textAlign: 'center'
+                }]}>
+                  J'ai pris
+                </Text>
+              </>
+            )}
 
-            {/* Logo placeholder - Changed from "Mahaal" to "ALKD-POS" */}
+            {/* Logo placeholder */}
             <View style={{ 
+              marginTop: spacing.lg,
               backgroundColor: colors.primary + '20',
               borderRadius: 25,
               padding: spacing.sm,

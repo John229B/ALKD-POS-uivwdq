@@ -551,13 +551,14 @@ export default function ReportsScreen() {
 
       const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
       
-      // Use FileSystem.documentDirectory directly
-      if (!FileSystem.documentDirectory) {
+      // Use FileSystem.documentDirectory directly with proper null check
+      const documentDirectory = FileSystem.documentDirectory;
+      if (!documentDirectory) {
         Alert.alert('Erreur', 'Impossible d\'accéder au système de fichiers');
         return;
       }
       
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      const fileUri = `${documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, csvData, {
         encoding: FileSystem.EncodingType.UTF8,

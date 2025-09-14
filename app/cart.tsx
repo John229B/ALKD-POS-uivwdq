@@ -290,6 +290,7 @@ export default function CartScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit' | 'card'>('cash');
   const [useAdvanceAmount, setUseAdvanceAmount] = useState(0);
   const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
@@ -312,6 +313,7 @@ export default function CartScreen() {
         getSettings(),
       ]);
 
+      console.log(`Loaded ${productsData.length} products, ${customersData.length} customers`);
       setProducts(productsData);
       setCustomers(customersData);
       setSettings(settingsData);
@@ -319,6 +321,7 @@ export default function CartScreen() {
       console.log('Cart data loaded successfully');
     } catch (error) {
       console.error('Error loading cart data:', error);
+      Alert.alert('Erreur', 'Impossible de charger les données du panier');
       setLoading(false);
     }
   }, []);
@@ -407,7 +410,9 @@ export default function CartScreen() {
     setSelectedCustomer(customer);
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
-  }, []);
+    setCustomerSearchQuery(''); // Reset search
+    console.log(`Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance)})`);
+  }, [formatCurrency]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
     const newCustomer: Customer = {
@@ -461,11 +466,14 @@ export default function CartScreen() {
       return;
     }
 
-    // Validate customer for credit sales
+    // Validate customer for credit sales - customer is mandatory for credit
     if (paymentMethod === 'credit' && !selectedCustomer) {
       Alert.alert('Erreur', 'Veuillez sélectionner un client pour une vente à crédit');
       return;
     }
+
+    // For cash, card, and mobile money, customer is optional
+    console.log(`Processing ${paymentMethod} sale with customer: ${selectedCustomer ? selectedCustomer.name : 'No customer'}`);
 
     try {
       console.log('Processing sale from cart...');
@@ -484,8 +492,8 @@ export default function CartScreen() {
         id: uuid.v4() as string,
         receiptNumber,
         createdAt: new Date(),
-        customerId: selectedCustomer?.id,
-        customer: selectedCustomer,
+        customerId: selectedCustomer?.id || undefined, // Explicitly set to undefined if no customer
+        customer: selectedCustomer || undefined, // Explicitly set to undefined if no customer
         items: saleItems,
         subtotal: cartTotals.subtotal,
         discount: cartTotals.discountAmount,
@@ -493,12 +501,14 @@ export default function CartScreen() {
         total: cartTotals.total,
         paymentMethod,
         paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
-        amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : cartTotals.total,
+        amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : (remainingAmount === 0 ? cartTotals.total : remainingAmount),
         change: 0,
-        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : ''),
+        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (selectedCustomer ? '' : 'Vente sans client'),
         cashierId: user.id,
         cashier: user,
       };
+
+      console.log(`Creating sale: Customer=${selectedCustomer ? selectedCustomer.name : 'None'}, Payment=${paymentMethod}, Total=${formatCurrency(cartTotals.total)}`);
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -512,7 +522,7 @@ export default function CartScreen() {
         return product;
       });
 
-      // Update customer balance
+      // Update customer balance and transactions
       let updatedCustomers = customers;
       if (selectedCustomer) {
         updatedCustomers = customers.map(customer => {
@@ -520,33 +530,46 @@ export default function CartScreen() {
             let newBalance = customer.balance;
             let transactionAmount = cartTotals.total;
             
-            // If using advance, deduct from balance
+            // If using advance, deduct from balance first
             if (useAdvanceAmount > 0) {
               newBalance -= useAdvanceAmount;
               transactionAmount -= useAdvanceAmount;
+              console.log(`Customer ${customer.name}: Used advance ${formatCurrency(useAdvanceAmount)}, new balance: ${formatCurrency(newBalance)}`);
             }
             
-            // If credit sale, add remaining amount as debt
+            // If credit sale, add remaining amount as debt (negative balance)
             if (paymentMethod === 'credit' && transactionAmount > 0) {
               newBalance -= transactionAmount;
+              console.log(`Customer ${customer.name}: Added credit debt ${formatCurrency(transactionAmount)}, final balance: ${formatCurrency(newBalance)}`);
             }
+
+            // Create transaction record
+            const transactionType = paymentMethod === 'credit' ? 'gave' as const : 'took' as const;
+            const transactionDescription = paymentMethod === 'credit' 
+              ? `Vente à crédit - Reçu #${receiptNumber}${useAdvanceAmount > 0 ? ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})` : ''}`
+              : `Vente - Reçu #${receiptNumber}${useAdvanceAmount > 0 ? ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})` : ''}`;
 
             const newTransaction = {
               id: uuid.v4() as string,
               date: new Date(),
               amount: cartTotals.total,
-              type: paymentMethod === 'credit' ? 'gave' as const : 'took' as const,
+              type: transactionType,
               paymentMethod,
-              description: `Vente - Reçu #${receiptNumber}${useAdvanceAmount > 0 ? ` (Avance: ${formatCurrency(useAdvanceAmount)})` : ''}`,
+              description: transactionDescription,
               balance: newBalance,
               saleId: sale.id,
             };
 
-            return {
+            const updatedCustomer = {
               ...customer,
               balance: newBalance,
+              totalPurchases: customer.totalPurchases + cartTotals.total,
               transactions: [...(customer.transactions || []), newTransaction],
+              updatedAt: new Date(),
             };
+
+            console.log(`Customer ${customer.name} balance updated: ${formatCurrency(customer.balance)} → ${formatCurrency(newBalance)}`);
+            return updatedCustomer;
           }
           return customer;
         });
@@ -570,6 +593,15 @@ export default function CartScreen() {
       setProducts(updatedProducts);
       setCustomers(updatedCustomers);
       
+      // Update selected customer with new balance if applicable
+      if (selectedCustomer) {
+        const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedCustomer.id);
+        if (updatedSelectedCustomer) {
+          setSelectedCustomer(updatedSelectedCustomer);
+          console.log(`Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance)}`);
+        }
+      }
+      
       // Trigger updates
       console.log('Cart: Triggering customers update...');
       await triggerCustomersUpdate();
@@ -591,7 +623,7 @@ export default function CartScreen() {
       console.error('Error processing sale from cart:', error);
       Alert.alert('Erreur', 'Impossible de traiter la vente');
     }
-  }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, customers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency]);
+  }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, customers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
@@ -681,9 +713,17 @@ export default function CartScreen() {
                   )}
                 </>
               ) : (
-                <Text style={[styles.customerName, { color: colors.textLight }]}>
-                  Sélectionner un client (facultatif)
-                </Text>
+                <>
+                  <Text style={[styles.customerName, { color: colors.textLight }]}>
+                    {paymentMethod === 'credit' ? 'Sélectionner un client (obligatoire)' : 'Sélectionner un client (facultatif)'}
+                  </Text>
+                  <Text style={[styles.customerPhone, { fontSize: fontSizes.xs }]}>
+                    {paymentMethod === 'credit' 
+                      ? 'Client requis pour les ventes à crédit' 
+                      : 'Vente comptant possible sans client'
+                    }
+                  </Text>
+                </>
               )}
             </View>
             <Icon name="chevron-down" size={20} color={colors.textLight} />
@@ -984,12 +1024,92 @@ export default function CartScreen() {
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}>
-              <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
-              <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
+              <View>
+                <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
+                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                  {customers.length} client{customers.length !== 1 ? 's' : ''} disponible{customers.length !== 1 ? 's' : ''}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => {
+                setShowCustomerModal(false);
+                setCustomerSearchQuery('');
+              }}>
                 <Icon name="close" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
+            
+            {/* Search bar */}
+            <View style={{
+              padding: spacing.lg,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}>
+              <TextInput
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  fontSize: fontSizes.sm,
+                  color: colors.text,
+                }}
+                placeholder="Rechercher un client..."
+                value={customerSearchQuery}
+                onChangeText={setCustomerSearchQuery}
+                placeholderTextColor={colors.textLight}
+              />
+            </View>
             <ScrollView style={{ flex: 1 }}>
+              {/* No customer option for non-credit payments */}
+              {paymentMethod !== 'credit' && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: spacing.md,
+                    paddingHorizontal: spacing.lg,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border,
+                    backgroundColor: !selectedCustomer ? colors.primary + '10' : 'transparent',
+                  }}
+                  onPress={() => {
+                    setSelectedCustomer(null);
+                    setUseAdvanceAmount(0);
+                    setShowCustomerModal(false);
+                  }}
+                >
+                  <View style={{
+                    width: 40,
+                    height: 40,
+                    backgroundColor: colors.textLight,
+                    borderRadius: 20,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Icon name="person-remove" size={20} color={colors.secondary} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: spacing.md }}>
+                    <Text style={{
+                      fontSize: fontSizes.md,
+                      fontWeight: '600',
+                      color: colors.text,
+                    }}>
+                      Vente sans client
+                    </Text>
+                    <Text style={{
+                      fontSize: fontSizes.sm,
+                      color: colors.textLight,
+                    }}>
+                      Recommandé pour les paiements comptants
+                    </Text>
+                  </View>
+                  {!selectedCustomer && (
+                    <Icon name="checkmark-circle" size={20} color={colors.success} />
+                  )}
+                </TouchableOpacity>
+              )}
+              
               <TouchableOpacity
                 style={{
                   flexDirection: 'row',
@@ -1021,57 +1141,82 @@ export default function CartScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
-              {customers.map(customer => (
-                <TouchableOpacity
-                  key={customer.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: spacing.md,
-                    paddingHorizontal: spacing.lg,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                  }}
-                  onPress={() => selectCustomer(customer)}
-                >
-                  <View style={{
-                    width: 40,
-                    height: 40,
-                    backgroundColor: customer.balance >= 0 ? colors.success : colors.error,
-                    borderRadius: 20,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
-                    <Icon name="person" size={20} color={colors.secondary} />
-                  </View>
-                  <View style={{ flex: 1, marginLeft: spacing.md }}>
-                    <Text style={{
-                      fontSize: fontSizes.md,
-                      fontWeight: '600',
-                      color: colors.text,
-                      marginBottom: 4,
+              {(() => {
+                const filteredCustomers = customers.filter(customer =>
+                  customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+                  (customer.phone && customer.phone.includes(customerSearchQuery))
+                );
+                
+                return filteredCustomers.length === 0 ? (
+                <View style={{
+                  padding: spacing.lg,
+                  alignItems: 'center',
+                }}>
+                  <Icon name="person-add" size={48} color={colors.textLight} />
+                  <Text style={[commonStyles.textLight, { textAlign: 'center', marginTop: spacing.md }]}>
+                    {customerSearchQuery ? 'Aucun client trouvé pour cette recherche' : 'Aucun client trouvé'}
+                  </Text>
+                  <Text style={[commonStyles.textLight, { textAlign: 'center', fontSize: fontSizes.sm }]}>
+                    {customerSearchQuery ? 'Essayez un autre terme de recherche' : 'Ajoutez votre premier client pour commencer'}
+                  </Text>
+                </View>
+              ) : (
+                filteredCustomers.map(customer => (
+                  <TouchableOpacity
+                    key={customer.id}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingVertical: spacing.md,
+                      paddingHorizontal: spacing.lg,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    }}
+                    onPress={() => selectCustomer(customer)}
+                  >
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      backgroundColor: customer.balance >= 0 ? colors.success : colors.error,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}>
-                      {customer.name}
-                    </Text>
-                    <Text style={{
-                      fontSize: fontSizes.sm,
-                      fontWeight: '500',
-                      color: customer.balance >= 0 ? colors.success : colors.error,
-                    }}>
-                      {formatCurrency(Math.abs(customer.balance))} 
-                      <Text>{customer.balance >= 0 ? ' (avance disponible)' : ' (dette)'}</Text>
-                    </Text>
-                    {customer.phone && (
+                      <Icon name="person" size={20} color={colors.secondary} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: spacing.md }}>
+                      <Text style={{
+                        fontSize: fontSizes.md,
+                        fontWeight: '600',
+                        color: colors.text,
+                        marginBottom: 4,
+                      }}>
+                        {customer.name}
+                      </Text>
                       <Text style={{
                         fontSize: fontSizes.sm,
-                        color: colors.textLight,
+                        fontWeight: '500',
+                        color: customer.balance >= 0 ? colors.success : colors.error,
                       }}>
-                        {customer.phone}
+                        Solde: {formatCurrency(Math.abs(customer.balance))} 
+                        <Text style={{ fontWeight: '400' }}>
+                          {customer.balance >= 0 ? ' (avance disponible)' : ' (dette)'}
+                        </Text>
                       </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
+                      {customer.phone && (
+                        <Text style={{
+                          fontSize: fontSizes.sm,
+                          color: colors.textLight,
+                        }}>
+                          📞 {customer.phone}
+                        </Text>
+                      )}
+                    </View>
+                    <Icon name="chevron-forward" size={16} color={colors.textLight} />
+                  </TouchableOpacity>
+                ))
+              );
+              })()}
             </ScrollView>
           </View>
         </View>

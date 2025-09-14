@@ -201,7 +201,7 @@ export default function CustomersScreen() {
     return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
   }, [settings?.currency]);
 
-  // CORRECTED: Real-time general balance calculation
+  // CORRECTED: Real-time general balance calculation - Fixed dependency array
   const calculateGeneralBalance = useCallback(() => {
     let totalDebt = 0; // Total amount customers owe us (positive balances)
     let totalCredit = 0; // Total amount we owe customers (negative balances)
@@ -227,7 +227,7 @@ export default function CustomersScreen() {
     });
     
     return { totalDebt, totalCredit, generalBalance };
-  }, [customers, getCustomerBalance]);
+  }, [customers, getCustomerBalance, sales.length]);
 
   const getBalanceColor = useCallback((balance: number): string => {
     if (balance > 0) return colors.danger; // Red for debt

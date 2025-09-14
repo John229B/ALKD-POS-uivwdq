@@ -190,7 +190,7 @@ export default function POSScreen() {
     loadData();
   }, [loadData]);
 
-  // Update customer advance balance when customer or payment method changes
+  // Update customer advance balance when customer or payment method changes - Fixed dependency array
   useEffect(() => {
     if (selectedCustomer && paymentMethod === 'credit') {
       setCustomerAdvanceBalance(Math.max(0, selectedCustomer.balance));

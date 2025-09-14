@@ -14,6 +14,8 @@ import uuid from 'react-native-uuid';
 import AddCustomerModal from '../components/AddCustomerModal';
 import { Product, Customer, CartItem, Sale, SaleItem, AppSettings } from '../types';
 
+const { height: screenHeight } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -278,6 +280,95 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+  },
+  // Modal styles - CORRECTED for responsive dropdown
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContainer: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: screenHeight * 0.85, // 85% of screen height
+    minHeight: screenHeight * 0.5,  // At least 50% of screen height
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalSearchContainer: {
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalSearchInput: {
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    fontSize: fontSizes.sm,
+    color: colors.text,
+  },
+  modalScrollView: {
+    flex: 1,
+    maxHeight: screenHeight * 0.6, // Ensure scrollable area
+  },
+  customerListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  customerListItemSelected: {
+    backgroundColor: colors.primary + '10',
+  },
+  customerAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customerDetails: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  customerListName: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  customerListBalance: {
+    fontSize: fontSizes.sm,
+    fontWeight: '500',
+  },
+  customerListPhone: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+  },
+  emptyState: {
+    padding: spacing.lg,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    textAlign: 'center',
+    marginTop: spacing.md,
+    color: colors.textLight,
   },
 });
 
@@ -1034,38 +1125,20 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Customer Selection Modal */}
+      {/* CORRECTED: Customer Selection Modal - Now responsive and scrollable */}
       <Modal
         visible={showCustomerModal}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowCustomerModal(false)}
+        onRequestClose={() => {
+          setShowCustomerModal(false);
+          setCustomerSearchQuery('');
+        }}
       >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}>
-          <View style={{
-            backgroundColor: colors.background,
-            borderRadius: 20,
-            width: '90%',
-            maxHeight: '80%',
-            elevation: 10,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-          }}>
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: spacing.lg,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
               <View>
                 <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
@@ -1081,68 +1154,44 @@ export default function CartScreen() {
             </View>
             
             {/* Search bar */}
-            <View style={{
-              padding: spacing.lg,
-              borderBottomWidth: 1,
-              borderBottomColor: colors.border,
-            }}>
+            <View style={styles.modalSearchContainer}>
               <TextInput
-                style={{
-                  backgroundColor: colors.background,
-                  borderRadius: 8,
-                  padding: spacing.md,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  fontSize: fontSizes.sm,
-                  color: colors.text,
-                }}
+                style={styles.modalSearchInput}
                 placeholder="Rechercher un client..."
                 value={customerSearchQuery}
                 onChangeText={setCustomerSearchQuery}
                 placeholderTextColor={colors.textLight}
               />
             </View>
-            <ScrollView style={{ flex: 1 }}>
+
+            {/* CORRECTED: Scrollable customer list with proper height constraints */}
+            <ScrollView 
+              style={styles.modalScrollView}
+              showsVerticalScrollIndicator={true}
+              bounces={true}
+            >
               {/* No customer option for non-credit payments */}
               {paymentMethod !== 'credit' && (
                 <TouchableOpacity
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    paddingVertical: spacing.md,
-                    paddingHorizontal: spacing.lg,
-                    borderBottomWidth: 1,
-                    borderBottomColor: colors.border,
-                    backgroundColor: !selectedCustomer ? colors.primary + '10' : 'transparent',
-                  }}
+                  style={[
+                    styles.customerListItem,
+                    !selectedCustomer && styles.customerListItemSelected,
+                  ]}
                   onPress={() => {
                     setSelectedCustomer(null);
                     setUseAdvanceAmount(0);
                     setShowCustomerModal(false);
+                    setCustomerSearchQuery('');
                   }}
                 >
-                  <View style={{
-                    width: 40,
-                    height: 40,
-                    backgroundColor: colors.textLight,
-                    borderRadius: 20,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}>
+                  <View style={[styles.customerAvatar, { backgroundColor: colors.textLight }]}>
                     <Icon name="person-remove" size={20} color={colors.secondary} />
                   </View>
-                  <View style={{ flex: 1, marginLeft: spacing.md }}>
-                    <Text style={{
-                      fontSize: fontSizes.md,
-                      fontWeight: '600',
-                      color: colors.text,
-                    }}>
+                  <View style={styles.customerDetails}>
+                    <Text style={styles.customerListName}>
                       Vente sans client
                     </Text>
-                    <Text style={{
-                      fontSize: fontSizes.sm,
-                      color: colors.textLight,
-                    }}>
+                    <Text style={styles.customerListPhone}>
                       Recommandé pour les paiements comptants
                     </Text>
                   </View>
@@ -1152,48 +1201,33 @@ export default function CartScreen() {
                 </TouchableOpacity>
               )}
               
+              {/* Add new customer option */}
               <TouchableOpacity
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingVertical: spacing.md,
-                  paddingHorizontal: spacing.lg,
-                  borderBottomWidth: 1,
-                  borderBottomColor: colors.border,
+                style={styles.customerListItem}
+                onPress={() => {
+                  setShowCustomerModal(false);
+                  setShowAddCustomerModal(true);
                 }}
-                onPress={() => setShowAddCustomerModal(true)}
               >
-                <View style={{
-                  width: 40,
-                  height: 40,
-                  backgroundColor: colors.primary,
-                  borderRadius: 20,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
+                <View style={[styles.customerAvatar, { backgroundColor: colors.primary }]}>
                   <Icon name="add" size={20} color={colors.secondary} />
                 </View>
-                <View style={{ flex: 1, marginLeft: spacing.md }}>
-                  <Text style={{
-                    fontSize: fontSizes.md,
-                    fontWeight: '600',
-                    color: colors.text,
-                  }}>
+                <View style={styles.customerDetails}>
+                  <Text style={styles.customerListName}>
                     Ajouter un nouveau client
                   </Text>
                 </View>
+                <Icon name="chevron-forward" size={16} color={colors.textLight} />
               </TouchableOpacity>
               
+              {/* Customer list */}
               {filteredCustomers.length === 0 ? (
-                <View style={{
-                  padding: spacing.lg,
-                  alignItems: 'center',
-                }}>
+                <View style={styles.emptyState}>
                   <Icon name="person-add" size={48} color={colors.textLight} />
-                  <Text style={[commonStyles.textLight, { textAlign: 'center', marginTop: spacing.md }]}>
+                  <Text style={[styles.emptyStateText, commonStyles.textLight]}>
                     {customerSearchQuery ? 'Aucun client trouvé pour cette recherche' : 'Aucun client trouvé'}
                   </Text>
-                  <Text style={[commonStyles.textLight, { textAlign: 'center', fontSize: fontSizes.sm }]}>
+                  <Text style={[styles.emptyStateText, commonStyles.textLight, { fontSize: fontSizes.sm }]}>
                     {customerSearchQuery ? 'Essayez un autre terme de recherche' : 'Ajoutez votre premier client pour commencer'}
                   </Text>
                 </View>
@@ -1201,50 +1235,33 @@ export default function CartScreen() {
                 filteredCustomers.map(customer => (
                   <TouchableOpacity
                     key={customer.id}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      paddingVertical: spacing.md,
-                      paddingHorizontal: spacing.lg,
-                      borderBottomWidth: 1,
-                      borderBottomColor: colors.border,
-                    }}
+                    style={[
+                      styles.customerListItem,
+                      selectedCustomer?.id === customer.id && styles.customerListItemSelected,
+                    ]}
                     onPress={() => selectCustomer(customer)}
                   >
-                    <View style={{
-                      width: 40,
-                      height: 40,
-                      backgroundColor: customer.balance >= 0 ? colors.success : colors.error,
-                      borderRadius: 20,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
+                    <View style={[
+                      styles.customerAvatar,
+                      { backgroundColor: customer.balance >= 0 ? colors.success : colors.error }
+                    ]}>
                       <Icon name="person" size={20} color={colors.secondary} />
                     </View>
-                    <View style={{ flex: 1, marginLeft: spacing.md }}>
-                      <Text style={{
-                        fontSize: fontSizes.md,
-                        fontWeight: '600',
-                        color: colors.text,
-                        marginBottom: 4,
-                      }}>
+                    <View style={styles.customerDetails}>
+                      <Text style={styles.customerListName}>
                         {customer.name}
                       </Text>
-                      <Text style={{
-                        fontSize: fontSizes.sm,
-                        fontWeight: '500',
-                        color: customer.balance >= 0 ? colors.success : colors.error,
-                      }}>
+                      <Text style={[
+                        styles.customerListBalance,
+                        { color: customer.balance >= 0 ? colors.success : colors.error }
+                      ]}>
                         Solde: {formatCurrency(Math.abs(customer.balance))} 
                         <Text style={{ fontWeight: '400' }}>
                           {customer.balance >= 0 ? ' (avance disponible)' : ' (dette)'}
                         </Text>
                       </Text>
                       {customer.phone && (
-                        <Text style={{
-                          fontSize: fontSizes.sm,
-                          color: colors.textLight,
-                        }}>
+                        <Text style={styles.customerListPhone}>
                           📞 {customer.phone}
                         </Text>
                       )}

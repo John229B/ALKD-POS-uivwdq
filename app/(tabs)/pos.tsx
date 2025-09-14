@@ -201,8 +201,8 @@ export default function POSScreen() {
 
   // Calculate cart totals
   const cartTotals = useMemo(() => {
-    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const discount = cart.reduce((sum, item) => sum + (item.discount || 0), 0);
+    const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
+    const discount = cart.reduce((sum, item) => sum + item.discount, 0);
     const total = subtotal - discount;
     
     return { subtotal, discount, total };
@@ -236,7 +236,8 @@ export default function POSScreen() {
   }, [settings]);
 
   const addToCart = useCallback((product: Product) => {
-    const price = getApplicablePrice(product);
+    const priceInfo = getApplicablePrice(product);
+    const price = priceInfo.price;
     
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.productId === product.id);
@@ -301,29 +302,32 @@ export default function POSScreen() {
       
       const receiptNumber = await getNextReceiptNumber();
       const saleItems: SaleItem[] = cart.map(item => ({
+        id: uuid.v4() as string,
         productId: item.productId,
-        name: item.name,
-        price: item.price,
         quantity: item.quantity,
-        unit: item.unit,
+        unitPrice: item.price,
         discount: item.discount || 0,
+        subtotal: item.price * item.quantity - (item.discount || 0),
       }));
 
       const sale: Sale = {
         id: uuid.v4() as string,
         receiptNumber,
-        date: new Date(),
+        createdAt: new Date(),
+        customerId: selectedCustomer?.id,
+        customer: selectedCustomer,
         items: saleItems,
         subtotal: cartTotals.subtotal,
         discount: cartTotals.discount,
+        tax: 0,
         total: cartTotals.total,
         paymentMethod,
-        status: paymentMethod === 'credit' ? 'credit' : 'paid',
-        customerId: selectedCustomer?.id,
-        customerName: selectedCustomer?.name,
-        employeeId: user.id,
-        employeeName: user.username,
+        paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
+        amountPaid: paymentMethod === 'credit' ? 0 : cartTotals.total,
+        change: paymentMethod === 'credit' ? 0 : 0,
         notes: '',
+        cashierId: user.id,
+        cashier: user,
       };
 
       // Update product stock
@@ -556,7 +560,7 @@ export default function POSScreen() {
                     {product.name}
                   </Text>
                   <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, marginBottom: spacing.xs }]}>
-                    {formatCurrency(getApplicablePrice(product))}
+                    {formatCurrency(getApplicablePrice(product).price)}
                   </Text>
                   <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>
                     Stock: {formatQuantityWithUnit(product.stock, product.unit)}
@@ -697,7 +701,7 @@ export default function POSScreen() {
         <AddCustomerModal
           visible={showAddCustomerModal}
           onClose={() => setShowAddCustomerModal(false)}
-          onAdd={handleAddCustomer}
+          onCustomerAdded={handleAddCustomer}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

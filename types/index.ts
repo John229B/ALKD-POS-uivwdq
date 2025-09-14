@@ -137,18 +137,33 @@ export interface Customer {
   phone?: string;
   email?: string;
   address?: string;
-  creditBalance: number;
+  balance: number; // Changed from creditBalance to balance for consistency
   totalPurchases: number;
+  transactions?: CustomerTransaction[]; // Added transactions array
   createdAt: Date;
   updatedAt: Date;
 }
 
+export interface CustomerTransaction {
+  id: string;
+  date: Date;
+  amount: number;
+  type: 'gave' | 'took';
+  paymentMethod: string;
+  description: string;
+  note?: string;
+  balance: number;
+  saleId?: string;
+}
+
 export interface CartItem {
-  product: Product;
+  productId: string;
+  name: string;
+  price: number; // Unit price
   quantity: number; // Now supports fractional quantities
-  discount: number;
-  unitPrice: number; // The actual price applied (retail, wholesale, or promotional)
-  subtotal: number;
+  unit: string; // Unit of measurement
+  discount?: number; // Optional discount
+  subtotal: number; // Calculated: (price * quantity) - discount
 }
 
 export interface Sale {

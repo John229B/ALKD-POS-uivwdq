@@ -550,10 +550,10 @@ export default function ReportsScreen() {
       ].map(row => row.join(',')).join('\n');
 
       const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
-      const fileUri = `${(FileSystem as any).documentDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, csvData, {
-        encoding: (FileSystem as any).EncodingType?.UTF8 || 'utf8',
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
       if (await Sharing.isAvailableAsync()) {

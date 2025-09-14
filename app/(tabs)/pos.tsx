@@ -147,6 +147,7 @@ export default function POSScreen() {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
+  const [showCartModal, setShowCartModal] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit' | 'card'>('cash');
   const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0);
   const [paymentBreakdown, setPaymentBreakdown] = useState({
@@ -190,20 +191,23 @@ export default function POSScreen() {
     loadData();
   }, [loadData]);
 
-  // Update customer advance balance when customer or payment method changes - Fixed dependency array
+  // Update customer advance balance when customer or payment method changes
   useEffect(() => {
     if (selectedCustomer && paymentMethod === 'credit') {
       setCustomerAdvanceBalance(Math.max(0, selectedCustomer.balance));
     } else {
       setCustomerAdvanceBalance(0);
     }
-  }, [selectedCustomer, paymentMethod, customerAdvanceBalance]);
+  }, [selectedCustomer, paymentMethod]);
 
   // Calculate cart totals
   const cartTotals = useMemo(() => {
-    const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-    const discount = cart.reduce((sum, item) => sum + item.discount, 0);
-    const total = subtotal - discount;
+    const subtotal = cart.reduce((sum, item) => {
+      const itemSubtotal = (item.price * item.quantity) - (item.discount || 0);
+      return sum + itemSubtotal;
+    }, 0);
+    const discount = cart.reduce((sum, item) => sum + (item.discount || 0), 0);
+    const total = subtotal;
     
     return { subtotal, discount, total };
   }, [cart]);
@@ -243,19 +247,27 @@ export default function POSScreen() {
       const existingItem = prevCart.find(item => item.productId === product.id);
       
       if (existingItem) {
+        const newQuantity = existingItem.quantity + 1;
         return prevCart.map(item =>
           item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { 
+                ...item, 
+                quantity: newQuantity,
+                subtotal: (price * newQuantity) - (item.discount || 0)
+              }
             : item
         );
       } else {
-        return [...prevCart, {
+        const newItem: CartItem = {
           productId: product.id,
           name: product.name,
           price,
           quantity: 1,
           unit: product.unit,
-        }];
+          discount: 0,
+          subtotal: price,
+        };
+        return [...prevCart, newItem];
       }
     });
   }, []);
@@ -266,7 +278,13 @@ export default function POSScreen() {
     } else {
       setCart(prevCart =>
         prevCart.map(item =>
-          item.productId === productId ? { ...item, quantity } : item
+          item.productId === productId 
+            ? { 
+                ...item, 
+                quantity,
+                subtotal: (item.price * quantity) - (item.discount || 0)
+              } 
+            : item
         )
       );
     }
@@ -297,6 +315,12 @@ export default function POSScreen() {
       return;
     }
 
+    // Validate customer for credit sales
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      Alert.alert('Erreur', 'Veuillez sélectionner un client pour une vente à crédit');
+      return;
+    }
+
     try {
       console.log('Processing sale...');
       
@@ -307,7 +331,7 @@ export default function POSScreen() {
         quantity: item.quantity,
         unitPrice: item.price,
         discount: item.discount || 0,
-        subtotal: item.price * item.quantity - (item.discount || 0),
+        subtotal: item.subtotal,
       }));
 
       const sale: Sale = {
@@ -397,6 +421,9 @@ export default function POSScreen() {
 
       console.log('Sale processed successfully:', sale.id);
 
+      // Close cart modal
+      setShowCartModal(false);
+
       // Navigate to success page
       router.push({
         pathname: '/transaction-success',
@@ -420,12 +447,15 @@ export default function POSScreen() {
     setShowCustomerModal(false);
   }, []);
 
-  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions'>) => {
+  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
     const newCustomer: Customer = {
       ...customerData,
       id: uuid.v4() as string,
       balance: 0,
+      totalPurchases: 0,
       transactions: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
     const updatedCustomers = [...customers, newCustomer];
@@ -589,17 +619,7 @@ export default function POSScreen() {
           {cart.length > 0 && (
             <TouchableOpacity
               style={fabStyles.fab}
-              onPress={() => {
-                // Show cart modal or navigate to checkout
-                Alert.alert(
-                  'Panier',
-                  `${cart.length} article(s) - ${formatCurrency(cartTotals.total)}`,
-                  [
-                    { text: 'Continuer', style: 'cancel' },
-                    { text: 'Finaliser', onPress: processSale },
-                  ]
-                );
-              }}
+              onPress={() => setShowCartModal(true)}
             >
               <Icon name="cart" size={24} color={colors.secondary} />
               <View style={{
@@ -703,6 +723,204 @@ export default function POSScreen() {
           onClose={() => setShowAddCustomerModal(false)}
           onCustomerAdded={handleAddCustomer}
         />
+
+        {/* Cart Modal */}
+        <Modal
+          visible={showCartModal}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowCartModal(false)}
+        >
+          <View style={modalStyles.modalOverlay}>
+            <View style={[modalStyles.modalContent, { maxHeight: '90%' }]}>
+              <View style={modalStyles.modalHeader}>
+                <Text style={commonStyles.subtitle}>Panier ({cart.length} articles)</Text>
+                <TouchableOpacity onPress={() => setShowCartModal(false)}>
+                  <Icon name="close" size={24} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={{ flex: 1 }}>
+                {/* Cart Items */}
+                <View style={{ padding: spacing.lg }}>
+                  {cart.map((item, index) => (
+                    <View key={`${item.productId}-${index}`} style={[
+                      commonStyles.card,
+                      { marginBottom: spacing.md, padding: spacing.md }
+                    ]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                            {item.name}
+                          </Text>
+                          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                            {formatCurrency(item.price)} × {formatQuantityWithUnit(item.quantity, item.unit)}
+                          </Text>
+                          {item.discount && item.discount > 0 && (
+                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                              Remise: -{formatCurrency(item.discount)}
+                            </Text>
+                          )}
+                        </View>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={[commonStyles.text, { fontWeight: 'bold', color: colors.primary }]}>
+                            {formatCurrency(item.subtotal)}
+                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                            <TouchableOpacity
+                              style={{
+                                backgroundColor: colors.error,
+                                borderRadius: 15,
+                                width: 30,
+                                height: 30,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: spacing.xs,
+                              }}
+                              onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                            >
+                              <Icon name="remove" size={16} color={colors.secondary} />
+                            </TouchableOpacity>
+                            <Text style={[commonStyles.text, { minWidth: 30, textAlign: 'center' }]}>
+                              {item.quantity}
+                            </Text>
+                            <TouchableOpacity
+                              style={{
+                                backgroundColor: colors.success,
+                                borderRadius: 15,
+                                width: 30,
+                                height: 30,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginLeft: spacing.xs,
+                              }}
+                              onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
+                            >
+                              <Icon name="add" size={16} color={colors.secondary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+
+                {/* Customer Selection */}
+                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
+                    Client
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      commonStyles.inputContainer,
+                      { paddingVertical: spacing.md, justifyContent: 'space-between', flexDirection: 'row' }
+                    ]}
+                    onPress={() => setShowCustomerModal(true)}
+                  >
+                    <Text style={[
+                      commonStyles.text,
+                      { color: selectedCustomer ? colors.text : colors.textLight }
+                    ]}>
+                      {selectedCustomer ? selectedCustomer.name : 'Sélectionner un client (optionnel)'}
+                    </Text>
+                    <Icon name="chevron-down" size={20} color={colors.textLight} />
+                  </TouchableOpacity>
+                  
+                  {selectedCustomer && (
+                    <View style={{ marginTop: spacing.sm }}>
+                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                        Solde: {formatCurrency(Math.abs(selectedCustomer.balance))} 
+                        {selectedCustomer.balance >= 0 ? ' (crédit)' : ' (dette)'}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Payment Method */}
+                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
+                    Mode de paiement
+                  </Text>
+                  <View style={checkoutStyles.paymentMethodsContainer}>
+                    {[
+                      { key: 'cash', label: 'Espèces', icon: 'cash' },
+                      { key: 'mobile_money', label: 'Mobile Money', icon: 'phone' },
+                      { key: 'credit', label: 'Crédit', icon: 'time' },
+                      { key: 'card', label: 'Carte', icon: 'card' },
+                    ].map(method => (
+                      <TouchableOpacity
+                        key={method.key}
+                        style={[
+                          checkoutStyles.paymentMethodButton,
+                          paymentMethod === method.key && checkoutStyles.paymentMethodButtonActive,
+                        ]}
+                        onPress={() => setPaymentMethod(method.key as any)}
+                      >
+                        <Icon 
+                          name={method.icon} 
+                          size={16} 
+                          color={paymentMethod === method.key ? colors.secondary : colors.text} 
+                        />
+                        <Text style={[
+                          checkoutStyles.paymentMethodText,
+                          paymentMethod === method.key && checkoutStyles.paymentMethodTextActive,
+                          { marginTop: 4 }
+                        ]}>
+                          {method.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Totals */}
+                <View style={checkoutStyles.checkoutContainer}>
+                  <View style={checkoutStyles.totalRow}>
+                    <Text style={checkoutStyles.totalLabel}>Sous-total:</Text>
+                    <Text style={checkoutStyles.totalAmount}>
+                      {formatCurrency(cartTotals.subtotal)}
+                    </Text>
+                  </View>
+                  
+                  {cartTotals.discount > 0 && (
+                    <View style={checkoutStyles.totalRow}>
+                      <Text style={[checkoutStyles.totalLabel, { color: colors.success }]}>Remise:</Text>
+                      <Text style={[checkoutStyles.totalAmount, { color: colors.success }]}>
+                        -{formatCurrency(cartTotals.discount)}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  <View style={[checkoutStyles.totalRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }]}>
+                    <Text style={[checkoutStyles.totalLabel, { fontSize: fontSizes.lg, fontWeight: 'bold' }]}>
+                      Total:
+                    </Text>
+                    <Text style={[checkoutStyles.totalAmount, { fontSize: fontSizes.xl, fontWeight: 'bold' }]}>
+                      {formatCurrency(cartTotals.total)}
+                    </Text>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <View style={{ flexDirection: 'row', marginTop: spacing.lg, gap: spacing.md }}>
+                    <TouchableOpacity
+                      style={[buttonStyles.secondary, { flex: 1 }]}
+                      onPress={clearCart}
+                    >
+                      <Text style={buttonStyles.secondaryText}>Vider le panier</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={[buttonStyles.primary, { flex: 2 }]}
+                      onPress={processSale}
+                    >
+                      <Text style={buttonStyles.primaryText}>Finaliser la vente</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

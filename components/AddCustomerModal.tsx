@@ -59,8 +59,9 @@ export default function AddCustomerModal({ visible, onClose, onCustomerAdded }: 
         phone: formData.phone.trim() || undefined,
         email: formData.email.trim() || undefined,
         address: formData.address.trim() || undefined,
-        creditBalance: 0,
+        balance: 0,
         totalPurchases: 0,
+        transactions: [],
         createdAt: new Date(),
         updatedAt: new Date(),
       };

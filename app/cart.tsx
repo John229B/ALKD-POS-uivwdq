@@ -399,7 +399,14 @@ export default function CartScreen() {
 
   console.log('Cart: Synced customers count:', syncedCustomers?.length || 0);
 
-  const formatCurrency = useCallback((amount: number): string => {
+  // CORRECTED: Secure formatCurrency function - handles undefined/null amounts
+  const formatCurrency = useCallback((amount: number | undefined | null): string => {
+    // CORRECTED: Secure formatCurrency - handle undefined/null amounts
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      console.log('formatCurrency: Received undefined/null/NaN amount, returning 0');
+      amount = 0;
+    }
+    
     if (!settings) return amount.toString();
     const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
     return `${amount.toLocaleString()} ${currency}`;
@@ -439,7 +446,7 @@ export default function CartScreen() {
         const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedCustomer.id);
         if (updatedSelectedCustomer) {
           setSelectedCustomer(updatedSelectedCustomer);
-          console.log(`Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance)}`);
+          console.log(`Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
         }
       }
     }
@@ -520,14 +527,14 @@ export default function CartScreen() {
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
     setCustomerSearchQuery(''); // Reset search
-    console.log(`Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance)})`);
+    console.log(`Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance || 0)})`);
   }, [formatCurrency]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
     const newCustomer: Customer = {
       ...customerData,
       id: uuid.v4() as string,
-      balance: 0,
+      balance: 0, // CORRECTED: Initialize balance to 0 (covers both advance and debt)
       totalPurchases: 0,
       transactions: [],
       createdAt: new Date(),
@@ -639,7 +646,8 @@ export default function CartScreen() {
       if (selectedCustomer) {
         updatedCustomers = (syncedCustomers || []).map(customer => {
           if (customer.id === selectedCustomer.id) {
-            let newBalance = customer.balance;
+            // CORRECTED: Initialize balance to 0 if undefined/null
+            let newBalance = customer.balance || 0;
             let transactionAmount = cartTotals.total;
             
             // If using advance, deduct from balance first
@@ -680,7 +688,7 @@ export default function CartScreen() {
               updatedAt: new Date(),
             };
 
-            console.log(`Cart: Customer ${customer.name} balance updated: ${formatCurrency(customer.balance)} → ${formatCurrency(newBalance)}`);
+            console.log(`Cart: Customer ${customer.name} balance updated: ${formatCurrency(customer.balance || 0)} → ${formatCurrency(newBalance)}`);
             return updatedCustomer;
           }
           return customer;
@@ -709,7 +717,7 @@ export default function CartScreen() {
         const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedCustomer.id);
         if (updatedSelectedCustomer) {
           setSelectedCustomer(updatedSelectedCustomer);
-          console.log(`Cart: Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance)}`);
+          console.log(`Cart: Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
         }
       }
       
@@ -823,7 +831,7 @@ export default function CartScreen() {
               width: 40,
               height: 40,
               backgroundColor: selectedCustomer 
-                ? (selectedCustomer.balance >= 0 ? colors.success : colors.error)
+                ? ((selectedCustomer.balance || 0) >= 0 ? colors.success : colors.error)
                 : colors.textLight,
               borderRadius: 20,
               alignItems: 'center',
@@ -837,9 +845,12 @@ export default function CartScreen() {
                   <Text style={styles.customerName}>{selectedCustomer.name}</Text>
                   <Text style={[
                     styles.customerBalance,
-                    { color: selectedCustomer.balance >= 0 ? colors.success : colors.error }
+                    { color: (selectedCustomer.balance || 0) >= 0 ? colors.success : colors.error }
                   ]}>
-                    {selectedCustomer.balance >= 0 ? 'Avance disponible' : 'Dette'}: {formatCurrency(Math.abs(selectedCustomer.balance))}
+                    {(selectedCustomer.balance || 0) >= 0 
+                      ? `Avance (j'ai pris): ${formatCurrency(Math.abs(selectedCustomer.balance || 0))}` 
+                      : `Dette (j'ai donné): ${formatCurrency(Math.abs(selectedCustomer.balance || 0))}`
+                    }
                   </Text>
                   {selectedCustomer.phone && (
                     <Text style={styles.customerPhone}>{selectedCustomer.phone}</Text>
@@ -875,10 +886,10 @@ export default function CartScreen() {
             </View>
           )}
 
-          {selectedCustomer && selectedCustomer.balance > 0 && (
+          {selectedCustomer && (selectedCustomer.balance || 0) > 0 && (
             <View style={styles.advanceCard}>
               <Text style={styles.advanceTitle}>
-                Avance disponible: {formatCurrency(selectedCustomer.balance)}
+                Avance disponible (j'ai pris): {formatCurrency(selectedCustomer.balance || 0)}
               </Text>
               <View style={styles.advanceActions}>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
@@ -890,7 +901,7 @@ export default function CartScreen() {
                     useAdvanceAmount > 0 && commonStyles.chipActive,
                   ]}
                   onPress={() => {
-                    const maxUsable = Math.min(selectedCustomer.balance, cartTotals.total);
+                    const maxUsable = Math.min(selectedCustomer.balance || 0, cartTotals.total);
                     setUseAdvanceAmount(useAdvanceAmount > 0 ? 0 : maxUsable);
                   }}
                 >
@@ -1050,20 +1061,20 @@ export default function CartScreen() {
             ))}
           </View>
           
-          {selectedCustomer && selectedCustomer.balance > 0 && (
+          {selectedCustomer && (selectedCustomer.balance || 0) > 0 && (
             <TouchableOpacity
               style={[
                 styles.paymentMethod,
                 { backgroundColor: colors.success + '20', borderColor: colors.success }
               ]}
               onPress={() => {
-                const maxUsable = Math.min(selectedCustomer.balance, cartTotals.total);
+                const maxUsable = Math.min(selectedCustomer.balance || 0, cartTotals.total);
                 setUseAdvanceAmount(maxUsable);
               }}
             >
               <Icon name="wallet" size={20} color={colors.success} style={styles.paymentIcon} />
               <Text style={[styles.paymentText, { color: colors.success }]}>
-                Utiliser mon avance ({formatCurrency(selectedCustomer.balance)})
+                Utiliser mon avance ({formatCurrency(selectedCustomer.balance || 0)})
               </Text>
             </TouchableOpacity>
           )}
@@ -1243,7 +1254,7 @@ export default function CartScreen() {
                   >
                     <View style={[
                       styles.customerAvatar,
-                      { backgroundColor: customer.balance >= 0 ? colors.success : colors.error }
+                      { backgroundColor: (customer.balance || 0) >= 0 ? colors.success : colors.error }
                     ]}>
                       <Icon name="person" size={20} color={colors.secondary} />
                     </View>
@@ -1253,12 +1264,12 @@ export default function CartScreen() {
                       </Text>
                       <Text style={[
                         styles.customerListBalance,
-                        { color: customer.balance >= 0 ? colors.success : colors.error }
+                        { color: (customer.balance || 0) >= 0 ? colors.success : colors.error }
                       ]}>
-                        Solde: {formatCurrency(Math.abs(customer.balance))} 
-                        <Text style={{ fontWeight: '400' }}>
-                          {customer.balance >= 0 ? ' (avance disponible)' : ' (dette)'}
-                        </Text>
+                        {(customer.balance || 0) >= 0 
+                          ? `Avance (j'ai pris): ${formatCurrency(Math.abs(customer.balance || 0))}` 
+                          : `Dette (j'ai donné): ${formatCurrency(Math.abs(customer.balance || 0))}`
+                        }
                       </Text>
                       {customer.phone && (
                         <Text style={styles.customerListPhone}>

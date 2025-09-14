@@ -303,6 +303,7 @@ export default function CustomerDetailsScreen() {
     const labels = {
       cash: 'Espèces',
       mobile_money: 'Mobile Money',
+      card: 'Carte',
       credit: 'Crédit',
     };
     return labels[method] || method;

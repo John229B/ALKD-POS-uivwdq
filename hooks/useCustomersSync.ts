@@ -152,8 +152,12 @@ export const useCustomersUpdater = () => {
       // Emit the update event
       customersEmitter.emit(customers);
       console.log('useCustomersUpdater: Customers update event emitted successfully');
+      
+      // Return the customers data for immediate use
+      return customers;
     } catch (error) {
       console.error('useCustomersUpdater: Error triggering customers update:', error);
+      return [];
     }
   }, []);
 

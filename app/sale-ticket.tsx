@@ -85,6 +85,7 @@ export default function SaleTicketScreen() {
     const labels = {
       cash: 'Espèces',
       mobile_money: 'Mobile Money',
+      card: 'Carte',
       credit: 'À crédit',
     };
     return labels[method] || method;

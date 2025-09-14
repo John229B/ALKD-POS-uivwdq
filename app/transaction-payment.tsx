@@ -17,7 +17,7 @@ export default function TransactionPaymentScreen() {
   
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'card' | 'credit'>('cash');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -56,6 +56,7 @@ export default function TransactionPaymentScreen() {
     const labels = {
       cash: 'Espèces',
       mobile_money: 'Mobile Money',
+      card: 'Carte',
       credit: 'Crédit',
     };
     return labels[method] || method;
@@ -94,6 +95,13 @@ export default function TransactionPaymentScreen() {
       icon: 'phone-portrait',
       description: 'Orange Money, MTN Money, etc.',
       color: colors.info,
+    },
+    {
+      id: 'card',
+      label: 'Carte',
+      icon: 'card',
+      description: 'Paiement par carte bancaire',
+      color: colors.primary,
     },
     {
       id: 'credit',

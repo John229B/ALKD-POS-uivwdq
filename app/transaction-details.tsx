@@ -170,6 +170,7 @@ export default function TransactionDetailsScreen() {
     const labels = {
       cash: 'Espèces',
       mobile_money: 'Mobile Money',
+      card: 'Carte',
       credit: 'Crédit',
     };
     return labels[method] || method;
@@ -703,7 +704,8 @@ Solde actuel : ${currentBalance === 0 ? formatCurrency(0) : formatCurrency(Math.
                   {[
                     { key: 'cash', label: 'Espèces', icon: '💵' },
                     { key: 'mobile_money', label: 'Mobile Money', icon: '📱' },
-                    { key: 'credit', label: 'Crédit', icon: '💳' },
+                    { key: 'card', label: 'Carte', icon: '💳' },
+                    { key: 'credit', label: 'Crédit', icon: '🏦' },
                   ].map((method) => (
                     <TouchableOpacity
                       key={method.key}

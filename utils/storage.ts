@@ -342,6 +342,32 @@ export const storeCustomers = async (customers: Customer[]): Promise<void> => {
   console.log('Customers stored successfully:', customers.length);
 };
 
+// Customer service functions for advance/credit operations
+export const applyAdvance = async (customerId: string, amount: number): Promise<void> => {
+  try {
+    console.log(`Applying advance: Customer ${customerId}, Amount: ${amount}`);
+    const customers = await getCustomers();
+    const updatedCustomers = customers.map(customer => {
+      if (customer.id === customerId) {
+        const newBalance = customer.balance - amount;
+        console.log(`Customer ${customer.name}: Balance ${customer.balance} → ${newBalance}`);
+        return {
+          ...customer,
+          balance: newBalance,
+          updatedAt: new Date(),
+        };
+      }
+      return customer;
+    });
+    
+    await storeCustomers(updatedCustomers);
+    console.log('Advance applied successfully');
+  } catch (error) {
+    console.error('Error applying advance:', error);
+    throw error;
+  }
+};
+
 export const getCustomers = async (): Promise<Customer[]> => {
   const customers = await getData<Customer[]>(STORAGE_KEYS.CUSTOMERS);
   return customers || [];

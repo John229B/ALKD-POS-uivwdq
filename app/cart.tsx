@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, storeCustomers, formatQuantityWithUnit, getApplicablePrice } from '../utils/storage';
+import { CustomersService } from '../utils/customersService';
 import { useCustomersSync, useCustomersUpdater, useDashboardUpdater } from '../hooks/useCustomersSync';
 import { useAuthState } from '../hooks/useAuth';
 import { cashierSyncService } from '../utils/cashierSyncService';
@@ -280,6 +281,8 @@ const styles = StyleSheet.create({
   },
 });
 
+type PaymentMethod = 'cash' | 'mobile_money' | 'credit' | 'card';
+
 export default function CartScreen() {
   const params = useLocalSearchParams();
   const cartData = params.cartData ? JSON.parse(params.cartData as string) : [];
@@ -291,7 +294,7 @@ export default function CartScreen() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'mobile_money' | 'credit' | 'card'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [useAdvanceAmount, setUseAdvanceAmount] = useState(0);
   const [discountType, setDiscountType] = useState<'fixed' | 'percentage'>('fixed');
   const [discountValue, setDiscountValue] = useState('');
@@ -302,7 +305,7 @@ export default function CartScreen() {
   const { user } = useAuthState();
   const { triggerCustomersUpdate } = useCustomersUpdater();
   const { triggerDashboardUpdate } = useDashboardUpdater();
-  useCustomersSync();
+  const { customers: syncedCustomers } = useCustomersSync();
 
   const loadData = useCallback(async () => {
     try {
@@ -329,6 +332,23 @@ export default function CartScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Update customers when sync data changes
+  useEffect(() => {
+    if (syncedCustomers && syncedCustomers.length > 0) {
+      console.log('Cart: Updating customers from sync:', syncedCustomers.length);
+      setCustomers(syncedCustomers);
+      
+      // Update selected customer if it exists in the new data
+      if (selectedCustomer) {
+        const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedCustomer.id);
+        if (updatedSelectedCustomer) {
+          setSelectedCustomer(updatedSelectedCustomer);
+          console.log(`Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance)}`);
+        }
+      }
+    }
+  }, [syncedCustomers, selectedCustomer]);
 
   // Calculate cart totals with discounts
   const cartTotals = useMemo(() => {
@@ -467,12 +487,14 @@ export default function CartScreen() {
     }
 
     // Validate customer for credit sales - customer is mandatory for credit
-    if (paymentMethod === 'credit' && !selectedCustomer) {
-      Alert.alert('Erreur', 'Veuillez sélectionner un client pour une vente à crédit');
+    const isCredit = paymentMethod === 'credit';
+    if (isCredit && !selectedCustomer) {
+      Alert.alert('Client requis', 'Sélectionnez un client pour une vente à crédit.');
       return;
     }
 
     // For cash, card, and mobile money, customer is optional
+    const customerId = selectedCustomer?.id ?? null; // Explicitly set to null if no customer
     console.log(`Processing ${paymentMethod} sale with customer: ${selectedCustomer ? selectedCustomer.name : 'No customer'}`);
 
     try {
@@ -492,7 +514,7 @@ export default function CartScreen() {
         id: uuid.v4() as string,
         receiptNumber,
         createdAt: new Date(),
-        customerId: selectedCustomer?.id || undefined, // Explicitly set to undefined if no customer
+        customerId: customerId || undefined, // Explicitly set to undefined if no customer
         customer: selectedCustomer || undefined, // Explicitly set to undefined if no customer
         items: saleItems,
         subtotal: cartTotals.subtotal,
@@ -644,6 +666,16 @@ export default function CartScreen() {
       default: return method;
     }
   };
+
+  // Filter customers based on search query
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery) return customers;
+    
+    return customers.filter(customer =>
+      customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+      (customer.phone && customer.phone.includes(customerSearchQuery))
+    );
+  }, [customers, customerSearchQuery]);
 
   if (loading) {
     return (
@@ -1141,13 +1173,8 @@ export default function CartScreen() {
                   </Text>
                 </View>
               </TouchableOpacity>
-              {(() => {
-                const filteredCustomers = customers.filter(customer =>
-                  customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-                  (customer.phone && customer.phone.includes(customerSearchQuery))
-                );
-                
-                return filteredCustomers.length === 0 ? (
+              
+              {filteredCustomers.length === 0 ? (
                 <View style={{
                   padding: spacing.lg,
                   alignItems: 'center',
@@ -1215,8 +1242,7 @@ export default function CartScreen() {
                     <Icon name="chevron-forward" size={16} color={colors.textLight} />
                   </TouchableOpacity>
                 ))
-              );
-              })()}
+              )}
             </ScrollView>
           </View>
         </View>

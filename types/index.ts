@@ -175,7 +175,7 @@ export interface Sale {
   discount: number;
   tax: number;
   total: number;
-  paymentMethod: 'cash' | 'mobile_money' | 'credit';
+  paymentMethod: 'cash' | 'mobile_money' | 'credit' | 'card';
   paymentStatus: 'paid' | 'credit' | 'partial';
   amountPaid: number;
   change: number;

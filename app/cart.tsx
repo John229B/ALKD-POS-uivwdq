@@ -1,53 +1,117 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, StyleSheet, Dimensions } from 'react-native';
+import { 
+  View, 
+  Text, 
+  ScrollView, 
+  TextInput, 
+  TouchableOpacity, 
+  Alert, 
+  Modal, 
+  StyleSheet, 
+  Dimensions,
+  Animated,
+  Platform
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
-import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, storeCustomers, formatQuantityWithUnit, getApplicablePrice } from '../utils/storage';
+import { 
+  getProducts, 
+  getCustomers, 
+  getSales, 
+  storeSales, 
+  storeProducts, 
+  getNextReceiptNumber, 
+  getSettings, 
+  storeCustomers, 
+  formatQuantityWithUnit, 
+  getApplicablePrice,
+  logActivity
+} from '../utils/storage';
 import { useCustomersSync, useCustomersUpdater, useDashboardUpdater } from '../hooks/useCustomersSync';
 import { useAuthState } from '../hooks/useAuth';
 import { cashierSyncService } from '../utils/cashierSyncService';
 import Icon from '../components/Icon';
 import uuid from 'react-native-uuid';
 import AddCustomerModal from '../components/AddCustomerModal';
-import { Product, Customer, CartItem, Sale, SaleItem, AppSettings } from '../types';
+import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, CustomerTransaction } from '../types';
 
-const { height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight, width: screenWidth } = Dimensions.get('window');
+
+type PaymentMethod = 'cash' | 'mobile_money' | 'credit' | 'card';
+
+interface CartTotals {
+  subtotal: number;
+  discountAmount: number;
+  total: number;
+}
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
-    backgroundColor: colors.background,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   headerLeft: {
     flex: 1,
+  },
+  headerTitle: {
+    fontSize: fontSizes.xl,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  headerSubtitle: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
   },
   headerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  actionButton: {
-    backgroundColor: colors.error + '20',
-    borderRadius: 20,
-    width: 40,
-    height: 40,
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  scrollContent: {
+    paddingBottom: spacing.xl,
   },
   section: {
+    backgroundColor: colors.background,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    borderRadius: 16,
     padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   sectionTitle: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
+    fontSize: fontSizes.lg,
+    fontWeight: '700',
     color: colors.text,
     marginBottom: spacing.md,
   },
@@ -57,33 +121,65 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderRadius: 12,
     padding: spacing.md,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: colors.border,
     marginBottom: spacing.sm,
   },
+  customerSelectorActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10',
+  },
+  customerAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
   customerInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
   customerName: {
     fontSize: fontSizes.md,
     fontWeight: '600',
     color: colors.text,
-    marginBottom: 2,
+    marginBottom: 4,
   },
   customerBalance: {
     fontSize: fontSizes.sm,
     fontWeight: '500',
+    marginBottom: 2,
   },
   customerPhone: {
-    fontSize: fontSizes.sm,
+    fontSize: fontSizes.xs,
     color: colors.textLight,
   },
-  advanceCard: {
-    backgroundColor: colors.success + '20',
-    padding: spacing.md,
+  customerPlaceholder: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    fontWeight: '500',
+  },
+  customerRequiredBadge: {
+    backgroundColor: colors.warning + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: 12,
     marginTop: spacing.sm,
+  },
+  customerRequiredText: {
+    fontSize: fontSizes.xs,
+    color: colors.warning,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  advanceCard: {
+    backgroundColor: colors.success + '15',
+    borderRadius: 12,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.success + '30',
   },
   advanceTitle: {
     fontSize: fontSizes.sm,
@@ -91,11 +187,27 @@ const styles = StyleSheet.create({
     color: colors.success,
     marginBottom: spacing.xs,
   },
+  advanceAmount: {
+    fontSize: fontSizes.lg,
+    fontWeight: 'bold',
+    color: colors.success,
+    marginBottom: spacing.sm,
+  },
   advanceActions: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: spacing.sm,
-    marginTop: spacing.sm,
+  },
+  advanceButton: {
+    flex: 1,
+    backgroundColor: colors.success,
+    borderRadius: 8,
+    paddingVertical: spacing.sm,
+    alignItems: 'center',
+  },
+  advanceButtonText: {
+    color: colors.secondary,
+    fontSize: fontSizes.sm,
+    fontWeight: '600',
   },
   cartItem: {
     backgroundColor: colors.background,
@@ -104,10 +216,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    elevation: 2,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
   },
   itemHeader: {
@@ -118,6 +230,7 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
+    marginRight: spacing.md,
   },
   itemName: {
     fontSize: fontSizes.md,
@@ -139,13 +252,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  quantitySection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   quantityButton: {
-    borderRadius: 16,
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 6,
   },
   quantityText: {
     fontSize: fontSizes.md,
@@ -153,41 +277,78 @@ const styles = StyleSheet.create({
     color: colors.text,
     minWidth: 40,
     textAlign: 'center',
+    paddingHorizontal: spacing.sm,
   },
   removeButton: {
-    backgroundColor: colors.textLight,
-    borderRadius: 16,
-    width: 32,
-    height: 32,
+    backgroundColor: colors.error + '20',
+    borderRadius: 8,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   discountSection: {
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginTop: spacing.md,
   },
-  discountRow: {
+  discountHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  discountTitle: {
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: spacing.sm,
+  },
+  discountTypeSelector: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+  },
+  discountTypeButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  discountTypeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  discountTypeText: {
+    fontSize: fontSizes.sm,
+    fontWeight: '600',
+    color: colors.textLight,
+  },
+  discountTypeTextActive: {
+    color: colors.secondary,
+  },
+  discountInputRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
   discountInput: {
     flex: 1,
     backgroundColor: colors.background,
     borderRadius: 8,
-    padding: spacing.sm,
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
     fontSize: fontSizes.sm,
     color: colors.text,
   },
-  discountButton: {
+  discountApplyButton: {
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noteInput: {
     backgroundColor: colors.background,
@@ -199,17 +360,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 80,
     textAlignVertical: 'top',
-  },
-  paymentSection: {
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    marginTop: spacing.md,
   },
   paymentMethods: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginBottom: spacing.md,
   },
   paymentMethod: {
     flexDirection: 'row',
@@ -220,6 +376,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.border,
     minWidth: '48%',
+    flex: 1,
   },
   paymentMethodActive: {
     borderColor: colors.primary,
@@ -232,12 +389,16 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.sm,
     fontWeight: '600',
     color: colors.text,
+    flex: 1,
   },
   summaryCard: {
-    backgroundColor: colors.primaryLight,
-    padding: spacing.lg,
+    backgroundColor: colors.primary + '10',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
     borderRadius: 16,
-    margin: spacing.lg,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.primary + '20',
   },
   summaryRow: {
     flexDirection: 'row',
@@ -248,6 +409,7 @@ const styles = StyleSheet.create({
   summaryLabel: {
     fontSize: fontSizes.sm,
     color: colors.text,
+    fontWeight: '500',
   },
   summaryValue: {
     fontSize: fontSizes.sm,
@@ -258,9 +420,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+    borderTopWidth: 2,
+    borderTopColor: colors.primary + '30',
+    marginTop: spacing.sm,
   },
   totalLabel: {
     fontSize: fontSizes.lg,
@@ -275,27 +438,28 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     gap: spacing.md,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     maxHeight: screenHeight * 0.85,
     minHeight: screenHeight * 0.5,
-    elevation: 10,
+    elevation: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
+    shadowOffset: { width: 0, height: -8 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 16,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -305,6 +469,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  modalTitle: {
+    fontSize: fontSizes.lg,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    marginTop: 2,
+  },
   modalSearchContainer: {
     padding: spacing.lg,
     borderBottomWidth: 1,
@@ -312,7 +486,7 @@ const styles = StyleSheet.create({
   },
   modalSearchInput: {
     backgroundColor: colors.background,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
@@ -321,7 +495,6 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
-    maxHeight: screenHeight * 0.6,
   },
   customerListItem: {
     flexDirection: 'row',
@@ -332,18 +505,18 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   customerListItemSelected: {
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + '15',
   },
-  customerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  customerListAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: spacing.md,
   },
-  customerDetails: {
+  customerListInfo: {
     flex: 1,
-    marginLeft: spacing.md,
   },
   customerListName: {
     fontSize: fontSizes.md,
@@ -354,28 +527,50 @@ const styles = StyleSheet.create({
   customerListBalance: {
     fontSize: fontSizes.sm,
     fontWeight: '500',
+    marginBottom: 2,
   },
   customerListPhone: {
-    fontSize: fontSizes.sm,
+    fontSize: fontSizes.xs,
     color: colors.textLight,
   },
   emptyState: {
-    padding: spacing.lg,
+    padding: spacing.xl,
     alignItems: 'center',
   },
+  emptyStateIcon: {
+    marginBottom: spacing.md,
+  },
   emptyStateText: {
-    textAlign: 'center',
-    marginTop: spacing.md,
+    fontSize: fontSizes.md,
     color: colors.textLight,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  emptyStateSubtext: {
+    fontSize: fontSizes.sm,
+    color: colors.textLight,
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+  loadingText: {
+    fontSize: fontSizes.md,
+    color: colors.textLight,
+    marginTop: spacing.md,
   },
 });
 
-type PaymentMethod = 'cash' | 'mobile_money' | 'credit' | 'card';
-
 export default function CartScreen() {
+  console.log('🛒 Cart: Component initialized');
+  
   const params = useLocalSearchParams();
   const cartData = params.cartData ? JSON.parse(params.cartData as string) : [];
   
+  // State management
   const [cart, setCart] = useState<CartItem[]>(cartData);
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedClient, setSelectedClient] = useState<Customer | null>(null);
@@ -389,29 +584,35 @@ export default function CartScreen() {
   const [note, setNote] = useState('');
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
 
+  // Hooks
   const { user } = useAuthState();
   const { triggerCustomersUpdate } = useCustomersUpdater();
   const { triggerDashboardUpdate } = useDashboardUpdater();
   const { customers: syncedCustomers } = useCustomersSync();
 
-  console.log('🛒 Cart: Synced customers count:', syncedCustomers?.length || 0);
+  console.log('🔄 Cart: Synced customers count:', syncedCustomers?.length || 0);
 
-  // CORRECTED: Secure formatCurrency function
+  // Secure formatCurrency function
   const formatCurrency = useCallback((amount: number | undefined | null): string => {
     if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('⚠️ Cart: formatCurrency received invalid amount, returning 0');
-      return '0';
+      console.log('⚠️ Cart: formatCurrency received invalid amount, defaulting to 0');
+      amount = 0;
     }
     
     if (!settings) return amount.toString();
+    
     const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
     return `${amount.toLocaleString()} ${currency}`;
   }, [settings]);
 
+  // Load initial data
   const loadData = useCallback(async () => {
     try {
-      console.log('🔄 Cart: Loading data...');
+      console.log('🔄 Cart: Loading initial data...');
+      setLoading(true);
+      
       const [productsData, settingsData] = await Promise.all([
         getProducts(),
         getSettings(),
@@ -420,11 +621,11 @@ export default function CartScreen() {
       console.log(`✅ Cart: Loaded ${productsData.length} products`);
       setProducts(productsData);
       setSettings(settingsData);
-      setLoading(false);
-      console.log('🎉 Cart: Data loaded successfully');
+      
     } catch (error) {
       console.error('❌ Cart: Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données du panier');
+    } finally {
       setLoading(false);
     }
   }, []);
@@ -435,31 +636,27 @@ export default function CartScreen() {
 
   // Update selected customer when sync data changes
   useEffect(() => {
-    if (syncedCustomers && syncedCustomers.length > 0) {
-      console.log('🔄 Cart: Updating from synced customers:', syncedCustomers.length);
-      
-      if (selectedClient) {
-        const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedClient.id);
-        if (updatedSelectedCustomer) {
-          setSelectedClient(updatedSelectedCustomer);
-          console.log(`✅ Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
-        }
+    if (syncedCustomers && syncedCustomers.length > 0 && selectedClient) {
+      const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedClient.id);
+      if (updatedSelectedCustomer) {
+        setSelectedClient(updatedSelectedCustomer);
+        console.log(`✅ Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
       }
     }
   }, [syncedCustomers, selectedClient, formatCurrency]);
 
   // Calculate cart totals with discounts
-  const cartTotals = useMemo(() => {
+  const cartTotals: CartTotals = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
     
     let discountAmount = 0;
     if (discountValue) {
       const value = parseFloat(discountValue);
-      if (!isNaN(value)) {
+      if (!isNaN(value) && value > 0) {
         if (discountType === 'percentage') {
-          discountAmount = (subtotal * value) / 100;
+          discountAmount = Math.min((subtotal * value) / 100, subtotal);
         } else {
-          discountAmount = value;
+          discountAmount = Math.min(value, subtotal);
         }
       }
     }
@@ -474,7 +671,10 @@ export default function CartScreen() {
     return Math.max(0, cartTotals.total - useAdvanceAmount);
   }, [cartTotals.total, useAdvanceAmount]);
 
+  // Cart item management
   const updateCartItemQuantity = useCallback((productId: string, quantity: number) => {
+    console.log(`🔄 Cart: Updating quantity for product ${productId}: ${quantity}`);
+    
     if (quantity <= 0) {
       setCart(prevCart => prevCart.filter(item => item.productId !== productId));
     } else {
@@ -493,6 +693,7 @@ export default function CartScreen() {
   }, []);
 
   const removeFromCart = useCallback((productId: string) => {
+    console.log(`🗑️ Cart: Removing product ${productId} from cart`);
     setCart(prevCart => prevCart.filter(item => item.productId !== productId));
   }, []);
 
@@ -506,6 +707,7 @@ export default function CartScreen() {
           text: 'Vider', 
           style: 'destructive',
           onPress: () => {
+            console.log('🧹 Cart: Clearing cart');
             setCart([]);
             setSelectedClient(null);
             setPaymentMethod('cash');
@@ -518,35 +720,47 @@ export default function CartScreen() {
     );
   }, []);
 
+  // Customer management
   const selectCustomer = useCallback((customer: Customer) => {
+    console.log(`👤 Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance || 0)})`);
     setSelectedClient(customer);
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
     setCustomerSearchQuery('');
-    console.log(`✅ Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance || 0)})`);
   }, [formatCurrency]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
-    const newCustomer: Customer = {
-      ...customerData,
-      id: uuid.v4() as string,
-      balance: 0,
-      totalPurchases: 0,
-      transactions: [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    try {
+      console.log('➕ Cart: Adding new customer:', customerData.name);
+      
+      const newCustomer: Customer = {
+        ...customerData,
+        id: uuid.v4() as string,
+        balance: 0,
+        totalPurchases: 0,
+        transactions: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-    const currentCustomers = await getCustomers();
-    const updatedCustomers = [...currentCustomers, newCustomer];
-    await storeCustomers(updatedCustomers);
-    setSelectedClient(newCustomer);
-    setShowAddCustomerModal(false);
-    
-    console.log('✅ Cart: New customer added, triggering update...');
-    await triggerCustomersUpdate();
-  }, [triggerCustomersUpdate]);
+      const currentCustomers = await getCustomers();
+      const updatedCustomers = [...currentCustomers, newCustomer];
+      await storeCustomers(updatedCustomers);
+      
+      setSelectedClient(newCustomer);
+      setShowAddCustomerModal(false);
+      
+      await logActivity(user?.id || 'system', 'customers', 'Customer added from cart', { customerId: newCustomer.id, name: newCustomer.name });
+      await triggerCustomersUpdate();
+      
+      console.log('✅ Cart: New customer added successfully');
+    } catch (error) {
+      console.error('❌ Cart: Error adding customer:', error);
+      Alert.alert('Erreur', 'Impossible d\'ajouter le client');
+    }
+  }, [triggerCustomersUpdate, user]);
 
+  // Discount management
   const applyDiscount = useCallback(() => {
     if (!discountValue) {
       Alert.alert('Erreur', 'Veuillez saisir un montant de réduction');
@@ -564,13 +778,17 @@ export default function CartScreen() {
       return;
     }
     
-    Alert.alert('Réduction appliquée', `Réduction de ${discountType === 'percentage' ? value + '%' : formatCurrency(value)} appliquée`);
+    const discountText = discountType === 'percentage' ? `${value}%` : formatCurrency(value);
+    Alert.alert('Réduction appliquée', `Réduction de ${discountText} appliquée avec succès`);
   }, [discountValue, discountType, formatCurrency]);
 
-  // CORRECTED: Main sale processing function - COMPLETELY REWRITTEN
+  // MAIN SALE PROCESSING FUNCTION - COMPLETELY REWRITTEN
   const processSale = useCallback(async () => {
+    if (processing) return;
+    
     try {
       console.log('🚀 Cart: Starting sale processing...');
+      setProcessing(true);
       
       // Basic validation
       if (cart.length === 0) {
@@ -589,6 +807,12 @@ export default function CartScreen() {
         console.log('✅ Cart: Credit sale - client validation passed');
       } else {
         console.log('✅ Cart: Non-credit sale - client is optional');
+      }
+
+      // Validate advance usage
+      if (useAdvanceAmount > 0 && (!selectedClient || (selectedClient.balance || 0) < useAdvanceAmount)) {
+        Alert.alert("Erreur", "Montant d'avance invalide");
+        return;
       }
 
       // Generate receipt number and prepare sale data
@@ -616,7 +840,7 @@ export default function CartScreen() {
         total: cartTotals.total,
         paymentMethod,
         paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
-        amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : (remainingAmount === 0 ? cartTotals.total : remainingAmount),
+        amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : cartTotals.total,
         change: 0,
         notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (!selectedClient ? 'Vente sans client' : ''),
         cashierId: user?.id || '',
@@ -644,7 +868,7 @@ export default function CartScreen() {
       await storeProducts(updatedProducts);
       console.log('✅ Cart: Product stock updated');
 
-      // CORRECTED: Customer balance updates - simplified logic
+      // CORRECTED: Customer balance updates - simplified and robust logic
       if (selectedClient) {
         const currentCustomers = await getCustomers();
         const updatedCustomers = currentCustomers.map(customer => {
@@ -654,7 +878,7 @@ export default function CartScreen() {
             let transactionType: 'gave' | 'took' = 'took';
             let transactionDescription = `Vente - Reçu #${receiptNumber}`;
             
-            // Handle advance usage
+            // Handle advance usage first
             if (useAdvanceAmount > 0) {
               newBalance -= useAdvanceAmount;
               transactionAmount -= useAdvanceAmount;
@@ -674,7 +898,7 @@ export default function CartScreen() {
             }
 
             // Create transaction record
-            const newTransaction = {
+            const newTransaction: CustomerTransaction = {
               id: uuid.v4() as string,
               date: new Date(),
               amount: cartTotals.total,
@@ -712,6 +936,20 @@ export default function CartScreen() {
         console.log('📤 Cart: Cashier sale added to sync queue');
       }
 
+      // Log activity
+      await logActivity(
+        user?.id || 'system', 
+        'pos', 
+        'Sale processed', 
+        { 
+          saleId: saleData.id, 
+          receiptNumber: saleData.receiptNumber, 
+          total: saleData.total,
+          customerId: saleData.customerId,
+          paymentMethod: saleData.paymentMethod
+        }
+      );
+
       // Update state
       setProducts(updatedProducts);
       
@@ -725,7 +963,7 @@ export default function CartScreen() {
         triggerDashboardUpdate();
       }
 
-      // Clear cart
+      // Clear cart state
       setCart([]);
       setSelectedClient(null);
       setPaymentMethod('cash');
@@ -748,10 +986,26 @@ export default function CartScreen() {
 
     } catch (error) {
       console.error("❌ Cart: Error processing sale:", error);
-      Alert.alert("Erreur", "Impossible de traiter la vente");
+      Alert.alert("Erreur", "Impossible de traiter la vente. Veuillez réessayer.");
+    } finally {
+      setProcessing(false);
     }
-  }, [cart, cartTotals, paymentMethod, selectedClient, useAdvanceAmount, products, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
+  }, [
+    processing,
+    cart, 
+    cartTotals, 
+    paymentMethod, 
+    selectedClient, 
+    useAdvanceAmount, 
+    products, 
+    user, 
+    triggerCustomersUpdate, 
+    triggerDashboardUpdate, 
+    note, 
+    formatCurrency
+  ]);
 
+  // Payment method helpers
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
       case 'cash': return 'cash';
@@ -764,18 +1018,17 @@ export default function CartScreen() {
 
   const getPaymentMethodLabel = (method: string) => {
     switch (method) {
-      case 'cash': return 'Espèces 💵';
-      case 'mobile_money': return 'Mobile Money 📱';
-      case 'card': return 'Carte 💳';
+      case 'cash': return 'Espèces';
+      case 'mobile_money': return 'Mobile Money';
+      case 'card': return 'Carte bancaire';
       case 'credit': return 'Crédit';
       default: return method;
     }
   };
 
-  // Use syncedCustomers directly
+  // Customer filtering
   const availableCustomers = syncedCustomers || [];
   
-  // Filter customers based on search query
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return availableCustomers;
     
@@ -785,58 +1038,66 @@ export default function CartScreen() {
     );
   }, [availableCustomers, customerSearchQuery]);
 
+  // Loading state
   if (loading) {
     return (
-      <SafeAreaView style={commonStyles.container}>
-        <View style={[commonStyles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
           <Icon name="cart" size={48} color={colors.primary} />
-          <Text style={[commonStyles.subtitle, { marginTop: spacing.md }]}>
-            Chargement du panier...
-          </Text>
+          <Text style={styles.loadingText}>Chargement du panier...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={commonStyles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={commonStyles.title}>Panier</Text>
-          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-            {cart.length} {cart.length === 1 ? 'article sélectionné' : 'articles sélectionnés'}
+          <Text style={styles.headerTitle}>Panier</Text>
+          <Text style={styles.headerSubtitle}>
+            {cart.length} {cart.length === 1 ? 'article' : 'articles'} • {formatCurrency(cartTotals.total)}
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.actionButton} onPress={clearCart}>
-            <Icon name="trash" size={20} color={colors.error} />
+          <TouchableOpacity 
+            style={styles.headerButton} 
+            onPress={clearCart}
+            disabled={cart.length === 0}
+          >
+            <Icon name="trash" size={20} color={cart.length === 0 ? colors.textLight : colors.error} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => router.back()}>
-            <Icon name="close" size={20} color={colors.error} />
+          <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
+            <Icon name="close" size={20} color={colors.text} />
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         {/* Customer Selection */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sélection du Client</Text>
+          <Text style={styles.sectionTitle}>Client</Text>
           <TouchableOpacity
-            style={styles.customerSelector}
+            style={[
+              styles.customerSelector,
+              selectedClient && styles.customerSelectorActive
+            ]}
             onPress={() => setShowCustomerModal(true)}
           >
-            <View style={{
-              width: 40,
-              height: 40,
-              backgroundColor: selectedClient 
-                ? ((selectedClient.balance || 0) >= 0 ? colors.success : colors.error)
-                : colors.textLight,
-              borderRadius: 20,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Icon name="person" size={20} color={colors.secondary} />
+            <View style={[
+              styles.customerAvatar,
+              { 
+                backgroundColor: selectedClient 
+                  ? ((selectedClient.balance || 0) >= 0 ? colors.success : colors.error)
+                  : colors.textLight 
+              }
+            ]}>
+              <Icon 
+                name={selectedClient ? "person" : "person-add"} 
+                size={20} 
+                color={colors.secondary} 
+              />
             </View>
             <View style={styles.customerInfo}>
               {selectedClient ? (
@@ -847,68 +1108,47 @@ export default function CartScreen() {
                     { color: (selectedClient.balance || 0) >= 0 ? colors.success : colors.error }
                   ]}>
                     {(selectedClient.balance || 0) >= 0 
-                      ? `Avance (j'ai pris): ${formatCurrency(Math.abs(selectedClient.balance || 0))}` 
-                      : `Dette (j'ai donné): ${formatCurrency(Math.abs(selectedClient.balance || 0))}`
+                      ? `Avance: ${formatCurrency(Math.abs(selectedClient.balance || 0))}` 
+                      : `Dette: ${formatCurrency(Math.abs(selectedClient.balance || 0))}`
                     }
                   </Text>
                   {selectedClient.phone && (
-                    <Text style={styles.customerPhone}>{selectedClient.phone}</Text>
+                    <Text style={styles.customerPhone}>📞 {selectedClient.phone}</Text>
                   )}
                 </>
               ) : (
-                <>
-                  <Text style={[styles.customerName, { color: colors.textLight }]}>
-                    {paymentMethod === 'credit' ? 'Sélectionner un client (obligatoire)' : 'Sélectionner un client (facultatif)'}
-                  </Text>
-                  <Text style={[styles.customerPhone, { fontSize: fontSizes.xs }]}>
-                    {paymentMethod === 'credit' 
-                      ? 'Client requis pour les ventes à crédit' 
-                      : 'Vente comptant possible sans client'
-                    }
-                  </Text>
-                </>
+                <Text style={styles.customerPlaceholder}>
+                  {paymentMethod === 'credit' ? 'Sélectionner un client (obligatoire)' : 'Sélectionner un client (facultatif)'}
+                </Text>
               )}
             </View>
             <Icon name="chevron-down" size={20} color={colors.textLight} />
           </TouchableOpacity>
 
           {paymentMethod === 'credit' && !selectedClient && (
-            <View style={{
-              backgroundColor: colors.warning + '20',
-              padding: spacing.md,
-              borderRadius: 12,
-              marginTop: spacing.sm,
-            }}>
-              <Text style={{ color: colors.warning, fontSize: fontSizes.sm, fontWeight: '600' }}>
-                ⚠️ Vente à crédit → Client obligatoire
+            <View style={styles.customerRequiredBadge}>
+              <Text style={styles.customerRequiredText}>
+                ⚠️ Client obligatoire pour les ventes à crédit
               </Text>
             </View>
           )}
 
           {selectedClient && (selectedClient.balance || 0) > 0 && (
             <View style={styles.advanceCard}>
-              <Text style={styles.advanceTitle}>
-                Avance disponible (j'ai pris): {formatCurrency(selectedClient.balance || 0)}
+              <Text style={styles.advanceTitle}>Avance disponible</Text>
+              <Text style={styles.advanceAmount}>
+                {formatCurrency(selectedClient.balance || 0)}
               </Text>
               <View style={styles.advanceActions}>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                  Utiliser pour payer:
-                </Text>
                 <TouchableOpacity
-                  style={[
-                    commonStyles.chip,
-                    useAdvanceAmount > 0 && commonStyles.chipActive,
-                  ]}
+                  style={styles.advanceButton}
                   onPress={() => {
                     const maxUsable = Math.min(selectedClient.balance || 0, cartTotals.total);
                     setUseAdvanceAmount(useAdvanceAmount > 0 ? 0 : maxUsable);
                   }}
                 >
-                  <Text style={[
-                    commonStyles.chipText,
-                    useAdvanceAmount > 0 && commonStyles.chipTextActive,
-                  ]}>
-                    {useAdvanceAmount > 0 ? formatCurrency(useAdvanceAmount) : 'Utiliser mon avance'}
+                  <Text style={styles.advanceButtonText}>
+                    {useAdvanceAmount > 0 ? `Utilisé: ${formatCurrency(useAdvanceAmount)}` : 'Utiliser l\'avance'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -917,69 +1157,70 @@ export default function CartScreen() {
         </View>
 
         {/* Cart Items */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Liste des Articles</Text>
-          {cart.map((item, index) => (
-            <View key={`${item.productId}-${index}`} style={styles.cartItem}>
-              <View style={styles.itemHeader}>
-                <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{item.name}</Text>
-                  <Text style={styles.itemPrice}>
-                    {formatCurrency(item.price)} × {formatQuantityWithUnit(item.quantity, item.unit)}
+        {cart.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Articles ({cart.length})</Text>
+            {cart.map((item, index) => (
+              <View key={`${item.productId}-${index}`} style={styles.cartItem}>
+                <View style={styles.itemHeader}>
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName}>{item.name}</Text>
+                    <Text style={styles.itemPrice}>
+                      {formatCurrency(item.price)} × {formatQuantityWithUnit(item.quantity, item.unit)}
+                    </Text>
+                  </View>
+                  <Text style={styles.itemSubtotal}>
+                    {formatCurrency(item.subtotal)}
                   </Text>
                 </View>
-                <Text style={styles.itemSubtotal}>
-                  {formatCurrency(item.subtotal)}
-                </Text>
-              </View>
-              
-              <View style={styles.quantityControls}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                
+                <View style={styles.quantityControls}>
+                  <View style={styles.quantitySection}>
+                    <TouchableOpacity
+                      style={[styles.quantityButton, { backgroundColor: colors.error }]}
+                      onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                    >
+                      <Icon name="remove" size={16} color={colors.secondary} />
+                    </TouchableOpacity>
+                    <Text style={styles.quantityText}>{item.quantity}</Text>
+                    <TouchableOpacity
+                      style={[styles.quantityButton, { backgroundColor: colors.success }]}
+                      onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
+                    >
+                      <Icon name="add" size={16} color={colors.secondary} />
+                    </TouchableOpacity>
+                  </View>
+                  
                   <TouchableOpacity
-                    style={[styles.quantityButton, { backgroundColor: colors.error }]}
-                    onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                    style={styles.removeButton}
+                    onPress={() => removeFromCart(item.productId)}
                   >
-                    <Icon name="remove" size={16} color={colors.secondary} />
-                  </TouchableOpacity>
-                  <Text style={styles.quantityText}>{item.quantity}</Text>
-                  <TouchableOpacity
-                    style={[styles.quantityButton, { backgroundColor: colors.success }]}
-                    onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
-                  >
-                    <Icon name="add" size={16} color={colors.secondary} />
+                    <Icon name="trash" size={16} color={colors.error} />
                   </TouchableOpacity>
                 </View>
-                
-                <TouchableOpacity
-                  style={styles.removeButton}
-                  onPress={() => removeFromCart(item.productId)}
-                >
-                  <Icon name="trash" size={16} color={colors.secondary} />
-                </TouchableOpacity>
               </View>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        )}
 
-        {/* Discount Options */}
-        <View style={styles.discountSection}>
-          <Text style={styles.sectionTitle}>Options du Panier</Text>
+        {/* Discount & Notes */}
+        <View style={styles.section}>
+          <View style={styles.discountHeader}>
+            <Icon name="pricetag" size={20} color={colors.primary} />
+            <Text style={styles.discountTitle}>Réductions & Notes</Text>
+          </View>
           
-          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.sm }]}>
-            Réductions
-          </Text>
-          
-          <View style={styles.discountRow}>
+          <View style={styles.discountTypeSelector}>
             <TouchableOpacity
               style={[
-                commonStyles.chip,
-                discountType === 'fixed' && commonStyles.chipActive,
+                styles.discountTypeButton,
+                discountType === 'fixed' && styles.discountTypeButtonActive,
               ]}
               onPress={() => setDiscountType('fixed')}
             >
               <Text style={[
-                commonStyles.chipText,
-                discountType === 'fixed' && commonStyles.chipTextActive,
+                styles.discountTypeText,
+                discountType === 'fixed' && styles.discountTypeTextActive,
               ]}>
                 Montant fixe
               </Text>
@@ -987,21 +1228,21 @@ export default function CartScreen() {
             
             <TouchableOpacity
               style={[
-                commonStyles.chip,
-                discountType === 'percentage' && commonStyles.chipActive,
+                styles.discountTypeButton,
+                discountType === 'percentage' && styles.discountTypeButtonActive,
               ]}
               onPress={() => setDiscountType('percentage')}
             >
               <Text style={[
-                commonStyles.chipText,
-                discountType === 'percentage' && commonStyles.chipTextActive,
+                styles.discountTypeText,
+                discountType === 'percentage' && styles.discountTypeTextActive,
               ]}>
                 Pourcentage
               </Text>
             </TouchableOpacity>
           </View>
           
-          <View style={styles.discountRow}>
+          <View style={styles.discountInputRow}>
             <TextInput
               style={styles.discountInput}
               placeholder={discountType === 'fixed' ? 'ex: 500' : 'ex: 10'}
@@ -1010,19 +1251,16 @@ export default function CartScreen() {
               keyboardType="numeric"
               placeholderTextColor={colors.textLight}
             />
-            <TouchableOpacity style={styles.discountButton} onPress={applyDiscount}>
+            <TouchableOpacity style={styles.discountApplyButton} onPress={applyDiscount}>
               <Text style={{ color: colors.secondary, fontSize: fontSizes.sm, fontWeight: '600' }}>
                 Appliquer
               </Text>
             </TouchableOpacity>
           </View>
           
-          <Text style={[commonStyles.text, { fontWeight: '600', marginTop: spacing.md, marginBottom: spacing.sm }]}>
-            Note optionnelle
-          </Text>
           <TextInput
             style={styles.noteInput}
-            placeholder="Ajouter une note pour cette vente..."
+            placeholder="Note optionnelle pour cette vente..."
             value={note}
             onChangeText={setNote}
             multiline
@@ -1031,8 +1269,8 @@ export default function CartScreen() {
         </View>
 
         {/* Payment Methods */}
-        <View style={styles.paymentSection}>
-          <Text style={styles.sectionTitle}>Paiement</Text>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Mode de paiement</Text>
           
           <View style={styles.paymentMethods}>
             {(['cash', 'mobile_money', 'card', 'credit'] as const).map((method) => (
@@ -1059,37 +1297,19 @@ export default function CartScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          
-          {selectedClient && (selectedClient.balance || 0) > 0 && (
-            <TouchableOpacity
-              style={[
-                styles.paymentMethod,
-                { backgroundColor: colors.success + '20', borderColor: colors.success }
-              ]}
-              onPress={() => {
-                const maxUsable = Math.min(selectedClient.balance || 0, cartTotals.total);
-                setUseAdvanceAmount(maxUsable);
-              }}
-            >
-              <Icon name="wallet" size={20} color={colors.success} style={styles.paymentIcon} />
-              <Text style={[styles.paymentText, { color: colors.success }]}>
-                Utiliser mon avance ({formatCurrency(selectedClient.balance || 0)})
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
 
       {/* Summary & Totals */}
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Sous-total (avant réductions)</Text>
+          <Text style={styles.summaryLabel}>Sous-total</Text>
           <Text style={styles.summaryValue}>{formatCurrency(cartTotals.subtotal)}</Text>
         </View>
         
         {cartTotals.discountAmount > 0 && (
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Réductions appliquées</Text>
+            <Text style={styles.summaryLabel}>Réduction</Text>
             <Text style={[styles.summaryValue, { color: colors.error }]}>
               -{formatCurrency(cartTotals.discountAmount)}
             </Text>
@@ -1098,7 +1318,7 @@ export default function CartScreen() {
         
         {useAdvanceAmount > 0 && (
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Montant payé via avance</Text>
+            <Text style={styles.summaryLabel}>Avance utilisée</Text>
             <Text style={[styles.summaryValue, { color: colors.success }]}>
               -{formatCurrency(useAdvanceAmount)}
             </Text>
@@ -1106,7 +1326,7 @@ export default function CartScreen() {
         )}
         
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Total final à payer</Text>
+          <Text style={styles.totalLabel}>Total à payer</Text>
           <Text style={styles.totalValue}>{formatCurrency(remainingAmount)}</Text>
         </View>
       </View>
@@ -1119,18 +1339,21 @@ export default function CartScreen() {
         >
           <Icon name="cart" size={20} color={colors.primary} />
           <Text style={[buttonStyles.secondaryText, { marginLeft: spacing.xs }]}>
-            Continuer les achats
+            Continuer
           </Text>
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={[buttonStyles.primary, { flex: 2 }]}
+          style={[
+            buttonStyles.primary, 
+            { flex: 2, opacity: (cart.length === 0 || processing) ? 0.5 : 1 }
+          ]}
           onPress={processSale}
-          disabled={cart.length === 0}
+          disabled={cart.length === 0 || processing}
         >
           <Icon name="checkmark" size={20} color={colors.secondary} />
           <Text style={[buttonStyles.primaryText, { marginLeft: spacing.xs }]}>
-            Finaliser la vente
+            {processing ? 'Traitement...' : 'Finaliser la vente'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -1149,8 +1372,8 @@ export default function CartScreen() {
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
-                <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                <Text style={styles.modalTitle}>Sélectionner un client</Text>
+                <Text style={styles.modalSubtitle}>
                   {availableCustomers.length} client{availableCustomers.length !== 1 ? 's' : ''} disponible{availableCustomers.length !== 1 ? 's' : ''}
                 </Text>
               </View>
@@ -1172,11 +1395,7 @@ export default function CartScreen() {
               />
             </View>
 
-            <ScrollView 
-              style={styles.modalScrollView}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-            >
+            <ScrollView style={styles.modalScrollView}>
               {/* No customer option for non-credit payments */}
               {paymentMethod !== 'credit' && (
                 <TouchableOpacity
@@ -1191,16 +1410,12 @@ export default function CartScreen() {
                     setCustomerSearchQuery('');
                   }}
                 >
-                  <View style={[styles.customerAvatar, { backgroundColor: colors.textLight }]}>
+                  <View style={[styles.customerListAvatar, { backgroundColor: colors.textLight }]}>
                     <Icon name="person-remove" size={20} color={colors.secondary} />
                   </View>
-                  <View style={styles.customerDetails}>
-                    <Text style={styles.customerListName}>
-                      Vente sans client
-                    </Text>
-                    <Text style={styles.customerListPhone}>
-                      Recommandé pour les paiements comptants
-                    </Text>
+                  <View style={styles.customerListInfo}>
+                    <Text style={styles.customerListName}>Vente sans client</Text>
+                    <Text style={styles.customerListPhone}>Recommandé pour les paiements comptants</Text>
                   </View>
                   {!selectedClient && (
                     <Icon name="checkmark-circle" size={20} color={colors.success} />
@@ -1216,13 +1431,11 @@ export default function CartScreen() {
                   setShowAddCustomerModal(true);
                 }}
               >
-                <View style={[styles.customerAvatar, { backgroundColor: colors.primary }]}>
+                <View style={[styles.customerListAvatar, { backgroundColor: colors.primary }]}>
                   <Icon name="add" size={20} color={colors.secondary} />
                 </View>
-                <View style={styles.customerDetails}>
-                  <Text style={styles.customerListName}>
-                    Ajouter un nouveau client
-                  </Text>
+                <View style={styles.customerListInfo}>
+                  <Text style={styles.customerListName}>Ajouter un nouveau client</Text>
                 </View>
                 <Icon name="chevron-forward" size={16} color={colors.textLight} />
               </TouchableOpacity>
@@ -1230,12 +1443,12 @@ export default function CartScreen() {
               {/* Customer list */}
               {filteredCustomers.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Icon name="person-add" size={48} color={colors.textLight} />
-                  <Text style={[styles.emptyStateText, commonStyles.textLight]}>
-                    {customerSearchQuery ? 'Aucun client trouvé pour cette recherche' : 'Aucun client trouvé'}
+                  <Icon name="person-add" size={48} color={colors.textLight} style={styles.emptyStateIcon} />
+                  <Text style={styles.emptyStateText}>
+                    {customerSearchQuery ? 'Aucun client trouvé' : 'Aucun client disponible'}
                   </Text>
-                  <Text style={[styles.emptyStateText, commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                    {customerSearchQuery ? 'Essayez un autre terme de recherche' : 'Ajoutez votre premier client pour commencer'}
+                  <Text style={styles.emptyStateSubtext}>
+                    {customerSearchQuery ? 'Essayez un autre terme de recherche' : 'Ajoutez votre premier client'}
                   </Text>
                 </View>
               ) : (
@@ -1249,28 +1462,24 @@ export default function CartScreen() {
                     onPress={() => selectCustomer(customer)}
                   >
                     <View style={[
-                      styles.customerAvatar,
+                      styles.customerListAvatar,
                       { backgroundColor: (customer.balance || 0) >= 0 ? colors.success : colors.error }
                     ]}>
                       <Icon name="person" size={20} color={colors.secondary} />
                     </View>
-                    <View style={styles.customerDetails}>
-                      <Text style={styles.customerListName}>
-                        {customer.name}
-                      </Text>
+                    <View style={styles.customerListInfo}>
+                      <Text style={styles.customerListName}>{customer.name}</Text>
                       <Text style={[
                         styles.customerListBalance,
                         { color: (customer.balance || 0) >= 0 ? colors.success : colors.error }
                       ]}>
                         {(customer.balance || 0) >= 0 
-                          ? `Avance (j'ai pris): ${formatCurrency(Math.abs(customer.balance || 0))}` 
-                          : `Dette (j'ai donné): ${formatCurrency(Math.abs(customer.balance || 0))}`
+                          ? `Avance: ${formatCurrency(Math.abs(customer.balance || 0))}` 
+                          : `Dette: ${formatCurrency(Math.abs(customer.balance || 0))}`
                         }
                       </Text>
                       {customer.phone && (
-                        <Text style={styles.customerListPhone}>
-                          📞 {customer.phone}
-                        </Text>
+                        <Text style={styles.customerListPhone}>📞 {customer.phone}</Text>
                       )}
                     </View>
                     <Icon name="chevron-forward" size={16} color={colors.textLight} />

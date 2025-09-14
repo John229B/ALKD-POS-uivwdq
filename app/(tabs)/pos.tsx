@@ -37,13 +37,19 @@ const modalStyles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '80%',
+    borderRadius: 20,
+    width: '95%',
+    maxHeight: '90%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -54,6 +60,7 @@ const modalStyles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   modalBody: {
+    flex: 1,
     padding: spacing.lg,
   },
 });
@@ -221,7 +228,7 @@ export default function POSScreen() {
       ...prev,
       remainingAmount: Math.max(0, total - advanceUsed),
     }));
-  }, [paymentMethod, cartTotals.total, paymentBreakdown.remainingAmount]);
+  }, [paymentMethod, cartTotals.total, customerAdvanceBalance]);
 
   // Filter products based on search and category
   const filteredProducts = useMemo(() => {
@@ -413,9 +420,9 @@ export default function POSScreen() {
       setProducts(updatedProducts);
       setCustomers(updatedCustomers);
       
-      // Trigger updates - CORRECTED: Pass the updated customers data
+      // Trigger updates
       console.log('POS: Triggering customers update with updated data...');
-      await triggerCustomersUpdate(updatedCustomers);
+      await triggerCustomersUpdate();
       console.log('POS: Triggering dashboard update...');
       triggerDashboardUpdate();
 
@@ -466,7 +473,7 @@ export default function POSScreen() {
     
     // Trigger customers update
     console.log('POS: New customer added, triggering update...');
-    await triggerCustomersUpdate(updatedCustomers);
+    await triggerCustomersUpdate();
   }, [customers, triggerCustomersUpdate]);
 
   if (loading) {
@@ -649,14 +656,14 @@ export default function POSScreen() {
           onRequestClose={() => setShowCustomerModal(false)}
         >
           <View style={modalStyles.modalOverlay}>
-            <View style={modalStyles.modalContent}>
+            <View style={[modalStyles.modalContent, { height: '80%' }]}>
               <View style={modalStyles.modalHeader}>
                 <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
                 <TouchableOpacity onPress={() => setShowCustomerModal(false)}>
                   <Icon name="close" size={24} color={colors.text} />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={{ maxHeight: 400 }}>
+              <ScrollView style={{ flex: 1 }}>
                 <TouchableOpacity
                   style={customerListStyles.customerItem}
                   onPress={() => setShowAddCustomerModal(true)}
@@ -702,7 +709,7 @@ export default function POSScreen() {
                         { color: customer.balance >= 0 ? colors.success : colors.error }
                       ]}>
                         {formatCurrency(Math.abs(customer.balance))} 
-                        {customer.balance >= 0 ? ' (crédit)' : ' (dette)'}
+                        <Text>{customer.balance >= 0 ? ' (crédit)' : ' (dette)'}</Text>
                       </Text>
                       {customer.phone && (
                         <Text style={customerListStyles.customerPhone}>
@@ -724,202 +731,202 @@ export default function POSScreen() {
           onCustomerAdded={handleAddCustomer}
         />
 
-        {/* Cart Modal */}
+        {/* Cart Modal - Full Screen */}
         <Modal
           visible={showCartModal}
           animationType="slide"
-          transparent
           onRequestClose={() => setShowCartModal(false)}
         >
-          <View style={modalStyles.modalOverlay}>
-            <View style={[modalStyles.modalContent, { maxHeight: '90%' }]}>
-              <View style={modalStyles.modalHeader}>
-                <Text style={commonStyles.subtitle}>Panier ({cart.length} articles)</Text>
-                <TouchableOpacity onPress={() => setShowCartModal(false)}>
-                  <Icon name="close" size={24} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-              
-              <ScrollView style={{ flex: 1 }}>
-                {/* Cart Items */}
-                <View style={{ padding: spacing.lg }}>
-                  {cart.map((item, index) => (
-                    <View key={`${item.productId}-${index}`} style={[
-                      commonStyles.card,
-                      { marginBottom: spacing.md, padding: spacing.md }
-                    ]}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
-                            {item.name}
+          <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
+            {/* Header */}
+            <View style={modalStyles.modalHeader}>
+              <Text style={commonStyles.title}>
+                Panier ({cart.length} {cart.length === 1 ? 'article' : 'articles'})
+              </Text>
+              <TouchableOpacity onPress={() => setShowCartModal(false)}>
+                <Icon name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={{ flex: 1 }}>
+              {/* Cart Items */}
+              <View style={{ padding: spacing.lg }}>
+                {cart.map((item, index) => (
+                  <View key={`${item.productId}-${index}`} style={[
+                    commonStyles.card,
+                    { marginBottom: spacing.md, padding: spacing.md }
+                  ]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.xs }]}>
+                          {item.name}
+                        </Text>
+                        <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                          {formatCurrency(item.price)} × {formatQuantityWithUnit(item.quantity, item.unit)}
+                        </Text>
+                        {item.discount && item.discount > 0 && (
+                          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
+                            Remise: -{formatCurrency(item.discount)}
                           </Text>
-                          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                            {formatCurrency(item.price)} × {formatQuantityWithUnit(item.quantity, item.unit)}
+                        )}
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[commonStyles.text, { fontWeight: 'bold', color: colors.primary }]}>
+                          {formatCurrency(item.subtotal)}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: colors.error,
+                              borderRadius: 15,
+                              width: 30,
+                              height: 30,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginRight: spacing.xs,
+                            }}
+                            onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
+                          >
+                            <Icon name="remove" size={16} color={colors.secondary} />
+                          </TouchableOpacity>
+                          <Text style={[commonStyles.text, { minWidth: 30, textAlign: 'center' }]}>
+                            {item.quantity}
                           </Text>
-                          {item.discount && item.discount > 0 && (
-                            <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm, color: colors.success }]}>
-                              Remise: -{formatCurrency(item.discount)}
-                            </Text>
-                          )}
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text style={[commonStyles.text, { fontWeight: 'bold', color: colors.primary }]}>
-                            {formatCurrency(item.subtotal)}
-                          </Text>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
-                            <TouchableOpacity
-                              style={{
-                                backgroundColor: colors.error,
-                                borderRadius: 15,
-                                width: 30,
-                                height: 30,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: spacing.xs,
-                              }}
-                              onPress={() => updateCartItemQuantity(item.productId, item.quantity - 1)}
-                            >
-                              <Icon name="remove" size={16} color={colors.secondary} />
-                            </TouchableOpacity>
-                            <Text style={[commonStyles.text, { minWidth: 30, textAlign: 'center' }]}>
-                              {item.quantity}
-                            </Text>
-                            <TouchableOpacity
-                              style={{
-                                backgroundColor: colors.success,
-                                borderRadius: 15,
-                                width: 30,
-                                height: 30,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginLeft: spacing.xs,
-                              }}
-                              onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
-                            >
-                              <Icon name="add" size={16} color={colors.secondary} />
-                            </TouchableOpacity>
-                          </View>
+                          <TouchableOpacity
+                            style={{
+                              backgroundColor: colors.success,
+                              borderRadius: 15,
+                              width: 30,
+                              height: 30,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: spacing.xs,
+                            }}
+                            onPress={() => updateCartItemQuantity(item.productId, item.quantity + 1)}
+                          >
+                            <Icon name="add" size={16} color={colors.secondary} />
+                          </TouchableOpacity>
                         </View>
                       </View>
                     </View>
+                  </View>
+                ))}
+              </View>
+
+              {/* Customer Selection */}
+              <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
+                  Client
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    commonStyles.inputContainer,
+                    { paddingVertical: spacing.md, justifyContent: 'space-between', flexDirection: 'row' }
+                  ]}
+                  onPress={() => setShowCustomerModal(true)}
+                >
+                  <Text style={[
+                    commonStyles.text,
+                    { color: selectedCustomer ? colors.text : colors.textLight }
+                  ]}>
+                    {selectedCustomer ? selectedCustomer.name : 'Sélectionner un client (optionnel)'}
+                  </Text>
+                  <Icon name="chevron-down" size={20} color={colors.textLight} />
+                </TouchableOpacity>
+                
+                {selectedCustomer && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
+                      Solde: {formatCurrency(Math.abs(selectedCustomer.balance))} 
+                      <Text>{selectedCustomer.balance >= 0 ? ' (crédit)' : ' (dette)'}</Text>
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Payment Method */}
+              <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
+                  Mode de paiement
+                </Text>
+                <View style={checkoutStyles.paymentMethodsContainer}>
+                  {[
+                    { key: 'cash', label: 'Espèces', icon: 'cash' },
+                    { key: 'mobile_money', label: 'Mobile Money', icon: 'phone' },
+                    { key: 'credit', label: 'Crédit', icon: 'time' },
+                    { key: 'card', label: 'Carte', icon: 'card' },
+                  ].map(method => (
+                    <TouchableOpacity
+                      key={method.key}
+                      style={[
+                        checkoutStyles.paymentMethodButton,
+                        paymentMethod === method.key && checkoutStyles.paymentMethodButtonActive,
+                      ]}
+                      onPress={() => setPaymentMethod(method.key as any)}
+                    >
+                      <Icon 
+                        name={method.icon} 
+                        size={16} 
+                        color={paymentMethod === method.key ? colors.secondary : colors.text} 
+                      />
+                      <Text style={[
+                        checkoutStyles.paymentMethodText,
+                        paymentMethod === method.key && checkoutStyles.paymentMethodTextActive,
+                        { marginTop: 4 }
+                      ]}>
+                        {method.label}
+                      </Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
+              </View>
+            </ScrollView>
 
-                {/* Customer Selection */}
-                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
-                    Client
+            {/* Totals and Actions - Fixed at bottom */}
+            <View style={checkoutStyles.checkoutContainer}>
+              <View style={checkoutStyles.totalRow}>
+                <Text style={checkoutStyles.totalLabel}>Sous-total:</Text>
+                <Text style={checkoutStyles.totalAmount}>
+                  {formatCurrency(cartTotals.subtotal)}
+                </Text>
+              </View>
+              
+              {cartTotals.discount > 0 && (
+                <View style={checkoutStyles.totalRow}>
+                  <Text style={[checkoutStyles.totalLabel, { color: colors.success }]}>Remise:</Text>
+                  <Text style={[checkoutStyles.totalAmount, { color: colors.success }]}>
+                    -{formatCurrency(cartTotals.discount)}
                   </Text>
-                  <TouchableOpacity
-                    style={[
-                      commonStyles.inputContainer,
-                      { paddingVertical: spacing.md, justifyContent: 'space-between', flexDirection: 'row' }
-                    ]}
-                    onPress={() => setShowCustomerModal(true)}
-                  >
-                    <Text style={[
-                      commonStyles.text,
-                      { color: selectedCustomer ? colors.text : colors.textLight }
-                    ]}>
-                      {selectedCustomer ? selectedCustomer.name : 'Sélectionner un client (optionnel)'}
-                    </Text>
-                    <Icon name="chevron-down" size={20} color={colors.textLight} />
-                  </TouchableOpacity>
-                  
-                  {selectedCustomer && (
-                    <View style={{ marginTop: spacing.sm }}>
-                      <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                        Solde: {formatCurrency(Math.abs(selectedCustomer.balance))} 
-                        {selectedCustomer.balance >= 0 ? ' (crédit)' : ' (dette)'}
-                      </Text>
-                    </View>
-                  )}
                 </View>
+              )}
+              
+              <View style={[checkoutStyles.totalRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }]}>
+                <Text style={[checkoutStyles.totalLabel, { fontSize: fontSizes.lg, fontWeight: 'bold' }]}>
+                  Total:
+                </Text>
+                <Text style={[checkoutStyles.totalAmount, { fontSize: fontSizes.xl, fontWeight: 'bold' }]}>
+                  {formatCurrency(cartTotals.total)}
+                </Text>
+              </View>
 
-                {/* Payment Method */}
-                <View style={{ padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.border }}>
-                  <Text style={[commonStyles.text, { fontWeight: '600', marginBottom: spacing.md }]}>
-                    Mode de paiement
-                  </Text>
-                  <View style={checkoutStyles.paymentMethodsContainer}>
-                    {[
-                      { key: 'cash', label: 'Espèces', icon: 'cash' },
-                      { key: 'mobile_money', label: 'Mobile Money', icon: 'phone' },
-                      { key: 'credit', label: 'Crédit', icon: 'time' },
-                      { key: 'card', label: 'Carte', icon: 'card' },
-                    ].map(method => (
-                      <TouchableOpacity
-                        key={method.key}
-                        style={[
-                          checkoutStyles.paymentMethodButton,
-                          paymentMethod === method.key && checkoutStyles.paymentMethodButtonActive,
-                        ]}
-                        onPress={() => setPaymentMethod(method.key as any)}
-                      >
-                        <Icon 
-                          name={method.icon} 
-                          size={16} 
-                          color={paymentMethod === method.key ? colors.secondary : colors.text} 
-                        />
-                        <Text style={[
-                          checkoutStyles.paymentMethodText,
-                          paymentMethod === method.key && checkoutStyles.paymentMethodTextActive,
-                          { marginTop: 4 }
-                        ]}>
-                          {method.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                {/* Totals */}
-                <View style={checkoutStyles.checkoutContainer}>
-                  <View style={checkoutStyles.totalRow}>
-                    <Text style={checkoutStyles.totalLabel}>Sous-total:</Text>
-                    <Text style={checkoutStyles.totalAmount}>
-                      {formatCurrency(cartTotals.subtotal)}
-                    </Text>
-                  </View>
-                  
-                  {cartTotals.discount > 0 && (
-                    <View style={checkoutStyles.totalRow}>
-                      <Text style={[checkoutStyles.totalLabel, { color: colors.success }]}>Remise:</Text>
-                      <Text style={[checkoutStyles.totalAmount, { color: colors.success }]}>
-                        -{formatCurrency(cartTotals.discount)}
-                      </Text>
-                    </View>
-                  )}
-                  
-                  <View style={[checkoutStyles.totalRow, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm }]}>
-                    <Text style={[checkoutStyles.totalLabel, { fontSize: fontSizes.lg, fontWeight: 'bold' }]}>
-                      Total:
-                    </Text>
-                    <Text style={[checkoutStyles.totalAmount, { fontSize: fontSizes.xl, fontWeight: 'bold' }]}>
-                      {formatCurrency(cartTotals.total)}
-                    </Text>
-                  </View>
-
-                  {/* Action Buttons */}
-                  <View style={{ flexDirection: 'row', marginTop: spacing.lg, gap: spacing.md }}>
-                    <TouchableOpacity
-                      style={[buttonStyles.secondary, { flex: 1 }]}
-                      onPress={clearCart}
-                    >
-                      <Text style={buttonStyles.secondaryText}>Vider le panier</Text>
-                    </TouchableOpacity>
-                    
-                    <TouchableOpacity
-                      style={[buttonStyles.primary, { flex: 2 }]}
-                      onPress={processSale}
-                    >
-                      <Text style={buttonStyles.primaryText}>Finaliser la vente</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </ScrollView>
+              {/* Action Buttons */}
+              <View style={{ flexDirection: 'row', marginTop: spacing.lg, gap: spacing.md }}>
+                <TouchableOpacity
+                  style={[buttonStyles.secondary, { flex: 1 }]}
+                  onPress={clearCart}
+                >
+                  <Text style={buttonStyles.secondaryText}>Vider le panier</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[buttonStyles.primary, { flex: 2 }]}
+                  onPress={processSale}
+                >
+                  <Text style={buttonStyles.primaryText}>Finaliser la vente</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </SafeAreaView>
         </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>

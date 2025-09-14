@@ -552,7 +552,12 @@ export default function ReportsScreen() {
       const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
       
       // Use safe property access for FileSystem
-      const documentDirectory = FileSystem.documentDirectory || '';
+      const documentDirectory = FileSystem.documentDirectory;
+      if (!documentDirectory) {
+        Alert.alert('Erreur', 'Impossible d\'accéder au système de fichiers');
+        return;
+      }
+      
       const fileUri = `${documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, csvData, {

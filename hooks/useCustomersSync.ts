@@ -132,11 +132,29 @@ export const useCustomersSync = () => {
   };
 };
 
-// Hook for triggering customer updates across the app
+// Hook for triggering customer updates across the app - CORRECTED
 export const useCustomersUpdater = () => {
-  const triggerCustomersUpdate = useCallback((customers: Customer[]) => {
-    console.log('useCustomersUpdater: Triggering customers update event, count:', customers.length);
-    customersEmitter.emit(customers);
+  const triggerCustomersUpdate = useCallback(async (customersData?: Customer[]) => {
+    try {
+      console.log('useCustomersUpdater: Triggering customers update event...');
+      
+      // If customers data is provided, use it; otherwise fetch from storage
+      let customers: Customer[];
+      if (customersData && Array.isArray(customersData)) {
+        customers = customersData;
+        console.log('useCustomersUpdater: Using provided customers data, count:', customers.length);
+      } else {
+        console.log('useCustomersUpdater: Fetching customers from storage...');
+        customers = await getCustomers();
+        console.log('useCustomersUpdater: Fetched customers from storage, count:', customers.length);
+      }
+      
+      // Emit the update event
+      customersEmitter.emit(customers);
+      console.log('useCustomersUpdater: Customers update event emitted successfully');
+    } catch (error) {
+      console.error('useCustomersUpdater: Error triggering customers update:', error);
+    }
   }, []);
 
   return {
@@ -188,7 +206,7 @@ export const useDashboardSync = () => {
   };
 };
 
-// Hook for triggering dashboard updates across the app
+// Hook for triggering dashboard updates across the app - CORRECTED
 export const useDashboardUpdater = () => {
   const triggerDashboardUpdate = useCallback(() => {
     console.log('useDashboardUpdater: Triggering dashboard update event');

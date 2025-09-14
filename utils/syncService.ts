@@ -36,8 +36,11 @@ export class SyncService {
   private isRunning = false;
   private isInitialized = false;
 
-  async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+  async initializeSyncService(): Promise<void> {
+    if (this.isInitialized) {
+      console.log('Sync Service already initialized');
+      return;
+    }
 
     console.log('Initializing Sync Service...');
     
@@ -58,6 +61,38 @@ export class SyncService {
       console.log('Sync Service initialized successfully');
     } catch (error) {
       console.error('Error initializing Sync Service:', error);
+      throw error;
+    }
+  }
+
+  async getSyncStatus(): Promise<SyncStatus> {
+    try {
+      const [online, lastSyncStr, queue] = await Promise.all([
+        isOnline(),
+        AsyncStorage.getItem(STORAGE_KEYS.LAST_SYNC),
+        this.getQueue(),
+      ]);
+
+      const lastSync = lastSyncStr ? new Date(lastSyncStr) : null;
+      const pendingItems = queue.filter(item => item.attempts < 5).length;
+      const failedItems = queue.filter(item => item.attempts >= 5).length;
+
+      return {
+        isOnline: online,
+        lastSync,
+        pendingItems,
+        failedItems,
+        isRunning: this.isRunning,
+      };
+    } catch (error) {
+      console.error('Error getting sync status:', error);
+      return {
+        isOnline: false,
+        lastSync: null,
+        pendingItems: 0,
+        failedItems: 0,
+        isRunning: false,
+      };
     }
   }
 
@@ -79,7 +114,7 @@ export class SyncService {
     }, 120000);
   }
 
-  async stop(): Promise<void> {
+  async stopAutoSync(): Promise<void> {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
@@ -89,6 +124,11 @@ export class SyncService {
     cashierSyncService.stop();
     
     this.isRunning = false;
+    console.log('Auto sync stopped');
+  }
+
+  async stop(): Promise<void> {
+    await this.stopAutoSync();
     this.isInitialized = false;
     console.log('Sync Service stopped');
   }
@@ -144,10 +184,10 @@ export class SyncService {
     }
   }
 
-  async syncNow(): Promise<boolean> {
+  async syncNow(): Promise<{ success: boolean; message?: string }> {
     if (this.isRunning) {
       console.log('Sync already running, skipping...');
-      return false;
+      return { success: false, message: 'Sync already running' };
     }
 
     try {
@@ -157,7 +197,7 @@ export class SyncService {
       const online = await isOnline();
       if (!online) {
         console.log('Offline - skipping sync');
-        return false;
+        return { success: false, message: 'Device is offline' };
       }
 
       const queue = await this.getQueue();
@@ -165,7 +205,7 @@ export class SyncService {
 
       if (pendingItems.length === 0) {
         console.log('No pending items to sync');
-        return true;
+        return { success: true, message: 'No items to sync' };
       }
 
       console.log(`Syncing ${pendingItems.length} items...`);
@@ -210,10 +250,16 @@ export class SyncService {
       await AsyncStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
 
       console.log(`Sync completed: ${syncedCount} synced, ${failedCount} failed`);
-      return failedCount === 0;
+      return { 
+        success: failedCount === 0, 
+        message: `${syncedCount} synced, ${failedCount} failed` 
+      };
     } catch (error) {
       console.error('Sync process error:', error);
-      return false;
+      return { 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Unknown error' 
+      };
     } finally {
       this.isRunning = false;
     }
@@ -301,37 +347,6 @@ export class SyncService {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
-  async getStatus(): Promise<SyncStatus> {
-    try {
-      const [online, lastSyncStr, queue] = await Promise.all([
-        isOnline(),
-        AsyncStorage.getItem(STORAGE_KEYS.LAST_SYNC),
-        this.getQueue(),
-      ]);
-
-      const lastSync = lastSyncStr ? new Date(lastSyncStr) : null;
-      const pendingItems = queue.filter(item => item.attempts < 5).length;
-      const failedItems = queue.filter(item => item.attempts >= 5).length;
-
-      return {
-        isOnline: online,
-        lastSync,
-        pendingItems,
-        failedItems,
-        isRunning: this.isRunning,
-      };
-    } catch (error) {
-      console.error('Error getting sync status:', error);
-      return {
-        isOnline: false,
-        lastSync: null,
-        pendingItems: 0,
-        failedItems: 0,
-        isRunning: false,
-      };
-    }
-  }
-
   async clearFailedItems(): Promise<void> {
     try {
       const queue = await this.getQueue();
@@ -368,14 +383,17 @@ export class SyncService {
   }
 }
 
-// Initialize sync service function
-export const initializeSyncService = async (): Promise<void> => {
-  try {
-    await syncService.initialize();
-  } catch (error) {
-    console.error('Error initializing sync service:', error);
-  }
-};
-
 // Export singleton instance
 export const syncService = new SyncService();
+
+// Initialize sync service function - CORRECTED
+export const initializeSyncService = async (): Promise<void> => {
+  try {
+    console.log('initializeSyncService: Starting initialization...');
+    await syncService.initializeSyncService();
+    console.log('initializeSyncService: Completed successfully');
+  } catch (error) {
+    console.error('initializeSyncService: Error during initialization:', error);
+    throw error;
+  }
+};

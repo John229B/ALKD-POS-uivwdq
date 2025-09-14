@@ -1,18 +1,18 @@
 
-import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCustomersSync, useCustomersUpdater, useDashboardUpdater } from '../../hooks/useCustomersSync';
 import { router } from 'expo-router';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../../styles/commonStyles';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, getCategories, getApplicablePrice, storeCustomers, formatQuantityWithUnit } from '../../utils/storage';
+import { useCustomersSync, useCustomersUpdater, useDashboardUpdater } from '../../hooks/useCustomersSync';
 import { useAuthState } from '../../hooks/useAuth';
 import { cashierSyncService } from '../../utils/cashierSyncService';
 import Icon from '../../components/Icon';
 import uuid from 'react-native-uuid';
 import AddCustomerModal from '../../components/AddCustomerModal';
 import { Product, Customer, CartItem, Sale, SaleItem, AppSettings, Category, UNITS_OF_MEASUREMENT } from '../../types';
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, Modal, Dimensions, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 
 const fabStyles = StyleSheet.create({
   fab: {
@@ -160,8 +160,8 @@ export default function POSScreen() {
   const [loading, setLoading] = useState(true);
 
   const { user } = useAuthState();
-  const triggerCustomersUpdate = useCustomersUpdater();
-  const triggerDashboardUpdate = useDashboardUpdater();
+  const { triggerCustomersUpdate } = useCustomersUpdater();
+  const { triggerDashboardUpdate } = useDashboardUpdater();
   useCustomersSync();
 
   const loadData = useCallback(async () => {
@@ -197,7 +197,7 @@ export default function POSScreen() {
     } else {
       setCustomerAdvanceBalance(0);
     }
-  }, [selectedCustomer, paymentMethod]);
+  }, [selectedCustomer, paymentMethod, customerAdvanceBalance]);
 
   // Calculate cart totals
   const cartTotals = useMemo(() => {
@@ -385,8 +385,10 @@ export default function POSScreen() {
       setProducts(updatedProducts);
       setCustomers(updatedCustomers);
       
-      // Trigger updates
-      triggerCustomersUpdate();
+      // Trigger updates - CORRECTED: Pass the updated customers data
+      console.log('POS: Triggering customers update with updated data...');
+      await triggerCustomersUpdate(updatedCustomers);
+      console.log('POS: Triggering dashboard update...');
       triggerDashboardUpdate();
 
       console.log('Sale processed successfully:', sale.id);
@@ -414,7 +416,7 @@ export default function POSScreen() {
     setShowCustomerModal(false);
   }, []);
 
-  const handleAddCustomer = useCallback((customerData: Omit<Customer, 'id' | 'balance' | 'transactions'>) => {
+  const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions'>) => {
     const newCustomer: Customer = {
       ...customerData,
       id: uuid.v4() as string,
@@ -424,10 +426,13 @@ export default function POSScreen() {
 
     const updatedCustomers = [...customers, newCustomer];
     setCustomers(updatedCustomers);
-    storeCustomers(updatedCustomers);
+    await storeCustomers(updatedCustomers);
     setSelectedCustomer(newCustomer);
     setShowAddCustomerModal(false);
-    triggerCustomersUpdate();
+    
+    // Trigger customers update
+    console.log('POS: New customer added, triggering update...');
+    await triggerCustomersUpdate(updatedCustomers);
   }, [customers, triggerCustomersUpdate]);
 
   if (loading) {

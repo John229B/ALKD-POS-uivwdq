@@ -226,8 +226,17 @@ export default function DashboardScreen() {
       });
 
       // Load sync status
-      const status = await syncService.getSyncStatus();
-      setSyncStatus(status);
+      try {
+        const status = await syncService.getSyncStatus();
+        setSyncStatus({
+          pendingCount: status.pendingItems,
+          lastSyncTime: status.lastSync || undefined,
+          isOnline: status.isOnline,
+        });
+      } catch (error) {
+        console.error('Dashboard: Error loading sync status:', error);
+        setSyncStatus({ pendingCount: 0, isOnline: false });
+      }
 
       console.log('Dashboard: Data loaded successfully');
     } catch (error) {
@@ -250,11 +259,11 @@ export default function DashboardScreen() {
     loadDashboardData();
   }, [dashboardLastUpdate, loadDashboardData]);
 
-  // Initialize sync service properly
+  // Initialize sync service properly - CORRECTED
   useEffect(() => {
     const initializeSync = async () => {
       try {
-        console.log('Dashboard: Initializing sync service...');
+        console.log('Dashboard: Sync service initialization starting...');
         await syncService.initializeSyncService();
         console.log('Dashboard: Sync service initialized successfully');
       } catch (error) {
@@ -265,7 +274,10 @@ export default function DashboardScreen() {
     initializeSync();
     
     return () => {
-      syncService.stopAutoSync();
+      console.log('Dashboard: Cleaning up sync service...');
+      syncService.stopAutoSync().catch(error => {
+        console.error('Dashboard: Error stopping sync service:', error);
+      });
     };
   }, []);
 
@@ -311,16 +323,25 @@ export default function DashboardScreen() {
   }, [settings]);
 
   const handleSyncNow = async () => {
-    const result = await syncService.syncNow();
-    if (result.success) {
-      console.log('Sync completed successfully');
-    } else {
-      console.log('Sync failed:', result.message);
+    try {
+      console.log('Dashboard: Manual sync triggered');
+      const result = await syncService.syncNow();
+      if (result.success) {
+        console.log('Dashboard: Sync completed successfully');
+      } else {
+        console.log('Dashboard: Sync failed:', result.message);
+      }
+      
+      // Refresh sync status
+      const status = await syncService.getSyncStatus();
+      setSyncStatus({
+        pendingCount: status.pendingItems,
+        lastSyncTime: status.lastSync || undefined,
+        isOnline: status.isOnline,
+      });
+    } catch (error) {
+      console.error('Dashboard: Error during manual sync:', error);
     }
-    
-    // Refresh sync status
-    const status = await syncService.getSyncStatus();
-    setSyncStatus(status);
   };
 
   const quickActions = useMemo(() => [

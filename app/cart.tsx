@@ -307,6 +307,12 @@ export default function CartScreen() {
   const { triggerDashboardUpdate } = useDashboardUpdater();
   const { customers: syncedCustomers } = useCustomersSync();
 
+  const formatCurrency = useCallback((amount: number): string => {
+    if (!settings) return amount.toString();
+    const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
+    return `${amount.toLocaleString()} ${currency}`;
+  }, [settings]);
+
   const loadData = useCallback(async () => {
     try {
       console.log('Loading cart data...');
@@ -348,7 +354,7 @@ export default function CartScreen() {
         }
       }
     }
-  }, [syncedCustomers, selectedCustomer]);
+  }, [syncedCustomers, selectedCustomer, formatCurrency]);
 
   // Calculate cart totals with discounts
   const cartTotals = useMemo(() => {
@@ -375,12 +381,6 @@ export default function CartScreen() {
   const remainingAmount = useMemo(() => {
     return Math.max(0, cartTotals.total - useAdvanceAmount);
   }, [cartTotals.total, useAdvanceAmount]);
-
-  const formatCurrency = useCallback((amount: number): string => {
-    if (!settings) return amount.toString();
-    const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
-    return `${amount.toLocaleString()} ${currency}`;
-  }, [settings]);
 
   const updateCartItemQuantity = useCallback((productId: string, quantity: number) => {
     if (quantity <= 0) {

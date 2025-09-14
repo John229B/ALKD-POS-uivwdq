@@ -551,7 +551,7 @@ export default function ReportsScreen() {
 
       const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
       
-      // Use FileSystem.documentDirectory directly with proper null check
+      // Use safe property access for FileSystem.documentDirectory
       const documentDirectory = FileSystem.documentDirectory;
       if (!documentDirectory) {
         Alert.alert('Erreur', 'Impossible d\'accéder au système de fichiers');
@@ -561,7 +561,7 @@ export default function ReportsScreen() {
       const fileUri = `${documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, csvData, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: 'utf8',
       });
 
       if (await Sharing.isAvailableAsync()) {

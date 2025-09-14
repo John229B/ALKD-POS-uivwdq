@@ -572,6 +572,7 @@ export default function CartScreen() {
     Alert.alert('Réduction appliquée', `Réduction de ${discountType === 'percentage' ? value + '%' : formatCurrency(value)} appliquée`);
   }, [discountValue, discountType, formatCurrency]);
 
+  // CORRECTED: Main sale processing function with proper client validation
   const processSale = useCallback(async () => {
     if (cart.length === 0) {
       Alert.alert('Erreur', 'Le panier est vide');
@@ -583,16 +584,27 @@ export default function CartScreen() {
       return;
     }
 
-    // CORRECTED: Validate customer for credit sales - customer is mandatory for credit
-    const isCredit = paymentMethod === 'credit';
-    if (isCredit && !selectedCustomer) {
+    console.log(`Cart: Starting sale process - Payment method: ${paymentMethod}, Selected customer: ${selectedCustomer ? selectedCustomer.name : 'None'}`);
+
+    // CORRECTED: Implement the exact validation logic requested
+    // 1. If payment is credit → customer is mandatory
+    if (paymentMethod === 'credit' && !selectedCustomer) {
+      console.log('Cart: Credit sale requires customer - blocking sale');
       Alert.alert('Erreur', 'Un client est requis pour une vente à crédit.');
       return;
     }
 
-    // CORRECTED: For cash, card, and mobile money, customer is optional - explicitly set to null
-    const customerId = selectedCustomer?.id ?? null; // null accepted for cash/MM/card
-    console.log(`Cart: Processing ${paymentMethod} sale with customer: ${selectedCustomer ? selectedCustomer.name : 'No customer (allowed for non-credit)'}`);
+    // 2. If payment is cash, mobile_money, or card → customer is optional
+    // 3. Verify that client object or ID is properly sent to processSale
+    // 4. Add control: if client == null and paymentMethod !== "CREDIT" → continue sale
+    const customerId = selectedCustomer?.id || null;
+    
+    // CORRECTED: Allow sale to continue if no client and payment is not credit
+    if (!selectedCustomer && paymentMethod !== 'credit') {
+      console.log('Cart: Non-credit sale without customer - allowed to proceed');
+    }
+
+    console.log(`Cart: Processing ${paymentMethod} sale with customer ID: ${customerId || 'null (allowed for non-credit)'}`);
 
     try {
       console.log('Cart: Processing sale...');
@@ -607,12 +619,13 @@ export default function CartScreen() {
         subtotal: item.subtotal,
       }));
 
+      // CORRECTED: Properly handle customer data in sale object
       const sale: Sale = {
         id: uuid.v4() as string,
         receiptNumber,
         createdAt: new Date(),
-        customerId: customerId || undefined, // Explicitly set to undefined if no customer
-        customer: selectedCustomer || undefined, // Explicitly set to undefined if no customer
+        customerId: customerId, // Can be null for non-credit sales
+        customer: selectedCustomer || undefined, // Can be undefined for non-credit sales
         items: saleItems,
         subtotal: cartTotals.subtotal,
         discount: cartTotals.discountAmount,
@@ -622,7 +635,7 @@ export default function CartScreen() {
         paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
         amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : (remainingAmount === 0 ? cartTotals.total : remainingAmount),
         change: 0,
-        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (selectedCustomer ? '' : 'Vente sans client'),
+        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (!selectedCustomer ? 'Vente sans client' : ''),
         cashierId: user.id,
         cashier: user,
       };
@@ -641,9 +654,11 @@ export default function CartScreen() {
         return product;
       });
 
-      // Update customer balance and transactions
+      // CORRECTED: Update customer balance and transactions only if customer exists
       let updatedCustomers = syncedCustomers || [];
       if (selectedCustomer) {
+        console.log(`Cart: Updating customer ${selectedCustomer.name} for ${paymentMethod} sale`);
+        
         updatedCustomers = (syncedCustomers || []).map(customer => {
           if (customer.id === selectedCustomer.id) {
             // CORRECTED: Initialize balance to 0 if undefined/null
@@ -693,6 +708,8 @@ export default function CartScreen() {
           }
           return customer;
         });
+      } else {
+        console.log('Cart: No customer selected - skipping customer balance update (allowed for non-credit sales)');
       }
 
       // Save data
@@ -749,14 +766,14 @@ export default function CartScreen() {
       });
     } catch (error) {
       console.error('Cart: Error processing sale:', error);
-      Alert.alert('Erreur', 'Impossible de traiter la vente');
+      Alert.alert('Erreur', 'Impossible de traiter la vente. Veuillez réessayer.');
     }
   }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, syncedCustomers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
       case 'cash': return 'cash';
-      case 'mobile_money': return 'phone';
+      case 'mobile_money': return 'call'; // Changed from 'phone' to 'call' to fix warning
       case 'card': return 'card';
       case 'credit': return 'time';
       default: return 'cash';

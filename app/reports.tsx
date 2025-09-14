@@ -148,11 +148,6 @@ const getPaymentMethodLabel = (method: string): string => {
   }
 };
 
-// Safe property access for FileSystem properties due to TypeScript definition issues
-const getDocumentDirectory = () => {
-  return (FileSystem as any).documentDirectory || '';
-};
-
 export default function ReportsScreen() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -556,17 +551,16 @@ export default function ReportsScreen() {
 
       const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
       
-      // Use safe property access for FileSystem
-      const documentDirectory = getDocumentDirectory();
-      if (!documentDirectory) {
+      // Use FileSystem.documentDirectory directly
+      if (!FileSystem.documentDirectory) {
         Alert.alert('Erreur', 'Impossible d\'accéder au système de fichiers');
         return;
       }
       
-      const fileUri = `${documentDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, csvData, {
-        encoding: 'utf8',
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
       if (await Sharing.isAvailableAsync()) {

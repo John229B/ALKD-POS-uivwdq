@@ -110,10 +110,10 @@ export default function TransactionSuccessScreen() {
       const balanceChange = type === 'gave' ? numAmount : -numAmount;
       const calculatedNewBalance = currentBalance + balanceChange;
 
-      // Update customer - don't use creditBalance field, calculate from sales
+      // CORRECTED: Update customer using balance field (not creditBalance)
       const updatedCustomer: Customer = {
         ...foundCustomer,
-        creditBalance: Math.max(0, calculatedNewBalance), // Keep for compatibility but calculate from sales
+        balance: calculatedNewBalance, // Use balance field consistently
         totalPurchases: type === 'gave' 
           ? foundCustomer.totalPurchases + numAmount 
           : foundCustomer.totalPurchases,

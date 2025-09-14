@@ -118,7 +118,7 @@ export default function CustomersScreen() {
     
     console.log(`Final balance for ${customer.name}: ${balance}`);
     return balance;
-  }, [sales, sales.length]);
+  }, [sales]);
 
   const getCustomerLastOperation = useCallback((customer: Customer) => {
     const customerSales = sales.filter(sale => sale.customerId === customer.id);

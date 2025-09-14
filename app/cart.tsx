@@ -380,7 +380,7 @@ export default function CartScreen() {
   
   const [cart, setCart] = useState<CartItem[]>(cartData);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedClient, setSelectedClient] = useState<Customer | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
@@ -442,15 +442,15 @@ export default function CartScreen() {
       console.log('Cart: Updating from synced customers:', syncedCustomers.length);
       
       // Update selected customer if it exists in the new data
-      if (selectedCustomer) {
-        const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedCustomer.id);
+      if (selectedClient) {
+        const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedClient.id);
         if (updatedSelectedCustomer) {
-          setSelectedCustomer(updatedSelectedCustomer);
+          setSelectedClient(updatedSelectedCustomer);
           console.log(`Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
         }
       }
     }
-  }, [syncedCustomers, selectedCustomer, formatCurrency]);
+  }, [syncedCustomers, selectedClient, formatCurrency]);
 
   // Calculate cart totals with discounts
   const cartTotals = useMemo(() => {
@@ -511,7 +511,7 @@ export default function CartScreen() {
           style: 'destructive',
           onPress: () => {
             setCart([]);
-            setSelectedCustomer(null);
+            setSelectedClient(null);
             setPaymentMethod('cash');
             setUseAdvanceAmount(0);
             setDiscountValue('');
@@ -523,7 +523,7 @@ export default function CartScreen() {
   }, []);
 
   const selectCustomer = useCallback((customer: Customer) => {
-    setSelectedCustomer(customer);
+    setSelectedClient(customer);
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
     setCustomerSearchQuery(''); // Reset search
@@ -545,7 +545,7 @@ export default function CartScreen() {
     const currentCustomers = await getCustomers();
     const updatedCustomers = [...currentCustomers, newCustomer];
     await storeCustomers(updatedCustomers);
-    setSelectedCustomer(newCustomer);
+    setSelectedClient(newCustomer);
     setShowAddCustomerModal(false);
     
     console.log('Cart: New customer added, triggering update...');
@@ -572,43 +572,25 @@ export default function CartScreen() {
     Alert.alert('Réduction appliquée', `Réduction de ${discountType === 'percentage' ? value + '%' : formatCurrency(value)} appliquée`);
   }, [discountValue, discountType, formatCurrency]);
 
-  // CORRECTED: Main sale processing function with proper client validation
+  // CORRECTED: Main sale processing function with exact logic requested
   const processSale = useCallback(async () => {
-    if (cart.length === 0) {
-      Alert.alert('Erreur', 'Le panier est vide');
-      return;
-    }
-
-    if (!user) {
-      Alert.alert('Erreur', 'Utilisateur non connecté');
-      return;
-    }
-
-    console.log(`Cart: Starting sale process - Payment method: ${paymentMethod}, Selected customer: ${selectedCustomer ? selectedCustomer.name : 'None'}`);
-
-    // CORRECTED: Implement the exact validation logic requested
-    // 1. If payment is credit → customer is mandatory
-    if (paymentMethod === 'credit' && !selectedCustomer) {
-      console.log('Cart: Credit sale requires customer - blocking sale');
-      Alert.alert('Erreur', 'Un client est requis pour une vente à crédit.');
-      return;
-    }
-
-    // 2. If payment is cash, mobile_money, or card → customer is optional
-    // 3. Verify that client object or ID is properly sent to processSale
-    // 4. Add control: if client == null and paymentMethod !== "CREDIT" → continue sale
-    const customerId = selectedCustomer?.id || null;
-    
-    // CORRECTED: Allow sale to continue if no client and payment is not credit
-    if (!selectedCustomer && paymentMethod !== 'credit') {
-      console.log('Cart: Non-credit sale without customer - allowed to proceed');
-    }
-
-    console.log(`Cart: Processing ${paymentMethod} sale with customer ID: ${customerId || 'null (allowed for non-credit)'}`);
-
     try {
-      console.log('Cart: Processing sale...');
-      
+      if (cart.length === 0) {
+        Alert.alert("Erreur", "Le panier est vide");
+        return;
+      }
+
+      console.log(`Cart: Processing sale - Payment method: ${paymentMethod}, Selected client: ${selectedClient ? selectedClient.name : 'None'}`);
+
+      // Vérifie le client uniquement si mode de paiement = crédit
+      if (paymentMethod === "credit") {
+        if (!selectedClient || !selectedClient.id) {
+          Alert.alert("Erreur", "Veuillez sélectionner un client pour une vente à crédit");
+          return;
+        }
+      }
+
+      // Prépare la structure de la vente
       const receiptNumber = await getNextReceiptNumber();
       const saleItems: SaleItem[] = cart.map(item => ({
         id: uuid.v4() as string,
@@ -619,13 +601,12 @@ export default function CartScreen() {
         subtotal: item.subtotal,
       }));
 
-      // CORRECTED: Properly handle customer data in sale object
-      const sale: Sale = {
+      const saleData: Sale = {
         id: uuid.v4() as string,
         receiptNumber,
         createdAt: new Date(),
-        customerId: customerId, // Can be null for non-credit sales
-        customer: selectedCustomer || undefined, // Can be undefined for non-credit sales
+        customerId: selectedClient ? selectedClient.id : null, // client optionnel
+        customer: selectedClient || undefined,
         items: saleItems,
         subtotal: cartTotals.subtotal,
         discount: cartTotals.discountAmount,
@@ -635,12 +616,16 @@ export default function CartScreen() {
         paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
         amountPaid: paymentMethod === 'credit' ? useAdvanceAmount : (remainingAmount === 0 ? cartTotals.total : remainingAmount),
         change: 0,
-        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (!selectedCustomer ? 'Vente sans client' : ''),
-        cashierId: user.id,
+        notes: note || (useAdvanceAmount > 0 ? `Avance utilisée: ${formatCurrency(useAdvanceAmount)}` : '') || (!selectedClient ? 'Vente sans client' : ''),
+        cashierId: user?.id || '',
         cashier: user,
       };
 
-      console.log(`Cart: Creating sale: Customer=${selectedCustomer ? selectedCustomer.name : 'None'}, Payment=${paymentMethod}, Total=${formatCurrency(cartTotals.total)}`);
+      console.log(`Cart: Sale data prepared - Customer ID: ${saleData.customerId || 'null'}, Total: ${formatCurrency(cartTotals.total)}`);
+
+      // 🔄 Sauvegarde locale
+      const currentSales = await getSales();
+      await storeSales([...currentSales, saleData]);
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -653,15 +638,25 @@ export default function CartScreen() {
         }
         return product;
       });
+      await storeProducts(updatedProducts);
 
-      // CORRECTED: Update customer balance and transactions only if customer exists
-      let updatedCustomers = syncedCustomers || [];
-      if (selectedCustomer) {
-        console.log(`Cart: Updating customer ${selectedCustomer.name} for ${paymentMethod} sale`);
-        
-        updatedCustomers = (syncedCustomers || []).map(customer => {
-          if (customer.id === selectedCustomer.id) {
-            // CORRECTED: Initialize balance to 0 if undefined/null
+      // Met à jour le solde client si crédit
+      if (paymentMethod === "credit" && selectedClient) {
+        console.log(`Cart: Updating client balance for credit sale - Client: ${selectedClient.name}`);
+        await updateClientBalance(selectedClient.id, -cartTotals.total); // soustraction de la dette
+      }
+
+      // Met à jour l'avance si paiement avec solde
+      if (paymentMethod === "advance" && selectedClient) {
+        console.log(`Cart: Updating client balance for advance payment - Client: ${selectedClient.name}`);
+        await updateClientBalance(selectedClient.id, cartTotals.total * -1); // déduction avance
+      }
+
+      // Update customers in storage if client exists
+      if (selectedClient) {
+        const currentCustomers = await getCustomers();
+        const updatedCustomers = currentCustomers.map(customer => {
+          if (customer.id === selectedClient.id) {
             let newBalance = customer.balance || 0;
             let transactionAmount = cartTotals.total;
             
@@ -692,37 +687,27 @@ export default function CartScreen() {
               paymentMethod,
               description: transactionDescription,
               balance: newBalance,
-              saleId: sale.id,
+              saleId: saleData.id,
             };
 
-            const updatedCustomer = {
+            return {
               ...customer,
               balance: newBalance,
               totalPurchases: customer.totalPurchases + cartTotals.total,
               transactions: [...(customer.transactions || []), newTransaction],
               updatedAt: new Date(),
             };
-
-            console.log(`Cart: Customer ${customer.name} balance updated: ${formatCurrency(customer.balance || 0)} → ${formatCurrency(newBalance)}`);
-            return updatedCustomer;
           }
           return customer;
         });
-      } else {
-        console.log('Cart: No customer selected - skipping customer balance update (allowed for non-credit sales)');
+        
+        await storeCustomers(updatedCustomers);
+        console.log(`Cart: Customer ${selectedClient.name} balance updated successfully`);
       }
 
-      // Save data
-      const currentSales = await getSales();
-      await Promise.all([
-        storeSales([...currentSales, sale]),
-        storeProducts(updatedProducts),
-        storeCustomers(updatedCustomers),
-      ]);
-
       // Sync cashier sale if user is cashier
-      if (user.role === 'cashier') {
-        await cashierSyncService.addCashierSale(sale, user);
+      if (user?.role === 'cashier') {
+        await cashierSyncService.addCashierSale(saleData, user);
         console.log('Cart: Cashier sale added to sync queue');
       }
 
@@ -730,45 +715,73 @@ export default function CartScreen() {
       setProducts(updatedProducts);
       
       // Update selected customer with new balance if applicable
-      if (selectedCustomer) {
-        const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedCustomer.id);
+      if (selectedClient) {
+        const updatedCustomers = await getCustomers();
+        const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedClient.id);
         if (updatedSelectedCustomer) {
-          setSelectedCustomer(updatedSelectedCustomer);
+          setSelectedClient(updatedSelectedCustomer);
           console.log(`Cart: Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
         }
       }
       
-      // CORRECTED: Trigger updates - ensure triggerCustomersUpdate is called as a function
-      console.log('Cart: Triggering customers update...');
+      // Trigger updates
+      console.log('Cart: Triggering customers and dashboard updates...');
       if (typeof triggerCustomersUpdate === 'function') {
         await triggerCustomersUpdate();
-      } else {
-        console.error('Cart: triggerCustomersUpdate is not a function:', typeof triggerCustomersUpdate);
       }
       
-      console.log('Cart: Triggering dashboard update...');
       if (typeof triggerDashboardUpdate === 'function') {
         triggerDashboardUpdate();
-      } else {
-        console.error('Cart: triggerDashboardUpdate is not a function:', typeof triggerDashboardUpdate);
       }
 
-      console.log('Cart: Sale processed successfully:', sale.id);
+      // Nettoyer le panier
+      setCart([]);
+      setSelectedClient(null);
+      setPaymentMethod('cash');
+      setUseAdvanceAmount(0);
+      setDiscountValue('');
+      setNote('');
+
+      Alert.alert("Succès", "Vente enregistrée avec succès ✅");
+
+      console.log('Cart: Sale processed successfully:', saleData.id);
 
       // Navigate to success page
       router.push({
         pathname: '/transaction-success',
         params: {
-          saleId: sale.id,
-          amount: sale.total.toString(),
-          receiptNumber: sale.receiptNumber,
+          saleId: saleData.id,
+          amount: saleData.total.toString(),
+          receiptNumber: saleData.receiptNumber,
         },
       });
+
     } catch (error) {
-      console.error('Cart: Error processing sale:', error);
-      Alert.alert('Erreur', 'Impossible de traiter la vente. Veuillez réessayer.');
+      console.error("Erreur lors du traitement de la vente:", error);
+      Alert.alert("Erreur", "Impossible de traiter la vente");
     }
-  }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, syncedCustomers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
+  }, [cart, cartTotals, paymentMethod, selectedClient, useAdvanceAmount, products, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
+
+  // Helper function to update client balance
+  const updateClientBalance = async (clientId: string, amount: number) => {
+    try {
+      const customers = await getCustomers();
+      const updatedCustomers = customers.map(customer => {
+        if (customer.id === clientId) {
+          return {
+            ...customer,
+            balance: (customer.balance || 0) + amount,
+            updatedAt: new Date(),
+          };
+        }
+        return customer;
+      });
+      await storeCustomers(updatedCustomers);
+      console.log(`Cart: Client balance updated - ID: ${clientId}, Amount: ${formatCurrency(amount)}`);
+    } catch (error) {
+      console.error('Cart: Error updating client balance:', error);
+    }
+  };
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
@@ -847,8 +860,8 @@ export default function CartScreen() {
             <View style={{
               width: 40,
               height: 40,
-              backgroundColor: selectedCustomer 
-                ? ((selectedCustomer.balance || 0) >= 0 ? colors.success : colors.error)
+              backgroundColor: selectedClient 
+                ? ((selectedClient.balance || 0) >= 0 ? colors.success : colors.error)
                 : colors.textLight,
               borderRadius: 20,
               alignItems: 'center',
@@ -857,20 +870,20 @@ export default function CartScreen() {
               <Icon name="person" size={20} color={colors.secondary} />
             </View>
             <View style={styles.customerInfo}>
-              {selectedCustomer ? (
+              {selectedClient ? (
                 <>
-                  <Text style={styles.customerName}>{selectedCustomer.name}</Text>
+                  <Text style={styles.customerName}>{selectedClient.name}</Text>
                   <Text style={[
                     styles.customerBalance,
-                    { color: (selectedCustomer.balance || 0) >= 0 ? colors.success : colors.error }
+                    { color: (selectedClient.balance || 0) >= 0 ? colors.success : colors.error }
                   ]}>
-                    {(selectedCustomer.balance || 0) >= 0 
-                      ? `Avance (j'ai pris): ${formatCurrency(Math.abs(selectedCustomer.balance || 0))}` 
-                      : `Dette (j'ai donné): ${formatCurrency(Math.abs(selectedCustomer.balance || 0))}`
+                    {(selectedClient.balance || 0) >= 0 
+                      ? `Avance (j'ai pris): ${formatCurrency(Math.abs(selectedClient.balance || 0))}` 
+                      : `Dette (j'ai donné): ${formatCurrency(Math.abs(selectedClient.balance || 0))}`
                     }
                   </Text>
-                  {selectedCustomer.phone && (
-                    <Text style={styles.customerPhone}>{selectedCustomer.phone}</Text>
+                  {selectedClient.phone && (
+                    <Text style={styles.customerPhone}>{selectedClient.phone}</Text>
                   )}
                 </>
               ) : (
@@ -890,7 +903,7 @@ export default function CartScreen() {
             <Icon name="chevron-down" size={20} color={colors.textLight} />
           </TouchableOpacity>
 
-          {paymentMethod === 'credit' && !selectedCustomer && (
+          {paymentMethod === 'credit' && !selectedClient && (
             <View style={{
               backgroundColor: colors.warning + '20',
               padding: spacing.md,
@@ -903,10 +916,10 @@ export default function CartScreen() {
             </View>
           )}
 
-          {selectedCustomer && (selectedCustomer.balance || 0) > 0 && (
+          {selectedClient && (selectedClient.balance || 0) > 0 && (
             <View style={styles.advanceCard}>
               <Text style={styles.advanceTitle}>
-                Avance disponible (j'ai pris): {formatCurrency(selectedCustomer.balance || 0)}
+                Avance disponible (j'ai pris): {formatCurrency(selectedClient.balance || 0)}
               </Text>
               <View style={styles.advanceActions}>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
@@ -918,7 +931,7 @@ export default function CartScreen() {
                     useAdvanceAmount > 0 && commonStyles.chipActive,
                   ]}
                   onPress={() => {
-                    const maxUsable = Math.min(selectedCustomer.balance || 0, cartTotals.total);
+                    const maxUsable = Math.min(selectedClient.balance || 0, cartTotals.total);
                     setUseAdvanceAmount(useAdvanceAmount > 0 ? 0 : maxUsable);
                   }}
                 >
@@ -1078,20 +1091,20 @@ export default function CartScreen() {
             ))}
           </View>
           
-          {selectedCustomer && (selectedCustomer.balance || 0) > 0 && (
+          {selectedClient && (selectedClient.balance || 0) > 0 && (
             <TouchableOpacity
               style={[
                 styles.paymentMethod,
                 { backgroundColor: colors.success + '20', borderColor: colors.success }
               ]}
               onPress={() => {
-                const maxUsable = Math.min(selectedCustomer.balance || 0, cartTotals.total);
+                const maxUsable = Math.min(selectedClient.balance || 0, cartTotals.total);
                 setUseAdvanceAmount(maxUsable);
               }}
             >
               <Icon name="wallet" size={20} color={colors.success} style={styles.paymentIcon} />
               <Text style={[styles.paymentText, { color: colors.success }]}>
-                Utiliser mon avance ({formatCurrency(selectedCustomer.balance || 0)})
+                Utiliser mon avance ({formatCurrency(selectedClient.balance || 0)})
               </Text>
             </TouchableOpacity>
           )}
@@ -1203,10 +1216,10 @@ export default function CartScreen() {
                 <TouchableOpacity
                   style={[
                     styles.customerListItem,
-                    !selectedCustomer && styles.customerListItemSelected,
+                    !selectedClient && styles.customerListItemSelected,
                   ]}
                   onPress={() => {
-                    setSelectedCustomer(null);
+                    setSelectedClient(null);
                     setUseAdvanceAmount(0);
                     setShowCustomerModal(false);
                     setCustomerSearchQuery('');
@@ -1223,7 +1236,7 @@ export default function CartScreen() {
                       Recommandé pour les paiements comptants
                     </Text>
                   </View>
-                  {!selectedCustomer && (
+                  {!selectedClient && (
                     <Icon name="checkmark-circle" size={20} color={colors.success} />
                   )}
                 </TouchableOpacity>
@@ -1265,7 +1278,7 @@ export default function CartScreen() {
                     key={customer.id}
                     style={[
                       styles.customerListItem,
-                      selectedCustomer?.id === customer.id && styles.customerListItemSelected,
+                      selectedClient?.id === customer.id && styles.customerListItemSelected,
                     ]}
                     onPress={() => selectCustomer(customer)}
                   >

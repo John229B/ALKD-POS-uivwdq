@@ -21,39 +21,30 @@ const STORAGE_KEYS = {
   TICKET_SETTINGS: 'alkd_pos_ticket_settings',
 };
 
-// Generic storage functions
+// Generic storage functions with improved error handling
 export const storeData = async (key: string, data: any): Promise<void> => {
   try {
     const jsonValue = JSON.stringify(data);
-    await AsyncStorage.setItem(key, jsonValue).catch(storageError => {
-      console.error(`AsyncStorage.setItem failed for key ${key}:`, storageError);
-      throw storageError;
-    });
-    console.log(`Data stored successfully for key: ${key}`);
+    await AsyncStorage.setItem(key, jsonValue);
+    console.log(`✅ Storage: Data stored successfully for key: ${key}`);
   } catch (error) {
-    console.error(`Error storing data for key ${key}:`, error);
+    console.error(`❌ Storage: Error storing data for key ${key}:`, error);
     throw error;
   }
 };
 
 export const getData = async <T>(key: string): Promise<T | null> => {
   try {
-    const jsonValue = await AsyncStorage.getItem(key).catch(storageError => {
-      console.error(`AsyncStorage.getItem failed for key ${key}:`, storageError);
-      return null;
-    });
-    
+    const jsonValue = await AsyncStorage.getItem(key);
     if (jsonValue != null) {
-      try {
-        return JSON.parse(jsonValue) as T;
-      } catch (parseError) {
-        console.error(`JSON.parse failed for key ${key}:`, parseError);
-        return null;
-      }
+      const parsedData = JSON.parse(jsonValue) as T;
+      console.log(`✅ Storage: Data retrieved successfully for key: ${key}`);
+      return parsedData;
     }
+    console.log(`ℹ️ Storage: No data found for key: ${key}`);
     return null;
   } catch (error) {
-    console.error(`Error getting data for key ${key}:`, error);
+    console.error(`❌ Storage: Error getting data for key ${key}:`, error);
     return null;
   }
 };
@@ -61,9 +52,9 @@ export const getData = async <T>(key: string): Promise<T | null> => {
 export const removeData = async (key: string): Promise<void> => {
   try {
     await AsyncStorage.removeItem(key);
-    console.log(`Data removed successfully for key: ${key}`);
+    console.log(`✅ Storage: Data removed successfully for key: ${key}`);
   } catch (error) {
-    console.error(`Error removing data for key ${key}:`, error);
+    console.error(`❌ Storage: Error removing data for key ${key}:`, error);
     throw error;
   }
 };
@@ -115,14 +106,14 @@ export const clearCurrentEmployee = async (): Promise<void> => {
 
 export const deleteEmployee = async (employeeId: string): Promise<void> => {
   try {
-    console.log('Deleting employee:', employeeId);
+    console.log('🗑️ Storage: Deleting employee:', employeeId);
     const employees = await getEmployees();
     const updatedEmployees = employees.filter(e => e.id !== employeeId);
     await storeEmployees(updatedEmployees);
     await logActivity('admin', 'employees', 'Employee deleted', { employeeId });
-    console.log('Employee deleted successfully');
+    console.log('✅ Storage: Employee deleted successfully');
   } catch (error) {
-    console.error('Error deleting employee:', error);
+    console.error('❌ Storage: Error deleting employee:', error);
     throw error;
   }
 };
@@ -141,7 +132,7 @@ export const logActivity = async (employeeId: string, module: string, action: st
       timestamp: new Date(),
     };
     
-    logs.unshift(newLog); // Add to beginning
+    logs.unshift(newLog);
     
     // Keep only last 1000 logs to prevent storage bloat
     if (logs.length > 1000) {
@@ -149,9 +140,9 @@ export const logActivity = async (employeeId: string, module: string, action: st
     }
     
     await storeData(STORAGE_KEYS.ACTIVITY_LOGS, logs);
-    console.log('Activity logged:', action, 'by', employeeId);
+    console.log('📝 Storage: Activity logged:', action, 'by', employeeId);
   } catch (error) {
-    console.error('Error logging activity:', error);
+    console.error('❌ Storage: Error logging activity:', error);
     // Don't throw error to prevent breaking main functionality
   }
 };
@@ -174,14 +165,14 @@ export const getBluetoothPrinters = async (): Promise<BluetoothPrinter[]> => {
 
 export const deleteBluetoothPrinter = async (printerId: string): Promise<void> => {
   try {
-    console.log('Deleting printer:', printerId);
+    console.log('🗑️ Storage: Deleting printer:', printerId);
     const printers = await getBluetoothPrinters();
     const updatedPrinters = printers.filter(p => p.id !== printerId);
     await storeBluetoothPrinters(updatedPrinters);
     await logActivity('admin', 'printers', 'Printer deleted', { printerId });
-    console.log('Printer deleted successfully');
+    console.log('✅ Storage: Printer deleted successfully');
   } catch (error) {
-    console.error('Error deleting printer:', error);
+    console.error('❌ Storage: Error deleting printer:', error);
     throw error;
   }
 };
@@ -196,7 +187,7 @@ export const setDefaultPrinter = async (printerId: string): Promise<void> => {
     await storeBluetoothPrinters(updatedPrinters);
     await logActivity('admin', 'printers', 'Default printer set', { printerId });
   } catch (error) {
-    console.error('Error setting default printer:', error);
+    console.error('❌ Storage: Error setting default printer:', error);
     throw error;
   }
 };
@@ -236,7 +227,7 @@ export const getTickets = async (): Promise<Ticket[]> => {
 export const addTicket = async (ticket: Ticket): Promise<void> => {
   try {
     const tickets = await getTickets();
-    tickets.unshift(ticket); // Add to beginning
+    tickets.unshift(ticket);
     
     // Keep only last 500 tickets to prevent storage bloat
     if (tickets.length > 500) {
@@ -246,7 +237,7 @@ export const addTicket = async (ticket: Ticket): Promise<void> => {
     await storeTickets(tickets);
     await logActivity(ticket.employeeName, 'tickets', 'Ticket created', { ticketId: ticket.id, receiptNumber: ticket.receiptNumber });
   } catch (error) {
-    console.error('Error adding ticket:', error);
+    console.error('❌ Storage: Error adding ticket:', error);
     throw error;
   }
 };
@@ -264,9 +255,9 @@ export const addToSyncQueue = async (data: Omit<SyncData, 'id' | 'timestamp' | '
     
     queue.push(syncItem);
     await storeData(STORAGE_KEYS.SYNC_QUEUE, queue);
-    console.log('Added to sync queue:', syncItem.type);
+    console.log('📤 Storage: Added to sync queue:', syncItem.type);
   } catch (error) {
-    console.error('Error adding to sync queue:', error);
+    console.error('❌ Storage: Error adding to sync queue:', error);
   }
 };
 
@@ -285,7 +276,7 @@ export const markAsSynced = async (syncId: string): Promise<void> => {
     );
     await storeData(STORAGE_KEYS.SYNC_QUEUE, updatedQueue);
   } catch (error) {
-    console.error('Error marking as synced:', error);
+    console.error('❌ Storage: Error marking as synced:', error);
   }
 };
 
@@ -295,7 +286,7 @@ export const clearSyncedItems = async (): Promise<void> => {
     const unsyncedItems = queue.filter(item => !item.synced);
     await storeData(STORAGE_KEYS.SYNC_QUEUE, unsyncedItems);
   } catch (error) {
-    console.error('Error clearing synced items:', error);
+    console.error('❌ Storage: Error clearing synced items:', error);
   }
 };
 
@@ -319,53 +310,24 @@ export const getProducts = async (): Promise<Product[]> => {
   return products || [];
 };
 
-// New function to delete a product permanently
 export const deleteProduct = async (productId: string): Promise<void> => {
   try {
-    console.log('Deleting product permanently:', productId);
+    console.log('🗑️ Storage: Deleting product permanently:', productId);
     const products = await getProducts();
     const updatedProducts = products.filter(p => p.id !== productId);
     await storeProducts(updatedProducts);
     await logActivity('admin', 'products', 'Product deleted', { productId });
-    console.log('Product deleted successfully');
+    console.log('✅ Storage: Product deleted successfully');
   } catch (error) {
-    console.error('Error deleting product:', error);
+    console.error('❌ Storage: Error deleting product:', error);
     throw error;
   }
 };
 
-// Customer management with real-time sync support
+// CORRECTED: Customer management with simplified and robust logic
 export const storeCustomers = async (customers: Customer[]): Promise<void> => {
   await storeData(STORAGE_KEYS.CUSTOMERS, customers);
-  // Note: Real-time sync event will be triggered by the component that calls this function
-  // using the useCustomersUpdater hook to maintain React Native compatibility
-  console.log('Customers stored successfully:', customers.length);
-};
-
-// Customer service functions for advance/credit operations
-export const applyAdvance = async (customerId: string, amount: number): Promise<void> => {
-  try {
-    console.log(`Applying advance: Customer ${customerId}, Amount: ${amount}`);
-    const customers = await getCustomers();
-    const updatedCustomers = customers.map(customer => {
-      if (customer.id === customerId) {
-        const newBalance = customer.balance - amount;
-        console.log(`Customer ${customer.name}: Balance ${customer.balance} → ${newBalance}`);
-        return {
-          ...customer,
-          balance: newBalance,
-          updatedAt: new Date(),
-        };
-      }
-      return customer;
-    });
-    
-    await storeCustomers(updatedCustomers);
-    console.log('Advance applied successfully');
-  } catch (error) {
-    console.error('Error applying advance:', error);
-    throw error;
-  }
+  console.log('✅ Storage: Customers stored successfully:', customers.length);
 };
 
 export const getCustomers = async (): Promise<Customer[]> => {
@@ -373,12 +335,10 @@ export const getCustomers = async (): Promise<Customer[]> => {
   return customers || [];
 };
 
-// New function to delete a customer permanently
 export const deleteCustomer = async (customerId: string): Promise<void> => {
   try {
-    console.log('Deleting customer permanently:', customerId);
+    console.log('🗑️ Storage: Deleting customer permanently:', customerId);
     
-    // Get current data
     const [customers, sales] = await Promise.all([
       getCustomers(),
       getSales(),
@@ -397,9 +357,9 @@ export const deleteCustomer = async (customerId: string): Promise<void> => {
     ]);
     
     await logActivity('admin', 'customers', 'Customer deleted', { customerId });
-    console.log('Customer and associated sales deleted successfully');
+    console.log('✅ Storage: Customer and associated sales deleted successfully');
   } catch (error) {
-    console.error('Error deleting customer:', error);
+    console.error('❌ Storage: Error deleting customer:', error);
     throw error;
   }
 };
@@ -458,17 +418,15 @@ export const getNextReceiptNumber = async (): Promise<string> => {
   return `REC-${nextCounter.toString().padStart(6, '0')}`;
 };
 
-// Pricing logic utility
+// CORRECTED: Simplified pricing logic utility
 export const getApplicablePrice = (product: Product, quantity: number = 1): { price: number; type: 'retail' | 'wholesale' | 'promotional' } => {
-  // Handle undefined or null product
   if (!product) {
-    console.log('getApplicablePrice called with undefined product');
+    console.log('⚠️ Storage: getApplicablePrice called with undefined product');
     return { price: 0, type: 'retail' };
   }
 
-  // Ensure quantity is a valid number
   if (quantity === undefined || quantity === null || isNaN(quantity) || quantity <= 0) {
-    console.log('getApplicablePrice called with invalid quantity:', quantity);
+    console.log('⚠️ Storage: getApplicablePrice called with invalid quantity:', quantity);
     quantity = 1;
   }
 
@@ -490,18 +448,16 @@ export const getApplicablePrice = (product: Product, quantity: number = 1): { pr
     return { price: product.wholesalePrice, type: 'wholesale' };
   }
   
-  // Default to retail price (ensure it's a valid number)
+  // Default to retail price
   const retailPrice = product.retailPrice || 0;
   return { price: retailPrice, type: 'retail' };
 };
 
 // Utility function to format quantity with unit
 export const formatQuantityWithUnit = (quantity: number, unit: string): string => {
-  // Format fractional quantities nicely
   if (quantity % 1 === 0) {
     return `${quantity} ${unit}`;
   } else {
-    // For fractions, show up to 3 decimal places but remove trailing zeros
     return `${parseFloat(quantity.toFixed(3))} ${unit}`;
   }
 };
@@ -509,7 +465,6 @@ export const formatQuantityWithUnit = (quantity: number, unit: string): string =
 // Network status check
 export const isOnline = async (): Promise<boolean> => {
   try {
-    // Simple connectivity check - in a real app you might want to ping your server
     const response = await fetch('https://www.google.com/favicon.ico', {
       method: 'HEAD',
       mode: 'no-cors',
@@ -520,16 +475,13 @@ export const isOnline = async (): Promise<boolean> => {
   }
 };
 
-// Initialize default data
+// CORRECTED: Initialize default data with better error handling
 export const initializeDefaultData = async (): Promise<void> => {
   try {
-    console.log('Initializing default data...');
+    console.log('🚀 Storage: Initializing default data...');
     
     // Check if users exist, if not create default admin
-    const users = await getUsers().catch(error => {
-      console.error('Error getting users during initialization:', error);
-      return []; // Return empty array if getting users fails
-    });
+    const users = await getUsers();
     
     if (users.length === 0) {
       const defaultAdmin: User = {
@@ -540,17 +492,12 @@ export const initializeDefaultData = async (): Promise<void> => {
         createdAt: new Date(),
         isActive: true,
       };
-      await storeUsers([defaultAdmin]).catch(error => {
-        console.error('Error storing default admin user:', error);
-      });
-      console.log('Default admin user created');
+      await storeUsers([defaultAdmin]);
+      console.log('✅ Storage: Default admin user created');
     }
 
     // Initialize default categories
-    const categories = await getCategories().catch(error => {
-      console.error('Error getting categories during initialization:', error);
-      return []; // Return empty array if getting categories fails
-    });
+    const categories = await getCategories();
     
     if (categories.length === 0) {
       const defaultCategories: Category[] = [
@@ -591,17 +538,12 @@ export const initializeDefaultData = async (): Promise<void> => {
           updatedAt: new Date(),
         },
       ];
-      await storeCategories(defaultCategories).catch(error => {
-        console.error('Error storing default categories:', error);
-      });
-      console.log('Default categories created');
+      await storeCategories(defaultCategories);
+      console.log('✅ Storage: Default categories created');
     }
 
-    // Initialize default products with new pricing structure and units
-    const products = await getProducts().catch(error => {
-      console.error('Error getting products during initialization:', error);
-      return []; // Return empty array if getting products fails
-    });
+    // Initialize default products
+    const products = await getProducts();
     
     if (products.length === 0) {
       const defaultProducts: Product[] = [
@@ -613,7 +555,7 @@ export const initializeDefaultData = async (): Promise<void> => {
           wholesalePrice: 450,
           wholesaleMinQuantity: 12,
           promotionalPrice: 400,
-          promotionalValidUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+          promotionalValidUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           cost: 300,
           barcode: '123456789001',
           categoryId: 'cat-001',
@@ -693,15 +635,13 @@ export const initializeDefaultData = async (): Promise<void> => {
           updatedAt: new Date(),
         },
       ];
-      await storeProducts(defaultProducts).catch(error => {
-        console.error('Error storing default products:', error);
-      });
-      console.log('Default products created');
+      await storeProducts(defaultProducts);
+      console.log('✅ Storage: Default products created');
     }
 
-    console.log('Default data initialization completed');
+    console.log('🎉 Storage: Default data initialization completed successfully');
   } catch (error) {
-    console.error('Error initializing default data:', error);
+    console.error('❌ Storage: Error initializing default data:', error);
     // Don't re-throw the error to prevent app crashes
   }
 };

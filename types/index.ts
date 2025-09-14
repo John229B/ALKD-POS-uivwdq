@@ -112,21 +112,19 @@ export interface Product {
   id: string;
   name: string;
   description?: string;
-  // Multiple pricing system
-  retailPrice: number; // Prix de détail (par défaut)
-  wholesalePrice?: number; // Prix de gros
-  wholesaleMinQuantity?: number; // Quantité minimum pour prix de gros
-  promotionalPrice?: number; // Prix promotionnel
-  promotionalValidUntil?: Date; // Date limite du prix promotionnel
+  retailPrice: number;
+  wholesalePrice?: number;
+  wholesaleMinQuantity?: number;
+  promotionalPrice?: number;
+  promotionalValidUntil?: Date;
   cost: number;
   barcode?: string;
-  categoryId: string; // Changed from category string to categoryId
+  categoryId: string;
   stock: number;
   minStock: number;
   imageUrl?: string;
   isActive: boolean;
-  // New unit of measurement field
-  unit: string; // Unit of measurement (Kg, L, Cart, pièce, etc.)
+  unit: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -137,9 +135,9 @@ export interface Customer {
   phone?: string;
   email?: string;
   address?: string;
-  balance: number; // Changed from creditBalance to balance for consistency
+  balance: number; // Positive = avance (j'ai pris), Negative = dette (j'ai donné)
   totalPurchases: number;
-  transactions?: CustomerTransaction[]; // Added transactions array
+  transactions?: CustomerTransaction[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -148,7 +146,7 @@ export interface CustomerTransaction {
   id: string;
   date: Date;
   amount: number;
-  type: 'gave' | 'took';
+  type: 'gave' | 'took'; // gave = j'ai donné (crédit), took = j'ai pris (paiement)
   paymentMethod: string;
   description: string;
   note?: string;
@@ -159,16 +157,16 @@ export interface CustomerTransaction {
 export interface CartItem {
   productId: string;
   name: string;
-  price: number; // Unit price
-  quantity: number; // Now supports fractional quantities
-  unit: string; // Unit of measurement
-  discount?: number; // Optional discount
-  subtotal: number; // Calculated: (price * quantity) - discount
+  price: number;
+  quantity: number;
+  unit: string;
+  discount?: number;
+  subtotal: number;
 }
 
 export interface Sale {
   id: string;
-  customerId?: string;
+  customerId?: string | null; // CORRECTED: Made explicitly nullable
   customer?: Customer;
   items: SaleItem[];
   subtotal: number;
@@ -190,7 +188,7 @@ export interface SaleItem {
   id: string;
   productId: string;
   product?: Product;
-  quantity: number; // Now supports fractional quantities
+  quantity: number;
   unitPrice: number;
   discount: number;
   subtotal: number;
@@ -235,8 +233,7 @@ export interface AppSettings {
   customThankYouMessage?: string;
   offlineMode: boolean;
   autoSync: boolean;
-  syncInterval: number; // in minutes
-  // New ticket configuration settings
+  syncInterval: number;
   ticketSettings: TicketSettings;
 }
 

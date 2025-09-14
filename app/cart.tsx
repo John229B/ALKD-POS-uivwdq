@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { commonStyles, colors, buttonStyles, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
 import { getProducts, getCustomers, getSales, storeSales, storeProducts, getNextReceiptNumber, getSettings, storeCustomers, formatQuantityWithUnit, getApplicablePrice } from '../utils/storage';
-import { CustomersService } from '../utils/customersService';
 import { useCustomersSync, useCustomersUpdater, useDashboardUpdater } from '../hooks/useCustomersSync';
 import { useAuthState } from '../hooks/useAuth';
 import { cashierSyncService } from '../utils/cashierSyncService';
@@ -281,7 +280,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  // Modal styles - CORRECTED for responsive dropdown
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -291,8 +289,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: screenHeight * 0.85, // 85% of screen height
-    minHeight: screenHeight * 0.5,  // At least 50% of screen height
+    maxHeight: screenHeight * 0.85,
+    minHeight: screenHeight * 0.5,
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
@@ -323,7 +321,7 @@ const styles = StyleSheet.create({
   },
   modalScrollView: {
     flex: 1,
-    maxHeight: screenHeight * 0.6, // Ensure scrollable area
+    maxHeight: screenHeight * 0.6,
   },
   customerListItem: {
     flexDirection: 'row',
@@ -397,14 +395,13 @@ export default function CartScreen() {
   const { triggerDashboardUpdate } = useDashboardUpdater();
   const { customers: syncedCustomers } = useCustomersSync();
 
-  console.log('Cart: Synced customers count:', syncedCustomers?.length || 0);
+  console.log('🛒 Cart: Synced customers count:', syncedCustomers?.length || 0);
 
-  // CORRECTED: Secure formatCurrency function - handles undefined/null amounts
+  // CORRECTED: Secure formatCurrency function
   const formatCurrency = useCallback((amount: number | undefined | null): string => {
-    // CORRECTED: Secure formatCurrency - handle undefined/null amounts
     if (amount === undefined || amount === null || isNaN(amount)) {
-      console.log('formatCurrency: Received undefined/null/NaN amount, returning 0');
-      amount = 0;
+      console.log('⚠️ Cart: formatCurrency received invalid amount, returning 0');
+      return '0';
     }
     
     if (!settings) return amount.toString();
@@ -414,19 +411,19 @@ export default function CartScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      console.log('Cart: Loading data...');
+      console.log('🔄 Cart: Loading data...');
       const [productsData, settingsData] = await Promise.all([
         getProducts(),
         getSettings(),
       ]);
 
-      console.log(`Cart: Loaded ${productsData.length} products`);
+      console.log(`✅ Cart: Loaded ${productsData.length} products`);
       setProducts(productsData);
       setSettings(settingsData);
       setLoading(false);
-      console.log('Cart: Data loaded successfully');
+      console.log('🎉 Cart: Data loaded successfully');
     } catch (error) {
-      console.error('Cart: Error loading data:', error);
+      console.error('❌ Cart: Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données du panier');
       setLoading(false);
     }
@@ -439,14 +436,13 @@ export default function CartScreen() {
   // Update selected customer when sync data changes
   useEffect(() => {
     if (syncedCustomers && syncedCustomers.length > 0) {
-      console.log('Cart: Updating from synced customers:', syncedCustomers.length);
+      console.log('🔄 Cart: Updating from synced customers:', syncedCustomers.length);
       
-      // Update selected customer if it exists in the new data
       if (selectedClient) {
         const updatedSelectedCustomer = syncedCustomers.find(c => c.id === selectedClient.id);
         if (updatedSelectedCustomer) {
           setSelectedClient(updatedSelectedCustomer);
-          console.log(`Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
+          console.log(`✅ Cart: Updated selected customer balance: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
         }
       }
     }
@@ -526,29 +522,28 @@ export default function CartScreen() {
     setSelectedClient(customer);
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
-    setCustomerSearchQuery(''); // Reset search
-    console.log(`Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance || 0)})`);
+    setCustomerSearchQuery('');
+    console.log(`✅ Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance || 0)})`);
   }, [formatCurrency]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
     const newCustomer: Customer = {
       ...customerData,
       id: uuid.v4() as string,
-      balance: 0, // CORRECTED: Initialize balance to 0 (covers both advance and debt)
+      balance: 0,
       totalPurchases: 0,
       transactions: [],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    // Get current customers from storage and add the new one
     const currentCustomers = await getCustomers();
     const updatedCustomers = [...currentCustomers, newCustomer];
     await storeCustomers(updatedCustomers);
     setSelectedClient(newCustomer);
     setShowAddCustomerModal(false);
     
-    console.log('Cart: New customer added, triggering update...');
+    console.log('✅ Cart: New customer added, triggering update...');
     await triggerCustomersUpdate();
   }, [triggerCustomersUpdate]);
 
@@ -572,25 +567,31 @@ export default function CartScreen() {
     Alert.alert('Réduction appliquée', `Réduction de ${discountType === 'percentage' ? value + '%' : formatCurrency(value)} appliquée`);
   }, [discountValue, discountType, formatCurrency]);
 
-  // CORRECTED: Main sale processing function with exact logic requested
+  // CORRECTED: Main sale processing function - COMPLETELY REWRITTEN
   const processSale = useCallback(async () => {
     try {
+      console.log('🚀 Cart: Starting sale processing...');
+      
+      // Basic validation
       if (cart.length === 0) {
         Alert.alert("Erreur", "Le panier est vide");
         return;
       }
 
-      console.log(`Cart: Processing sale - Payment method: ${paymentMethod}, Selected client: ${selectedClient ? selectedClient.name : 'None'}`);
+      console.log(`🔍 Cart: Payment method: ${paymentMethod}, Selected client: ${selectedClient ? selectedClient.name : 'None'}`);
 
-      // Vérifie le client uniquement si mode de paiement = crédit
+      // CORRECTED: Client validation logic - exactly as requested
       if (paymentMethod === "credit") {
         if (!selectedClient || !selectedClient.id) {
           Alert.alert("Erreur", "Veuillez sélectionner un client pour une vente à crédit");
           return;
         }
+        console.log('✅ Cart: Credit sale - client validation passed');
+      } else {
+        console.log('✅ Cart: Non-credit sale - client is optional');
       }
 
-      // Prépare la structure de la vente
+      // Generate receipt number and prepare sale data
       const receiptNumber = await getNextReceiptNumber();
       const saleItems: SaleItem[] = cart.map(item => ({
         id: uuid.v4() as string,
@@ -601,11 +602,12 @@ export default function CartScreen() {
         subtotal: item.subtotal,
       }));
 
+      // CORRECTED: Sale data structure with proper client handling
       const saleData: Sale = {
         id: uuid.v4() as string,
         receiptNumber,
         createdAt: new Date(),
-        customerId: selectedClient ? selectedClient.id : null, // client optionnel
+        customerId: selectedClient ? selectedClient.id : null, // CORRECTED: Explicitly nullable
         customer: selectedClient || undefined,
         items: saleItems,
         subtotal: cartTotals.subtotal,
@@ -621,11 +623,12 @@ export default function CartScreen() {
         cashier: user,
       };
 
-      console.log(`Cart: Sale data prepared - Customer ID: ${saleData.customerId || 'null'}, Total: ${formatCurrency(cartTotals.total)}`);
+      console.log(`✅ Cart: Sale data prepared - Customer ID: ${saleData.customerId || 'null'}, Total: ${formatCurrency(cartTotals.total)}`);
 
-      // 🔄 Sauvegarde locale
+      // Save sale to storage
       const currentSales = await getSales();
       await storeSales([...currentSales, saleData]);
+      console.log('✅ Cart: Sale saved to storage');
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -639,46 +642,38 @@ export default function CartScreen() {
         return product;
       });
       await storeProducts(updatedProducts);
+      console.log('✅ Cart: Product stock updated');
 
-      // Met à jour le solde client si crédit
-      if (paymentMethod === "credit" && selectedClient) {
-        console.log(`Cart: Updating client balance for credit sale - Client: ${selectedClient.name}`);
-        await updateClientBalance(selectedClient.id, -cartTotals.total); // soustraction de la dette
-      }
-
-      // Met à jour l'avance si paiement avec solde
-      if (paymentMethod === "advance" && selectedClient) {
-        console.log(`Cart: Updating client balance for advance payment - Client: ${selectedClient.name}`);
-        await updateClientBalance(selectedClient.id, cartTotals.total * -1); // déduction avance
-      }
-
-      // Update customers in storage if client exists
+      // CORRECTED: Customer balance updates - simplified logic
       if (selectedClient) {
         const currentCustomers = await getCustomers();
         const updatedCustomers = currentCustomers.map(customer => {
           if (customer.id === selectedClient.id) {
             let newBalance = customer.balance || 0;
             let transactionAmount = cartTotals.total;
+            let transactionType: 'gave' | 'took' = 'took';
+            let transactionDescription = `Vente - Reçu #${receiptNumber}`;
             
-            // If using advance, deduct from balance first
+            // Handle advance usage
             if (useAdvanceAmount > 0) {
               newBalance -= useAdvanceAmount;
               transactionAmount -= useAdvanceAmount;
-              console.log(`Cart: Customer ${customer.name}: Used advance ${formatCurrency(useAdvanceAmount)}, new balance: ${formatCurrency(newBalance)}`);
+              transactionDescription += ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})`;
+              console.log(`💰 Cart: Customer ${customer.name}: Used advance ${formatCurrency(useAdvanceAmount)}, new balance: ${formatCurrency(newBalance)}`);
             }
             
-            // If credit sale, add remaining amount as debt (negative balance)
+            // Handle credit sale
             if (paymentMethod === 'credit' && transactionAmount > 0) {
-              newBalance -= transactionAmount;
-              console.log(`Cart: Customer ${customer.name}: Added credit debt ${formatCurrency(transactionAmount)}, final balance: ${formatCurrency(newBalance)}`);
+              newBalance -= transactionAmount; // Debt = negative balance
+              transactionType = 'gave'; // "j'ai donné" = crédit accordé
+              transactionDescription = `Vente à crédit - Reçu #${receiptNumber}`;
+              if (useAdvanceAmount > 0) {
+                transactionDescription += ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})`;
+              }
+              console.log(`💳 Cart: Customer ${customer.name}: Added credit debt ${formatCurrency(transactionAmount)}, final balance: ${formatCurrency(newBalance)}`);
             }
 
             // Create transaction record
-            const transactionType = paymentMethod === 'credit' ? 'gave' as const : 'took' as const;
-            const transactionDescription = paymentMethod === 'credit' 
-              ? `Vente à crédit - Reçu #${receiptNumber}${useAdvanceAmount > 0 ? ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})` : ''}`
-              : `Vente - Reçu #${receiptNumber}${useAdvanceAmount > 0 ? ` (Avance utilisée: ${formatCurrency(useAdvanceAmount)})` : ''}`;
-
             const newTransaction = {
               id: uuid.v4() as string,
               date: new Date(),
@@ -702,30 +697,26 @@ export default function CartScreen() {
         });
         
         await storeCustomers(updatedCustomers);
-        console.log(`Cart: Customer ${selectedClient.name} balance updated successfully`);
+        console.log(`✅ Cart: Customer ${selectedClient.name} balance updated successfully`);
+        
+        // Update selected customer with new balance
+        const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedClient.id);
+        if (updatedSelectedCustomer) {
+          setSelectedClient(updatedSelectedCustomer);
+        }
       }
 
       // Sync cashier sale if user is cashier
       if (user?.role === 'cashier') {
         await cashierSyncService.addCashierSale(saleData, user);
-        console.log('Cart: Cashier sale added to sync queue');
+        console.log('📤 Cart: Cashier sale added to sync queue');
       }
 
       // Update state
       setProducts(updatedProducts);
       
-      // Update selected customer with new balance if applicable
-      if (selectedClient) {
-        const updatedCustomers = await getCustomers();
-        const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedClient.id);
-        if (updatedSelectedCustomer) {
-          setSelectedClient(updatedSelectedCustomer);
-          console.log(`Cart: Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance || 0)}`);
-        }
-      }
-      
       // Trigger updates
-      console.log('Cart: Triggering customers and dashboard updates...');
+      console.log('📡 Cart: Triggering customers and dashboard updates...');
       if (typeof triggerCustomersUpdate === 'function') {
         await triggerCustomersUpdate();
       }
@@ -734,7 +725,7 @@ export default function CartScreen() {
         triggerDashboardUpdate();
       }
 
-      // Nettoyer le panier
+      // Clear cart
       setCart([]);
       setSelectedClient(null);
       setPaymentMethod('cash');
@@ -743,8 +734,7 @@ export default function CartScreen() {
       setNote('');
 
       Alert.alert("Succès", "Vente enregistrée avec succès ✅");
-
-      console.log('Cart: Sale processed successfully:', saleData.id);
+      console.log('🎉 Cart: Sale processed successfully:', saleData.id);
 
       // Navigate to success page
       router.push({
@@ -757,36 +747,15 @@ export default function CartScreen() {
       });
 
     } catch (error) {
-      console.error("Erreur lors du traitement de la vente:", error);
+      console.error("❌ Cart: Error processing sale:", error);
       Alert.alert("Erreur", "Impossible de traiter la vente");
     }
   }, [cart, cartTotals, paymentMethod, selectedClient, useAdvanceAmount, products, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
 
-  // Helper function to update client balance
-  const updateClientBalance = async (clientId: string, amount: number) => {
-    try {
-      const customers = await getCustomers();
-      const updatedCustomers = customers.map(customer => {
-        if (customer.id === clientId) {
-          return {
-            ...customer,
-            balance: (customer.balance || 0) + amount,
-            updatedAt: new Date(),
-          };
-        }
-        return customer;
-      });
-      await storeCustomers(updatedCustomers);
-      console.log(`Cart: Client balance updated - ID: ${clientId}, Amount: ${formatCurrency(amount)}`);
-    } catch (error) {
-      console.error('Cart: Error updating client balance:', error);
-    }
-  };
-
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
       case 'cash': return 'cash';
-      case 'mobile_money': return 'call'; // Changed from 'phone' to 'call' to fix warning
+      case 'mobile_money': return 'call';
       case 'card': return 'card';
       case 'credit': return 'time';
       default: return 'cash';
@@ -803,7 +772,7 @@ export default function CartScreen() {
     }
   };
 
-  // CORRECTED: Use syncedCustomers directly instead of local state
+  // Use syncedCustomers directly
   const availableCustomers = syncedCustomers || [];
   
   // Filter customers based on search query
@@ -1166,7 +1135,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* CORRECTED: Customer Selection Modal - Now responsive and scrollable */}
+      {/* Customer Selection Modal */}
       <Modal
         visible={showCustomerModal}
         animationType="slide"
@@ -1178,7 +1147,6 @@ export default function CartScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View>
                 <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
@@ -1194,7 +1162,6 @@ export default function CartScreen() {
               </TouchableOpacity>
             </View>
             
-            {/* Search bar */}
             <View style={styles.modalSearchContainer}>
               <TextInput
                 style={styles.modalSearchInput}
@@ -1205,7 +1172,6 @@ export default function CartScreen() {
               />
             </View>
 
-            {/* CORRECTED: Scrollable customer list with proper height constraints */}
             <ScrollView 
               style={styles.modalScrollView}
               showsVerticalScrollIndicator={true}

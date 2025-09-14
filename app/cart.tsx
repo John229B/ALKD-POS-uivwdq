@@ -289,7 +289,6 @@ export default function CartScreen() {
   
   const [cart, setCart] = useState<CartItem[]>(cartData);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
@@ -307,6 +306,8 @@ export default function CartScreen() {
   const { triggerDashboardUpdate } = useDashboardUpdater();
   const { customers: syncedCustomers } = useCustomersSync();
 
+  console.log('Cart: Synced customers count:', syncedCustomers?.length || 0);
+
   const formatCurrency = useCallback((amount: number): string => {
     if (!settings) return amount.toString();
     const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
@@ -315,21 +316,19 @@ export default function CartScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      console.log('Loading cart data...');
-      const [productsData, customersData, settingsData] = await Promise.all([
+      console.log('Cart: Loading data...');
+      const [productsData, settingsData] = await Promise.all([
         getProducts(),
-        getCustomers(),
         getSettings(),
       ]);
 
-      console.log(`Loaded ${productsData.length} products, ${customersData.length} customers`);
+      console.log(`Cart: Loaded ${productsData.length} products`);
       setProducts(productsData);
-      setCustomers(customersData);
       setSettings(settingsData);
       setLoading(false);
-      console.log('Cart data loaded successfully');
+      console.log('Cart: Data loaded successfully');
     } catch (error) {
-      console.error('Error loading cart data:', error);
+      console.error('Cart: Error loading data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données du panier');
       setLoading(false);
     }
@@ -339,11 +338,10 @@ export default function CartScreen() {
     loadData();
   }, [loadData]);
 
-  // Update customers when sync data changes
+  // Update selected customer when sync data changes
   useEffect(() => {
     if (syncedCustomers && syncedCustomers.length > 0) {
-      console.log('Cart: Updating customers from sync:', syncedCustomers.length);
-      setCustomers(syncedCustomers);
+      console.log('Cart: Updating from synced customers:', syncedCustomers.length);
       
       // Update selected customer if it exists in the new data
       if (selectedCustomer) {
@@ -431,7 +429,7 @@ export default function CartScreen() {
     setShowCustomerModal(false);
     setUseAdvanceAmount(0);
     setCustomerSearchQuery(''); // Reset search
-    console.log(`Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance)})`);
+    console.log(`Cart: Selected customer: ${customer.name} (Balance: ${formatCurrency(customer.balance)})`);
   }, [formatCurrency]);
 
   const handleAddCustomer = useCallback(async (customerData: Omit<Customer, 'id' | 'balance' | 'transactions' | 'totalPurchases' | 'createdAt' | 'updatedAt'>) => {
@@ -445,15 +443,16 @@ export default function CartScreen() {
       updatedAt: new Date(),
     };
 
-    const updatedCustomers = [...customers, newCustomer];
-    setCustomers(updatedCustomers);
+    // Get current customers from storage and add the new one
+    const currentCustomers = await getCustomers();
+    const updatedCustomers = [...currentCustomers, newCustomer];
     await storeCustomers(updatedCustomers);
     setSelectedCustomer(newCustomer);
     setShowAddCustomerModal(false);
     
     console.log('Cart: New customer added, triggering update...');
     await triggerCustomersUpdate();
-  }, [customers, triggerCustomersUpdate]);
+  }, [triggerCustomersUpdate]);
 
   const applyDiscount = useCallback(() => {
     if (!discountValue) {
@@ -486,19 +485,19 @@ export default function CartScreen() {
       return;
     }
 
-    // Validate customer for credit sales - customer is mandatory for credit
+    // CORRECTED: Validate customer for credit sales - customer is mandatory for credit
     const isCredit = paymentMethod === 'credit';
     if (isCredit && !selectedCustomer) {
-      Alert.alert('Client requis', 'Sélectionnez un client pour une vente à crédit.');
+      Alert.alert('Erreur', 'Un client est requis pour une vente à crédit.');
       return;
     }
 
-    // For cash, card, and mobile money, customer is optional
-    const customerId = selectedCustomer?.id ?? null; // Explicitly set to null if no customer
-    console.log(`Processing ${paymentMethod} sale with customer: ${selectedCustomer ? selectedCustomer.name : 'No customer'}`);
+    // CORRECTED: For cash, card, and mobile money, customer is optional - explicitly set to null
+    const customerId = selectedCustomer?.id ?? null; // null accepted for cash/MM/card
+    console.log(`Cart: Processing ${paymentMethod} sale with customer: ${selectedCustomer ? selectedCustomer.name : 'No customer (allowed for non-credit)'}`);
 
     try {
-      console.log('Processing sale from cart...');
+      console.log('Cart: Processing sale...');
       
       const receiptNumber = await getNextReceiptNumber();
       const saleItems: SaleItem[] = cart.map(item => ({
@@ -530,7 +529,7 @@ export default function CartScreen() {
         cashier: user,
       };
 
-      console.log(`Creating sale: Customer=${selectedCustomer ? selectedCustomer.name : 'None'}, Payment=${paymentMethod}, Total=${formatCurrency(cartTotals.total)}`);
+      console.log(`Cart: Creating sale: Customer=${selectedCustomer ? selectedCustomer.name : 'None'}, Payment=${paymentMethod}, Total=${formatCurrency(cartTotals.total)}`);
 
       // Update product stock
       const updatedProducts = products.map(product => {
@@ -545,9 +544,9 @@ export default function CartScreen() {
       });
 
       // Update customer balance and transactions
-      let updatedCustomers = customers;
+      let updatedCustomers = syncedCustomers || [];
       if (selectedCustomer) {
-        updatedCustomers = customers.map(customer => {
+        updatedCustomers = (syncedCustomers || []).map(customer => {
           if (customer.id === selectedCustomer.id) {
             let newBalance = customer.balance;
             let transactionAmount = cartTotals.total;
@@ -556,13 +555,13 @@ export default function CartScreen() {
             if (useAdvanceAmount > 0) {
               newBalance -= useAdvanceAmount;
               transactionAmount -= useAdvanceAmount;
-              console.log(`Customer ${customer.name}: Used advance ${formatCurrency(useAdvanceAmount)}, new balance: ${formatCurrency(newBalance)}`);
+              console.log(`Cart: Customer ${customer.name}: Used advance ${formatCurrency(useAdvanceAmount)}, new balance: ${formatCurrency(newBalance)}`);
             }
             
             // If credit sale, add remaining amount as debt (negative balance)
             if (paymentMethod === 'credit' && transactionAmount > 0) {
               newBalance -= transactionAmount;
-              console.log(`Customer ${customer.name}: Added credit debt ${formatCurrency(transactionAmount)}, final balance: ${formatCurrency(newBalance)}`);
+              console.log(`Cart: Customer ${customer.name}: Added credit debt ${formatCurrency(transactionAmount)}, final balance: ${formatCurrency(newBalance)}`);
             }
 
             // Create transaction record
@@ -590,7 +589,7 @@ export default function CartScreen() {
               updatedAt: new Date(),
             };
 
-            console.log(`Customer ${customer.name} balance updated: ${formatCurrency(customer.balance)} → ${formatCurrency(newBalance)}`);
+            console.log(`Cart: Customer ${customer.name} balance updated: ${formatCurrency(customer.balance)} → ${formatCurrency(newBalance)}`);
             return updatedCustomer;
           }
           return customer;
@@ -608,29 +607,37 @@ export default function CartScreen() {
       // Sync cashier sale if user is cashier
       if (user.role === 'cashier') {
         await cashierSyncService.addCashierSale(sale, user);
-        console.log('Cashier sale added to sync queue');
+        console.log('Cart: Cashier sale added to sync queue');
       }
 
       // Update state
       setProducts(updatedProducts);
-      setCustomers(updatedCustomers);
       
       // Update selected customer with new balance if applicable
       if (selectedCustomer) {
         const updatedSelectedCustomer = updatedCustomers.find(c => c.id === selectedCustomer.id);
         if (updatedSelectedCustomer) {
           setSelectedCustomer(updatedSelectedCustomer);
-          console.log(`Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance)}`);
+          console.log(`Cart: Selected customer balance updated in real-time: ${formatCurrency(updatedSelectedCustomer.balance)}`);
         }
       }
       
-      // Trigger updates
+      // CORRECTED: Trigger updates - ensure triggerCustomersUpdate is called as a function
       console.log('Cart: Triggering customers update...');
-      await triggerCustomersUpdate();
+      if (typeof triggerCustomersUpdate === 'function') {
+        await triggerCustomersUpdate();
+      } else {
+        console.error('Cart: triggerCustomersUpdate is not a function:', typeof triggerCustomersUpdate);
+      }
+      
       console.log('Cart: Triggering dashboard update...');
-      triggerDashboardUpdate();
+      if (typeof triggerDashboardUpdate === 'function') {
+        triggerDashboardUpdate();
+      } else {
+        console.error('Cart: triggerDashboardUpdate is not a function:', typeof triggerDashboardUpdate);
+      }
 
-      console.log('Sale processed successfully from cart:', sale.id);
+      console.log('Cart: Sale processed successfully:', sale.id);
 
       // Navigate to success page
       router.push({
@@ -642,10 +649,10 @@ export default function CartScreen() {
         },
       });
     } catch (error) {
-      console.error('Error processing sale from cart:', error);
+      console.error('Cart: Error processing sale:', error);
       Alert.alert('Erreur', 'Impossible de traiter la vente');
     }
-  }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, customers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
+  }, [cart, cartTotals, paymentMethod, selectedCustomer, useAdvanceAmount, products, syncedCustomers, user, triggerCustomersUpdate, triggerDashboardUpdate, note, formatCurrency, remainingAmount]);
 
   const getPaymentMethodIcon = (method: string) => {
     switch (method) {
@@ -667,15 +674,18 @@ export default function CartScreen() {
     }
   };
 
+  // CORRECTED: Use syncedCustomers directly instead of local state
+  const availableCustomers = syncedCustomers || [];
+  
   // Filter customers based on search query
   const filteredCustomers = useMemo(() => {
-    if (!customerSearchQuery) return customers;
+    if (!customerSearchQuery) return availableCustomers;
     
-    return customers.filter(customer =>
+    return availableCustomers.filter(customer =>
       customer.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
       (customer.phone && customer.phone.includes(customerSearchQuery))
     );
-  }, [customers, customerSearchQuery]);
+  }, [availableCustomers, customerSearchQuery]);
 
   if (loading) {
     return (
@@ -1059,7 +1069,7 @@ export default function CartScreen() {
               <View>
                 <Text style={commonStyles.subtitle}>Sélectionner un client</Text>
                 <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>
-                  {customers.length} client{customers.length !== 1 ? 's' : ''} disponible{customers.length !== 1 ? 's' : ''}
+                  {availableCustomers.length} client{availableCustomers.length !== 1 ? 's' : ''} disponible{availableCustomers.length !== 1 ? 's' : ''}
                 </Text>
               </View>
               <TouchableOpacity onPress={() => {

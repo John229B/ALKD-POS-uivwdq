@@ -1,5 +1,4 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -14,21 +13,21 @@ import {
   StyleSheet,
   Animated
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { commonStyles, colors, spacing, fontSizes, isSmallScreen } from '../styles/commonStyles';
 import Icon from '../components/Icon';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Sharing from 'expo-sharing';
+import { router } from 'expo-router';
 import { getSales, getProducts, getCustomers, getSettings, getCategories, getEmployees } from '../utils/storage';
-import { useCustomersSync, useDashboardSync } from '../hooks/useCustomersSync';
 import { Sale, Product, Customer, AppSettings, Category } from '../types';
 import { AuthUser } from '../types/auth';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
-const { width: screenWidth } = Dimensions.get('window');
-const chartWidth = Math.min(screenWidth - (spacing.lg * 2), 350);
+import * as FileSystem from 'expo-file-system';
+import { useCustomersSync, useDashboardSync } from '../hooks/useCustomersSync';
+import { useAuthState } from '../hooks/useAuth';
+import { cashierSyncService } from '../utils/cashierSyncService';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 
 interface ReportFilters {
   dateRange: 'today' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
@@ -49,8 +48,8 @@ interface ReportData {
   averageOrderValue: number;
   totalDebts: number;
   totalAdvances: number;
-  totalJaiDonne: number; // Total "J'ai donné" from all transactions
-  totalJaiPris: number;  // Total "J'ai pris" from all transactions
+  totalJaiDonne: number;
+  totalJaiPris: number;
   topProducts: {
     product: Product;
     quantity: number;
@@ -95,212 +94,166 @@ interface ReportData {
   };
 }
 
-// Fonction utilitaire pour les libellés des moyens de paiement
+const styles = StyleSheet.create({
+  syncStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 8,
+    marginBottom: spacing.md,
+  },
+  syncStatusText: {
+    marginLeft: spacing.sm,
+    fontSize: fontSizes.sm,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  cashierHeader: {
+    backgroundColor: colors.warning + '20',
+    padding: spacing.md,
+    borderRadius: 8,
+    marginBottom: spacing.lg,
+  },
+  cashierHeaderText: {
+    color: colors.warning,
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  restrictedAccess: {
+    backgroundColor: colors.error + '20',
+    padding: spacing.lg,
+    borderRadius: 8,
+    alignItems: 'center',
+    margin: spacing.lg,
+  },
+  restrictedText: {
+    color: colors.error,
+    fontSize: fontSizes.md,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+});
+
 const getPaymentMethodLabel = (method: string): string => {
-  const labels: { [key: string]: string } = {
-    cash: 'Espèces',
-    mobile_money: 'Mobile Money',
-    credit: 'Crédit',
-    advance: 'Avance'
-  };
-  return labels[method] || method;
+  switch (method) {
+    case 'cash': return 'Espèces';
+    case 'mobile_money': return 'Mobile Money';
+    case 'credit': return 'Crédit';
+    case 'card': return 'Carte';
+    default: return method;
+  }
 };
 
 export default function ReportsScreen() {
-  const { customers } = useCustomersSync();
-  const { lastUpdate: dashboardLastUpdate } = useDashboardSync();
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [employees, setEmployees] = useState<AuthUser[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState<'start' | 'end' | null>(null);
-  const [activeChart, setActiveChart] = useState<'revenue' | 'sales' | 'products' | 'payments' | 'filters'>('revenue');
   const [animatedValue] = useState(new Animated.Value(0));
-  
+  const [syncStatus, setSyncStatus] = useState<{
+    lastSyncTime: Date | null;
+    pendingCount: number;
+    failedCount: number;
+  }>({ lastSyncTime: null, pendingCount: 0, failedCount: 0 });
+
+  const { user } = useAuthState();
+  const { customersLastUpdate } = useCustomersSync();
+  const { dashboardLastUpdate } = useDashboardSync();
+
   const [filters, setFilters] = useState<ReportFilters>({
     dateRange: 'month',
-    paymentMethods: ['cash', 'mobile_money', 'credit', 'advance'],
-    creditStatus: ['paid', 'credit', 'partial'],
+    paymentMethods: [],
+    creditStatus: [],
     debtType: 'all',
   });
 
-  // Couleurs distinctes pour les graphiques multi-filtres
-  const filterColors = [
-    '#FFD700', // Jaune (couleur principale)
-    '#FF6B6B', // Rouge corail
-    '#4ECDC4', // Turquoise
-    '#45B7D1', // Bleu ciel
-    '#96CEB4', // Vert menthe
-    '#FFEAA7', // Jaune pâle
-    '#DDA0DD', // Violet clair
-    '#98D8C8', // Vert d'eau
-    '#F7DC6F', // Jaune doré
-    '#BB8FCE', // Lavande
-  ];
-
   const loadData = useCallback(async () => {
     try {
+      setLoading(true);
       console.log('Loading reports data...');
-      const [salesData, productsData, settingsData, categoriesData, employeesData] = await Promise.all([
+
+      const [salesData, productsData, customersData, settingsData, categoriesData, employeesData] = await Promise.all([
         getSales(),
         getProducts(),
+        getCustomers(),
         getSettings(),
         getCategories(),
-        getEmployees()
+        getEmployees(),
       ]);
-      
-      setSales(salesData || []);
-      setProducts(productsData || []);
+
+      // Filter sales based on user role
+      let filteredSales = salesData;
+      if (user?.role === 'cashier') {
+        // Cashiers can only see their own sales
+        filteredSales = salesData.filter(sale => sale.employeeId === user.id);
+        console.log(`Filtered ${filteredSales.length} sales for cashier ${user.username}`);
+      }
+
+      setSales(filteredSales);
+      setProducts(productsData);
+      setCustomers(customersData);
       setSettings(settingsData);
-      setCategories(categoriesData || []);
-      setEmployees(employeesData || []);
-      console.log(`Reports data loaded successfully - ${customers.length} customers (from sync), ${salesData?.length || 0} sales`);
+      setCategories(categoriesData);
+      setEmployees(employeesData);
+
+      // Load sync status for cashiers
+      if (user?.role === 'cashier') {
+        const status = await cashierSyncService.getSyncStatus();
+        setSyncStatus(status);
+      }
+
+      console.log('Reports data loaded successfully');
     } catch (error) {
       console.error('Error loading reports data:', error);
       Alert.alert('Erreur', 'Impossible de charger les données des rapports');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [customers.length]);
+  }, [user]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
+  useEffect(() => {
+    loadData();
   }, [loadData]);
 
   useEffect(() => {
     loadData();
-    // Animation d'entrée fluide
-    Animated.timing(animatedValue, {
-      toValue: 1,
-      duration: 600,
-      useNativeDriver: true,
-    }).start();
-  }, [loadData, animatedValue]);
+  }, [customersLastUpdate, loadData]);
 
-  // Real-time updates when dashboard data changes
   useEffect(() => {
-    console.log('Reports: Dashboard data updated, refreshing reports...');
     loadData();
   }, [dashboardLastUpdate, loadData]);
 
-  // Real-time updates when customers data changes
   useEffect(() => {
-    console.log('Reports: Customers data updated, refreshing reports...');
-    if (customers.length > 0) {
-      // Trigger a refresh to ensure data consistency
-      loadData();
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: false,
+    }).start();
+  }, [loadData, animatedValue]);
+
+  // Initialize cashier sync service
+  useEffect(() => {
+    if (user?.role === 'cashier') {
+      cashierSyncService.initialize();
+      return () => {
+        cashierSyncService.stop();
+      };
     }
-  }, [customers, loadData]);
-
-  const filteredSales = useMemo(() => {
-    if (!sales.length) return [];
-
-    let filtered = sales.filter(sale => {
-      // Filter by payment methods
-      if (!filters.paymentMethods.includes(sale.paymentMethod)) return false;
-      
-      // Filter by credit status
-      if (!filters.creditStatus.includes(sale.paymentStatus)) return false;
-      
-      // Filter by customer
-      if (filters.customerId && sale.customerId !== filters.customerId) return false;
-      
-      // Filter by employee
-      if (filters.employeeId && sale.employeeId !== filters.employeeId) return false;
-      
-      // Filter by product
-      if (filters.productId) {
-        const hasProduct = sale.items.some(item => item.productId === filters.productId);
-        if (!hasProduct) return false;
-      }
-      
-      // Filter by category
-      if (filters.categoryId) {
-        const hasCategory = sale.items.some(item => {
-          const product = products.find(p => p.id === item.productId);
-          return product?.categoryId === filters.categoryId;
-        });
-        if (!hasCategory) return false;
-      }
-
-      // Filter by debt type (J'ai donné/J'ai pris)
-      if (filters.debtType !== 'all') {
-        // Check if this is a manual transaction
-        if (sale.items.length === 0 && sale.notes) {
-          if (filters.debtType === 'gave' && !sale.notes.includes("J'ai donné")) return false;
-          if (filters.debtType === 'took' && !sale.notes.includes("J'ai pris")) return false;
-        } else {
-          // For regular sales, filter based on payment status
-          if (filters.debtType === 'gave' && sale.paymentStatus === 'paid') return false;
-          if (filters.debtType === 'took' && sale.paymentStatus !== 'paid') return false;
-        }
-      }
-      
-      return true;
-    });
-
-    // Filter by date range
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (filters.dateRange) {
-      case 'today':
-        filtered = filtered.filter(sale => 
-          new Date(sale.createdAt) >= startOfToday
-        );
-        break;
-      case 'week':
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(sale => 
-          new Date(sale.createdAt) >= weekAgo
-        );
-        break;
-      case 'month':
-        const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(sale => 
-          new Date(sale.createdAt) >= monthAgo
-        );
-        break;
-      case 'quarter':
-        const quarterAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(sale => 
-          new Date(sale.createdAt) >= quarterAgo
-        );
-        break;
-      case 'year':
-        const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        filtered = filtered.filter(sale => 
-          new Date(sale.createdAt) >= yearAgo
-        );
-        break;
-      case 'custom':
-        if (filters.startDate) {
-          filtered = filtered.filter(sale => 
-            new Date(sale.createdAt) >= filters.startDate!
-          );
-        }
-        if (filters.endDate) {
-          filtered = filtered.filter(sale => 
-            new Date(sale.createdAt) <= filters.endDate!
-          );
-        }
-        break;
-    }
-
-    console.log(`Filtered sales: ${filtered.length} out of ${sales.length} total sales`);
-    return filtered;
-  }, [sales, filters, products]);
+  }, [user]);
 
   const reportData = useMemo((): ReportData => {
-    console.log('Calculating report data...');
-    
-    if (!filteredSales.length && !customers.length) {
+    if (!sales.length || !products.length || !customers.length) {
       return {
         totalRevenue: 0,
         totalSales: 0,
@@ -316,1842 +269,667 @@ export default function ReportsScreen() {
         categoryPerformance: [],
         employeePerformance: [],
         debtAnalysis: { totalGave: 0, totalTook: 0, netBalance: 0 },
-        filterBreakdown: {
-          clients: [],
-          products: [],
-          employees: [],
-          categories: [],
-          paymentMethods: []
-        }
+        filterBreakdown: { clients: [], products: [], employees: [], categories: [], paymentMethods: [] },
       };
     }
 
+    // Apply date filters
+    let filteredSales = sales;
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (filters.dateRange) {
+      case 'today':
+        filteredSales = sales.filter(sale => sale.date >= startOfToday);
+        break;
+      case 'week':
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        filteredSales = sales.filter(sale => sale.date >= weekAgo);
+        break;
+      case 'month':
+        const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+        filteredSales = sales.filter(sale => sale.date >= monthAgo);
+        break;
+      case 'quarter':
+        const quarterAgo = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+        filteredSales = sales.filter(sale => sale.date >= quarterAgo);
+        break;
+      case 'year':
+        const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+        filteredSales = sales.filter(sale => sale.date >= yearAgo);
+        break;
+      case 'custom':
+        if (filters.startDate && filters.endDate) {
+          filteredSales = sales.filter(sale => 
+            sale.date >= filters.startDate! && sale.date <= filters.endDate!
+          );
+        }
+        break;
+    }
+
+    // Apply other filters
+    if (filters.paymentMethods.length > 0) {
+      filteredSales = filteredSales.filter(sale => 
+        filters.paymentMethods.includes(sale.paymentMethod)
+      );
+    }
+
+    if (filters.creditStatus.length > 0) {
+      filteredSales = filteredSales.filter(sale => 
+        filters.creditStatus.includes(sale.status)
+      );
+    }
+
+    if (filters.customerId) {
+      filteredSales = filteredSales.filter(sale => sale.customerId === filters.customerId);
+    }
+
+    if (filters.employeeId) {
+      filteredSales = filteredSales.filter(sale => sale.employeeId === filters.employeeId);
+    }
+
+    // Calculate basic metrics
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
     const totalSales = filteredSales.length;
     const averageOrderValue = totalSales > 0 ? totalRevenue / totalSales : 0;
 
-    // Calculate "J'ai donné" and "J'ai pris" totals from ALL sales (not just filtered)
-    // This matches the customer details page logic exactly
+    // Calculate debt analysis
     let totalJaiDonne = 0;
     let totalJaiPris = 0;
-    
-    // Process all sales to calculate totals (same logic as customer-details.tsx)
-    sales.forEach(sale => {
-      // Check if this is a manual transaction (J'ai pris/donné)
-      if (sale.items.length === 0 && sale.notes) {
-        if (sale.notes.includes("J'ai donné")) {
-          totalJaiDonne += sale.total;
-        } else if (sale.notes.includes("J'ai pris")) {
-          totalJaiPris += sale.total;
-        }
-      } else {
-        // Regular sales transactions
-        if (sale.paymentStatus === 'credit') {
-          totalJaiDonne += sale.total; // Credit sale = "J'ai donné"
-        } else if (sale.paymentStatus === 'partial') {
-          const unpaidAmount = sale.total - (sale.amountPaid || 0);
-          totalJaiDonne += unpaidAmount; // Unpaid portion = "J'ai donné"
-          
-          const paidAmount = sale.amountPaid || 0;
-          if (paidAmount > 0) {
-            totalJaiPris += paidAmount; // Paid portion = "J'ai pris"
-          }
-        } else if (sale.paymentStatus === 'paid') {
-          totalJaiPris += sale.total; // Fully paid = "J'ai pris"
-          
-          // Check for overpayment
-          const overpayment = (sale.amountPaid || sale.total) - sale.total;
-          if (overpayment > 0) {
-            totalJaiPris += overpayment; // Overpayment = additional "J'ai pris"
-          }
-        }
-      }
-    });
 
-    // Calculate current balances from customers (same as customer page)
-    let totalDebts = 0;
-    let totalAdvances = 0;
-    
     customers.forEach(customer => {
-      if (customer.balance < 0) {
-        totalAdvances += Math.abs(customer.balance); // Customer has credit (J'ai pris)
-      } else if (customer.balance > 0) {
-        totalDebts += customer.balance; // Customer owes money (J'ai donné)
-      }
+      customer.transactions?.forEach(transaction => {
+        if (transaction.type === 'gave') {
+          totalJaiDonne += transaction.amount;
+        } else if (transaction.type === 'took') {
+          totalJaiPris += transaction.amount;
+        }
+      });
     });
 
-    console.log('Report totals calculated:', {
-      totalJaiDonne,
-      totalJaiPris,
-      totalDebts,
-      totalAdvances,
-      netBalance: totalAdvances - totalDebts
-    });
+    const debtAnalysis = {
+      totalGave: totalJaiDonne,
+      totalTook: totalJaiPris,
+      netBalance: totalJaiPris - totalJaiDonne,
+    };
 
-    // Top products analysis (from filtered sales)
-    const productStats = new Map();
+    // Calculate top products
+    const productSales = new Map<string, { quantity: number; revenue: number }>();
     filteredSales.forEach(sale => {
       sale.items.forEach(item => {
-        const existing = productStats.get(item.productId) || { quantity: 0, revenue: 0 };
-        productStats.set(item.productId, {
+        const existing = productSales.get(item.productId) || { quantity: 0, revenue: 0 };
+        productSales.set(item.productId, {
           quantity: existing.quantity + item.quantity,
-          revenue: existing.revenue + item.subtotal
+          revenue: existing.revenue + (item.price * item.quantity),
         });
       });
     });
 
-    const topProducts = Array.from(productStats.entries())
-      .map(([productId, stats]) => ({
-        product: products.find(p => p.id === productId)!,
-        quantity: stats.quantity,
-        revenue: stats.revenue
-      }))
-      .filter(item => item.product)
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 10);
+    const topProducts = Array.from(productSales.entries())
+      .map(([productId, data]) => {
+        const product = products.find(p => p.id === productId);
+        return product ? { product, ...data } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b!.revenue - a!.revenue)
+      .slice(0, 10) as { product: Product; quantity: number; revenue: number }[];
 
-    // Payment method breakdown (from filtered sales)
-    const paymentStats = new Map();
+    // Calculate payment method breakdown
+    const paymentMethods = new Map<string, { amount: number; count: number }>();
     filteredSales.forEach(sale => {
-      const existing = paymentStats.get(sale.paymentMethod) || { amount: 0, count: 0 };
-      paymentStats.set(sale.paymentMethod, {
+      const existing = paymentMethods.get(sale.paymentMethod) || { amount: 0, count: 0 };
+      paymentMethods.set(sale.paymentMethod, {
         amount: existing.amount + sale.total,
-        count: existing.count + 1
+        count: existing.count + 1,
       });
     });
 
-    const paymentMethodBreakdown = Array.from(paymentStats.entries()).map(([method, stats]) => ({
+    const paymentMethodBreakdown = Array.from(paymentMethods.entries()).map(([method, data]) => ({
       method,
-      amount: stats.amount,
-      count: stats.count
+      ...data,
     }));
 
-    // Credit analysis (from filtered sales)
-    const creditSales = filteredSales.filter(sale => sale.paymentStatus === 'credit');
-    const partialSales = filteredSales.filter(sale => sale.paymentStatus === 'partial');
-    const paidSales = filteredSales.filter(sale => sale.paymentStatus === 'paid');
-
-    const creditAnalysis = {
-      totalCredit: creditSales.reduce((sum, sale) => sum + sale.total, 0),
-      partiallyPaid: partialSales.reduce((sum, sale) => sum + (sale.total - (sale.amountPaid || 0)), 0),
-      fullyPaid: paidSales.reduce((sum, sale) => sum + sale.total, 0)
-    };
-
-    // Daily trends (last 7 days from filtered sales)
-    const dailyTrends = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
+    // Calculate daily trends (last 30 days)
+    const dailyTrends: { date: string; revenue: number; sales: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const dateStr = date.toISOString().split('T')[0];
-      
       const daySales = filteredSales.filter(sale => 
-        sale.createdAt.toString().startsWith(dateStr)
+        sale.date.toISOString().split('T')[0] === dateStr
       );
       
       dailyTrends.push({
         date: dateStr,
         revenue: daySales.reduce((sum, sale) => sum + sale.total, 0),
-        sales: daySales.length
+        sales: daySales.length,
       });
     }
 
-    // Category performance (from filtered sales)
-    const categoryStats = new Map();
-    filteredSales.forEach(sale => {
-      sale.items.forEach(item => {
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          const existing = categoryStats.get(product.categoryId) || { revenue: 0, quantity: 0 };
-          categoryStats.set(product.categoryId, {
-            revenue: existing.revenue + item.subtotal,
-            quantity: existing.quantity + item.quantity
+    // Calculate category performance
+    const categoryPerformance = categories.map(category => {
+      const categoryProducts = products.filter(p => p.categoryId === category.id);
+      let revenue = 0;
+      let quantity = 0;
+
+      filteredSales.forEach(sale => {
+        sale.items.forEach(item => {
+          if (categoryProducts.some(p => p.id === item.productId)) {
+            revenue += item.price * item.quantity;
+            quantity += item.quantity;
+          }
+        });
+      });
+
+      return {
+        category: category.name,
+        revenue,
+        quantity,
+      };
+    }).filter(cat => cat.revenue > 0);
+
+    // Calculate employee performance (only for admin/manager)
+    const employeePerformance: { employee: string; sales: number; revenue: number }[] = [];
+    if (user?.role === 'admin' || user?.role === 'manager') {
+      const empPerf = new Map<string, { sales: number; revenue: number }>();
+      filteredSales.forEach(sale => {
+        if (sale.employeeId) {
+          const existing = empPerf.get(sale.employeeId) || { sales: 0, revenue: 0 };
+          empPerf.set(sale.employeeId, {
+            sales: existing.sales + 1,
+            revenue: existing.revenue + sale.total,
           });
         }
       });
-    });
 
-    const categoryPerformance = Array.from(categoryStats.entries()).map(([categoryId, stats]) => {
-      const category = categories.find(c => c.id === categoryId);
-      return {
-        category: category?.name || 'Catégorie inconnue',
-        revenue: stats.revenue,
-        quantity: stats.quantity
-      };
-    });
-
-    // Employee performance (from filtered sales)
-    const employeeStats = new Map();
-    filteredSales.forEach(sale => {
-      if (sale.employeeId) {
-        const existing = employeeStats.get(sale.employeeId) || { sales: 0, revenue: 0 };
-        employeeStats.set(sale.employeeId, {
-          sales: existing.sales + 1,
-          revenue: existing.revenue + sale.total
-        });
-      }
-    });
-
-    const employeePerformance = Array.from(employeeStats.entries()).map(([employeeId, stats]) => {
-      const employee = employees.find(e => e.id === employeeId);
-      return {
-        employee: employee?.username || 'Employé inconnu',
-        sales: stats.sales,
-        revenue: stats.revenue
-      };
-    });
-
-    // Debt analysis (using calculated totals)
-    const debtAnalysis = {
-      totalGave: totalJaiDonne,
-      totalTook: totalJaiPris,
-      netBalance: totalJaiPris - totalJaiDonne
-    };
-
-    // Filter breakdown for multi-color chart (from filtered sales)
-    const clientStats = new Map();
-    const productFilterStats = new Map();
-    const employeeFilterStats = new Map();
-    const categoryFilterStats = new Map();
-    const paymentFilterStats = new Map();
-
-    filteredSales.forEach(sale => {
-      // Client breakdown
-      const customer = customers.find(c => c.id === sale.customerId);
-      const clientName = customer?.name || 'Client anonyme';
-      clientStats.set(clientName, (clientStats.get(clientName) || 0) + sale.total);
-
-      // Employee breakdown
-      const employee = employees.find(e => e.id === sale.employeeId);
-      const employeeName = employee?.username || 'Employé inconnu';
-      employeeFilterStats.set(employeeName, (employeeFilterStats.get(employeeName) || 0) + sale.total);
-
-      // Payment method breakdown
-      paymentFilterStats.set(sale.paymentMethod, (paymentFilterStats.get(sale.paymentMethod) || 0) + sale.total);
-
-      // Product and category breakdown
-      sale.items.forEach(item => {
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          productFilterStats.set(product.name, (productFilterStats.get(product.name) || 0) + item.subtotal);
-          
-          const category = categories.find(c => c.id === product.categoryId);
-          const categoryName = category?.name || 'Catégorie inconnue';
-          categoryFilterStats.set(categoryName, (categoryFilterStats.get(categoryName) || 0) + item.subtotal);
+      empPerf.forEach((data, employeeId) => {
+        const employee = employees.find(e => e.id === employeeId);
+        if (employee) {
+          employeePerformance.push({
+            employee: employee.username,
+            ...data,
+          });
         }
       });
-    });
+    }
+
+    // Generate filter colors
+    const filterColors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'];
 
     const filterBreakdown = {
-      clients: Array.from(clientStats.entries())
-        .map(([name, amount], index) => ({ name, amount, color: filterColors[index % filterColors.length] }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 8),
-      products: Array.from(productFilterStats.entries())
-        .map(([name, amount], index) => ({ name, amount, color: filterColors[index % filterColors.length] }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 8),
-      employees: Array.from(employeeFilterStats.entries())
-        .map(([name, amount], index) => ({ name, amount, color: filterColors[index % filterColors.length] }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 8),
-      categories: Array.from(categoryFilterStats.entries())
-        .map(([name, amount], index) => ({ name, amount, color: filterColors[index % filterColors.length] }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 8),
-      paymentMethods: Array.from(paymentFilterStats.entries())
-        .map(([method, amount], index) => ({ 
-          name: getPaymentMethodLabel(method), 
-          amount, 
-          color: filterColors[index % filterColors.length] 
-        }))
-        .sort((a, b) => b.amount - a.amount)
+      clients: customers.slice(0, 8).map((customer, index) => ({
+        name: customer.name,
+        amount: Math.abs(customer.balance),
+        color: filterColors[index % filterColors.length],
+      })),
+      products: topProducts.slice(0, 8).map((item, index) => ({
+        name: item.product.name,
+        amount: item.revenue,
+        color: filterColors[index % filterColors.length],
+      })),
+      employees: employeePerformance.slice(0, 8).map((emp, index) => ({
+        name: emp.employee,
+        amount: emp.revenue,
+        color: filterColors[index % filterColors.length],
+      })),
+      categories: categoryPerformance.slice(0, 8).map((cat, index) => ({
+        name: cat.category,
+        amount: cat.revenue,
+        color: filterColors[index % filterColors.length],
+      })),
+      paymentMethods: paymentMethodBreakdown.slice(0, 8).map((pm, index) => ({
+        name: getPaymentMethodLabel(pm.method),
+        amount: pm.amount,
+        color: filterColors[index % filterColors.length],
+      })),
     };
 
     return {
       totalRevenue,
       totalSales,
       averageOrderValue,
-      totalDebts,
-      totalAdvances,
+      totalDebts: Math.abs(customers.reduce((sum, c) => sum + Math.min(0, c.balance), 0)),
+      totalAdvances: customers.reduce((sum, c) => sum + Math.max(0, c.balance), 0),
       totalJaiDonne,
       totalJaiPris,
       topProducts,
       paymentMethodBreakdown,
-      creditAnalysis,
+      creditAnalysis: {
+        totalCredit: filteredSales.filter(s => s.status === 'credit').reduce((sum, s) => sum + s.total, 0),
+        partiallyPaid: filteredSales.filter(s => s.status === 'partial').reduce((sum, s) => sum + s.total, 0),
+        fullyPaid: filteredSales.filter(s => s.status === 'paid').reduce((sum, s) => sum + s.total, 0),
+      },
       dailyTrends,
       categoryPerformance,
       employeePerformance,
       debtAnalysis,
-      filterBreakdown
+      filterBreakdown,
     };
-  }, [filteredSales, products, customers, categories, employees, sales, filterColors]);
+  }, [sales, products, customers, categories, employees, filters, user]);
 
-  const formatCurrency = useCallback((amount: number) => {
-    const currency = settings?.currency || 'XOF';
-    const currencySymbols = { XOF: 'FCFA', USD: '$', EUR: '€' };
-    return `${amount.toLocaleString()} ${currencySymbols[currency]}`;
+  const formatCurrency = useCallback((amount: number): string => {
+    if (!settings) return amount.toString();
+    const currency = settings.currency === 'XOF' ? 'FCFA' : settings.currency;
+    return `${amount.toLocaleString()} ${currency}`;
   }, [settings]);
 
-  const ensureDirectoryExists = useCallback(async (dirPath: string): Promise<boolean> => {
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadData();
+  }, [loadData]);
+
+  const handleForceSyncNow = useCallback(async () => {
+    if (user?.role !== 'cashier') return;
+    
     try {
-      console.log('Checking directory existence:', dirPath);
-      const dirInfo = await FileSystem.getInfoAsync(dirPath);
-      
-      if (!dirInfo.exists) {
-        console.log('Directory does not exist, creating:', dirPath);
-        await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
-        console.log('Directory created successfully');
-        return true;
-      }
-      
-      console.log('Directory already exists');
-      return true;
-    } catch (error) {
-      console.error('Error ensuring directory exists:', error);
-      return false;
-    }
-  }, []);
-
-  const getFileSystemDirectory = useCallback(async (): Promise<string | null> => {
-    try {
-      const documentDir = (FileSystem as any).documentDirectory;
-      const cacheDir = (FileSystem as any).cacheDirectory;
-      const dir = documentDir || cacheDir;
-      
-      if (!dir) {
-        console.warn('Neither documentDirectory nor cacheDirectory is available');
-        return null;
-      }
-
-      console.log('Using directory:', dir);
-      
-      const dirExists = await ensureDirectoryExists(dir);
-      if (!dirExists) {
-        console.error('Failed to ensure directory exists');
-        return null;
-      }
-      
-      return dir;
-    } catch (error) {
-      console.error('Error accessing FileSystem directories:', error);
-      return null;
-    }
-  }, [ensureDirectoryExists]);
-
-  const exportToPDF = useCallback(async () => {
-    try {
-      console.log('Starting PDF export...');
-      
-      const reportContent = `
-RAPPORT DE VENTES DÉTAILLÉ - ${settings?.companyName || 'ALKD-POS'}
-Période: ${filters.dateRange === 'custom' ? 
-  `${filters.startDate?.toLocaleDateString('fr-FR')} - ${filters.endDate?.toLocaleDateString('fr-FR')}` : 
-  filters.dateRange}
-Date de génération: ${new Date().toLocaleDateString('fr-FR')}
-
-=== RÉSUMÉ EXÉCUTIF ===
-Chiffre d'affaires total: ${formatCurrency(reportData.totalRevenue)}
-Nombre de ventes: ${reportData.totalSales}
-Panier moyen: ${formatCurrency(reportData.averageOrderValue)}
-
-=== TOTAUX GÉNÉRAUX ===
-Total "J'ai donné": ${formatCurrency(reportData.totalJaiDonne)}
-Total "J'ai pris": ${formatCurrency(reportData.totalJaiPris)}
-Balance nette: ${formatCurrency(reportData.debtAnalysis.netBalance)}
-
-=== ANALYSE DETTES ET AVANCES ===
-Dettes actuelles (clients doivent): ${formatCurrency(reportData.totalDebts)}
-Avances actuelles (clients ont payé d'avance): ${formatCurrency(reportData.totalAdvances)}
-Balance clients: ${formatCurrency(reportData.totalAdvances - reportData.totalDebts)}
-
-=== TOP PRODUITS ===
-${reportData.topProducts.slice(0, 10).map((item, index) => 
-  `${index + 1}. ${item.product.name} - ${item.quantity} unités - ${formatCurrency(item.revenue)}`
-).join('\n')}
-
-=== PERFORMANCE PAR CATÉGORIE ===
-${reportData.categoryPerformance.map(item => 
-  `${item.category}: ${formatCurrency(item.revenue)} (${item.quantity} unités)`
-).join('\n')}
-
-=== PERFORMANCE EMPLOYÉS ===
-${reportData.employeePerformance.map(item => 
-  `${item.employee}: ${item.sales} ventes - ${formatCurrency(item.revenue)}`
-).join('\n')}
-
-=== MOYENS DE PAIEMENT ===
-${reportData.paymentMethodBreakdown.map(item => 
-  `${getPaymentMethodLabel(item.method)}: ${formatCurrency(item.amount)} (${item.count} transactions)`
-).join('\n')}
-
-=== ANALYSE CRÉDIT ===
-Crédit total: ${formatCurrency(reportData.creditAnalysis.totalCredit)}
-Partiellement payé: ${formatCurrency(reportData.creditAnalysis.partiallyPaid)}
-Entièrement payé: ${formatCurrency(reportData.creditAnalysis.fullyPaid)}
-
-=== TENDANCES QUOTIDIENNES ===
-${reportData.dailyTrends.map(item => 
-  `${new Date(item.date).toLocaleDateString('fr-FR')}: ${formatCurrency(item.revenue)} (${item.sales} ventes)`
-).join('\n')}
-      `;
-
-      const fileName = `rapport_detaille_${new Date().toISOString().split('T')[0]}.txt`;
-      
-      const dir = await getFileSystemDirectory();
-      
-      if (!dir) {
-        console.log('No file system directory available, showing report in alert');
-        Alert.alert(
-          'Rapport généré',
-          'Le rapport a été généré mais ne peut pas être sauvegardé sur cet appareil. Voici un résumé:\n\n' +
-          `CA total: ${formatCurrency(reportData.totalRevenue)}\n` +
-          `Ventes: ${reportData.totalSales}\n` +
-          `J'ai donné: ${formatCurrency(reportData.totalJaiDonne)}\n` +
-          `J'ai pris: ${formatCurrency(reportData.totalJaiPris)}\n` +
-          `Balance: ${formatCurrency(reportData.debtAnalysis.netBalance)}`,
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
-      const fileUri = `${dir}${fileName}`;
-      
-      console.log('Writing report to file:', fileUri);
-      
-      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
-      
-      await FileSystem.writeAsStringAsync(fileUri, reportContent, {
-        encoding: encodingType,
-      });
-      
-      console.log('Report file written successfully');
-      
-      if (await Sharing.isAvailableAsync()) {
-        console.log('Sharing is available, sharing file...');
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/plain',
-          dialogTitle: 'Partager le rapport PDF'
-        });
-        console.log('File shared successfully');
+      const success = await cashierSyncService.forceSyncNow();
+      if (success) {
+        Alert.alert('Synchronisation', 'Vos rapports ont été synchronisés avec succès.');
+        const status = await cashierSyncService.getSyncStatus();
+        setSyncStatus(status);
       } else {
-        console.log('Sharing not available, showing success alert');
-        Alert.alert('Succès', `Rapport exporté vers: ${fileUri}`);
+        Alert.alert('Erreur', 'Échec de la synchronisation. Vérifiez votre connexion internet.');
       }
-      
     } catch (error) {
-      console.error('Error exporting report:', error);
-      Alert.alert(
-        'Erreur d\'export', 
-        'Impossible d\'exporter le rapport. Vérifiez les permissions de stockage.',
-        [{ text: 'OK' }]
-      );
+      console.error('Force sync error:', error);
+      Alert.alert('Erreur', 'Une erreur est survenue lors de la synchronisation.');
     }
-  }, [reportData, settings, filters, formatCurrency, getFileSystemDirectory]);
+  }, [user]);
 
-  const exportToExcel = useCallback(async () => {
+  const exportData = useCallback(async () => {
     try {
-      console.log('Starting Excel export...');
-      
-      const csvContent = [
-        // Header
-        'Date,Numéro Reçu,Client,Employé,Produit,Catégorie,Quantité,Prix Unitaire,Sous-total,Méthode Paiement,Statut',
-        // Data rows
-        ...filteredSales.flatMap(sale => 
-          sale.items.map(item => {
-            const product = products.find(p => p.id === item.productId);
-            const category = categories.find(c => c.id === product?.categoryId);
-            const customer = customers.find(c => c.id === sale.customerId);
-            const employee = employees.find(e => e.id === sale.employeeId);
-            return [
-              new Date(sale.createdAt).toLocaleDateString('fr-FR'),
-              sale.receiptNumber,
-              customer?.name || 'Client anonyme',
-              employee?.username || 'Employé inconnu',
-              product?.name || 'Produit inconnu',
-              category?.name || 'Catégorie inconnue',
-              item.quantity,
-              item.price,
-              item.subtotal,
-              getPaymentMethodLabel(sale.paymentMethod),
-              sale.paymentStatus === 'paid' ? 'Payé' : 
-              sale.paymentStatus === 'credit' ? 'À crédit' : 'Partiellement payé'
-            ].join(',');
-          })
-        )
-      ].join('\n');
+      const csvData = [
+        ['Date', 'Montant', 'Méthode de paiement', 'Statut', 'Client', 'Employé'],
+        ...sales.map(sale => [
+          sale.date.toLocaleDateString(),
+          sale.total.toString(),
+          getPaymentMethodLabel(sale.paymentMethod),
+          sale.status,
+          customers.find(c => c.id === sale.customerId)?.name || 'N/A',
+          employees.find(e => e.id === sale.employeeId)?.username || 'N/A',
+        ])
+      ].map(row => row.join(',')).join('\n');
 
-      const fileName = `rapport_excel_${new Date().toISOString().split('T')[0]}.csv`;
+      const fileName = `rapports_${user?.role === 'cashier' ? 'caissier_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
-      const dir = await getFileSystemDirectory();
-      
-      if (!dir) {
-        console.log('No file system directory available for Excel export');
-        Alert.alert(
-          'Export Excel',
-          'Impossible de sauvegarder le fichier Excel sur cet appareil.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
-      const fileUri = `${dir}${fileName}`;
-      
-      console.log('Writing Excel file to:', fileUri);
-      
-      const encodingType = (FileSystem as any).EncodingType?.UTF8 || 'utf8';
-      
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: encodingType,
+      await FileSystem.writeAsStringAsync(fileUri, csvData, {
+        encoding: FileSystem.EncodingType.UTF8,
       });
-      
-      console.log('Excel file written successfully');
-      
+
       if (await Sharing.isAvailableAsync()) {
-        console.log('Sharing Excel file...');
         await Sharing.shareAsync(fileUri, {
           mimeType: 'text/csv',
-          dialogTitle: 'Partager le rapport Excel'
+          dialogTitle: 'Exporter les rapports',
         });
-        console.log('Excel file shared successfully');
-      } else {
-        console.log('Sharing not available for Excel file');
-        Alert.alert('Succès', `Rapport Excel exporté vers: ${fileUri}`);
       }
-      
     } catch (error) {
-      console.error('Error exporting Excel report:', error);
-      Alert.alert(
-        'Erreur d\'export Excel', 
-        'Impossible d\'exporter le rapport Excel.',
-        [{ text: 'OK' }]
-      );
+      console.error('Export error:', error);
+      Alert.alert('Erreur', 'Impossible d\'exporter les données');
     }
-  }, [filteredSales, products, categories, customers, employees, getFileSystemDirectory]);
+  }, [sales, customers, employees, user]);
 
-  const chartConfig = {
-    backgroundColor: colors.background,
-    backgroundGradientFrom: colors.background,
-    backgroundGradientTo: colors.background,
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(255, 193, 7, ${opacity})`,
-    labelColor: (opacity = 1) => colors.text,
-    style: {
-      borderRadius: 12,
-    },
-    propsForDots: {
-      r: "4",
-      strokeWidth: "2",
-      stroke: colors.primary
-    }
-  };
-
-  const renderSummaryCard = ({ title, value, subtitle, icon, color = colors.primary, trend }: any) => (
-    <Animated.View 
-      style={[
-        styles.summaryCard, 
-        { 
-          borderLeftColor: color,
-          opacity: animatedValue,
-          transform: [{
-            translateY: animatedValue.interpolate({
-              inputRange: [0, 1],
-              outputRange: [30, 0]
-            })
-          }]
-        }
-      ]}
-    >
-      <View style={styles.summaryHeader}>
-        <View style={[styles.summaryIcon, { backgroundColor: color + '15' }]}>
-          <Icon name={icon} size={20} color={color} />
-        </View>
-        <View style={styles.summaryContent}>
-          <Text style={styles.summaryTitle}>{title}</Text>
-          <Text style={[styles.summaryValue, { color }]} numberOfLines={1} adjustsFontSizeToFit>
-            {value}
+  // Check if user has access to reports
+  if (user?.role === 'inventory') {
+    return (
+      <SafeAreaView style={commonStyles.container}>
+        <View style={styles.restrictedAccess}>
+          <Icon name="lock-closed" size={48} color={colors.error} />
+          <Text style={styles.restrictedText}>
+            Accès aux rapports non autorisé
           </Text>
-          {subtitle && <Text style={styles.summarySubtitle} numberOfLines={1}>{subtitle}</Text>}
-          {trend && (
-            <View style={styles.trendContainer}>
-              <Icon 
-                name={trend > 0 ? "trending-up" : "trending-down"} 
-                size={14} 
-                color={trend > 0 ? colors.success : colors.error} 
-              />
-              <Text style={[styles.trendText, { color: trend > 0 ? colors.success : colors.error }]}>
-                {Math.abs(trend)}%
-              </Text>
-            </View>
-          )}
+          <Text style={[commonStyles.textLight, { textAlign: 'center', marginTop: spacing.sm }]}>
+            Votre rôle "Inventaire" ne permet pas l'accès aux rapports de vente.
+          </Text>
+          <TouchableOpacity
+            style={[commonStyles.button, { marginTop: spacing.lg }]}
+            onPress={() => router.back()}
+          >
+            <Text style={commonStyles.buttonText}>Retour</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const renderSummaryCard = ({ title, value, subtitle, icon, color, trend }: {
+    title: string;
+    value: string;
+    subtitle?: string;
+    icon: string;
+    color?: string;
+    trend?: { value: number; isPositive: boolean };
+  }) => (
+    <Animated.View style={[
+      commonStyles.card,
+      { 
+        flex: 1, 
+        margin: spacing.xs,
+        opacity: animatedValue,
+        transform: [{
+          translateY: animatedValue.interpolate({
+            inputRange: [0, 1],
+            outputRange: [20, 0],
+          }),
+        }],
+      }
+    ]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm }}>
+        <View style={{
+          width: 40,
+          height: 40,
+          backgroundColor: (color || colors.primary) + '20',
+          borderRadius: 20,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: spacing.sm,
+        }}>
+          <Icon name={icon} size={20} color={color || colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[commonStyles.textLight, { fontSize: fontSizes.sm }]}>{title}</Text>
+          <Text style={[commonStyles.subtitle, { fontSize: fontSizes.lg }]}>{value}</Text>
         </View>
       </View>
+      {subtitle && (
+        <Text style={[commonStyles.textLight, { fontSize: fontSizes.xs }]}>{subtitle}</Text>
+      )}
+      {trend && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs }}>
+          <Icon 
+            name={trend.isPositive ? 'trending-up' : 'trending-down'} 
+            size={16} 
+            color={trend.isPositive ? colors.success : colors.error} 
+          />
+          <Text style={{
+            fontSize: fontSizes.xs,
+            color: trend.isPositive ? colors.success : colors.error,
+            marginLeft: spacing.xs,
+          }}>
+            {Math.abs(trend.value).toFixed(1)}%
+          </Text>
+        </View>
+      )}
     </Animated.View>
   );
 
   const renderMultiFilterChart = () => {
-    const data = reportData.filterBreakdown.clients.concat(
-      reportData.filterBreakdown.products.slice(0, 3),
-      reportData.filterBreakdown.employees.slice(0, 2),
-      reportData.filterBreakdown.categories.slice(0, 2)
-    ).slice(0, 10);
-
-    if (data.length === 0) {
-      return (
-        <View style={styles.noDataContainer}>
-          <Icon name="pie-chart" size={48} color={colors.textLight} />
-          <Text style={styles.noDataText}>Aucune donnée disponible</Text>
-        </View>
-      );
-    }
-
-    const pieData = data.map((item, index) => ({
-      name: item.name.length > 12 ? item.name.substring(0, 12) + '...' : item.name,
-      amount: item.amount,
-      color: item.color,
-      legendFontColor: colors.text,
-      legendFontSize: 11
-    }));
+    const data = reportData.filterBreakdown.paymentMethods.slice(0, 5);
+    if (data.length === 0) return null;
 
     return (
-      <View style={styles.multiFilterChartContainer}>
+      <View style={[commonStyles.card, { margin: spacing.md }]}>
+        <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+          Répartition par méthode de paiement
+        </Text>
         <PieChart
-          data={pieData}
-          width={chartWidth}
+          data={data}
+          width={Dimensions.get('window').width - 60}
           height={200}
-          chartConfig={chartConfig}
+          chartConfig={{
+            color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+          }}
           accessor="amount"
           backgroundColor="transparent"
           paddingLeft="15"
-          style={styles.chart}
-          hasLegend={false}
+          absolute
         />
-        <View style={styles.legendContainer}>
-          {pieData.map((item, index) => (
-            <View key={index} style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-              <Text style={styles.legendText} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={styles.legendValue}>
-                {formatCurrency(item.amount)}
-              </Text>
-            </View>
-          ))}
-        </View>
       </View>
     );
   };
 
   const renderChart = () => {
-    if (reportData.dailyTrends.length === 0 && activeChart !== 'filters') {
-      return (
-        <View style={styles.noDataContainer}>
-          <Icon name="bar-chart" size={48} color={colors.textLight} />
-          <Text style={styles.noDataText}>Aucune donnée disponible</Text>
-        </View>
-      );
-    }
+    if (reportData.dailyTrends.length === 0) return null;
 
-    switch (activeChart) {
-      case 'revenue':
-        return (
-          <LineChart
-            data={{
-              labels: reportData.dailyTrends.map(item => 
-                new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-              ),
-              datasets: [{
-                data: reportData.dailyTrends.map(item => Math.max(item.revenue, 0)),
-                color: (opacity = 1) => colors.primary,
-                strokeWidth: 2
-              }]
-            }}
-            width={chartWidth}
-            height={200}
-            chartConfig={chartConfig}
-            bezier
-            style={styles.chart}
-            withHorizontalLabels={true}
-            withVerticalLabels={true}
-            withDots={true}
-            withShadow={false}
-          />
-        );
-      
-      case 'sales':
-        return (
-          <BarChart
-            data={{
-              labels: reportData.dailyTrends.map(item => 
-                new Date(item.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-              ),
-              datasets: [{
-                data: reportData.dailyTrends.map(item => Math.max(item.sales, 0))
-              }]
-            }}
-            width={chartWidth}
-            height={200}
-            chartConfig={chartConfig}
-            style={styles.chart}
-            withHorizontalLabels={true}
-            withVerticalLabels={true}
-            showValuesOnTopOfBars={false}
-          />
-        );
-      
-      case 'payments':
-        if (reportData.paymentMethodBreakdown.length === 0) {
-          return (
-            <View style={styles.noDataContainer}>
-              <Text style={styles.noDataText}>Aucune donnée de paiement</Text>
-            </View>
-          );
-        }
-        
-        const pieData = reportData.paymentMethodBreakdown.map((item, index) => ({
-          name: getPaymentMethodLabel(item.method),
-          amount: item.amount,
-          color: filterColors[index % filterColors.length],
-          legendFontColor: colors.text,
-          legendFontSize: 11
-        }));
+    const chartData = {
+      labels: reportData.dailyTrends.slice(-7).map(trend => 
+        new Date(trend.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+      ),
+      datasets: [{
+        data: reportData.dailyTrends.slice(-7).map(trend => trend.revenue),
+        color: (opacity = 1) => colors.primary,
+        strokeWidth: 2,
+      }],
+    };
 
-        return (
-          <PieChart
-            data={pieData}
-            width={chartWidth}
-            height={200}
-            chartConfig={chartConfig}
-            accessor="amount"
-            backgroundColor="transparent"
-            paddingLeft="15"
-            style={styles.chart}
-          />
-        );
-      
-      case 'filters':
-        return renderMultiFilterChart();
-      
-      default:
-        return null;
-    }
+    return (
+      <View style={[commonStyles.card, { margin: spacing.md }]}>
+        <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+          Tendance des ventes (7 derniers jours)
+        </Text>
+        <LineChart
+          data={chartData}
+          width={Dimensions.get('window').width - 60}
+          height={200}
+          chartConfig={{
+            backgroundColor: colors.background,
+            backgroundGradientFrom: colors.background,
+            backgroundGradientTo: colors.background,
+            decimalPlaces: 0,
+            color: (opacity = 1) => colors.primary,
+            labelColor: (opacity = 1) => colors.text,
+            style: { borderRadius: 16 },
+            propsForDots: {
+              r: '4',
+              strokeWidth: '2',
+              stroke: colors.primary,
+            },
+          }}
+          bezier
+          style={{ borderRadius: 16 }}
+        />
+      </View>
+    );
   };
 
   if (loading) {
     return (
-      <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.loadingContainer}>
-          <Animated.View style={{ opacity: animatedValue }}>
-            <Icon name="analytics" size={48} color={colors.primary} />
-          </Animated.View>
-          <Text style={styles.loadingText}>Chargement des rapports...</Text>
+      <SafeAreaView style={commonStyles.container}>
+        <View style={[commonStyles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Icon name="analytics" size={48} color={colors.primary} />
+          <Text style={[commonStyles.subtitle, { marginTop: spacing.md }]}>
+            Chargement des rapports...
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[commonStyles.container, { backgroundColor: colors.background }]}>
-      {/* Header épuré et moderne */}
-      <Animated.View style={[styles.header, { opacity: animatedValue }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Rapports Avancés</Text>
-          <Text style={styles.headerSubtitle}>Analyses en temps réel</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={() => setShowFilters(true)} style={styles.actionButton}>
-            <Icon name="filter" size={18} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={exportToPDF} style={styles.actionButton}>
-            <Icon name="download" size={18} color={colors.success} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={exportToExcel} style={styles.actionButton}>
-            <Icon name="grid" size={18} color={colors.info} />
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-
-      <ScrollView 
-        style={styles.scrollView}
+    <SafeAreaView style={commonStyles.container}>
+      <ScrollView
+        style={commonStyles.content}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
       >
-        {/* Cartes récapitulatives épurées avec totaux J'ai pris/donné */}
-        <View style={styles.summaryContainer}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: spacing.lg }}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Icon name="arrow-back" size={24} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[commonStyles.title, { marginLeft: spacing.md, flex: 1 }]}>
+            {user?.role === 'cashier' ? 'Mes Rapports' : 'Rapports'}
+          </Text>
+          <TouchableOpacity onPress={exportData}>
+            <Icon name="download" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Cashier-specific header */}
+        {user?.role === 'cashier' && (
+          <View style={[styles.cashierHeader, { margin: spacing.lg }]}>
+            <Text style={styles.cashierHeaderText}>
+              Rapports personnels - Caissier {user.username}
+            </Text>
+          </View>
+        )}
+
+        {/* Sync Status for Cashiers */}
+        {user?.role === 'cashier' && (
+          <TouchableOpacity 
+            style={[styles.syncStatus, { margin: spacing.lg }]}
+            onPress={handleForceSyncNow}
+          >
+            <Icon 
+              name={syncStatus.pendingCount > 0 ? 'sync' : 'checkmark-circle'} 
+              size={20} 
+              color={syncStatus.pendingCount > 0 ? colors.warning : colors.success} 
+            />
+            <Text style={styles.syncStatusText}>
+              {syncStatus.pendingCount > 0 
+                ? `${syncStatus.pendingCount} rapports en attente de sync`
+                : 'Rapports synchronisés'
+              }
+            </Text>
+            {syncStatus.lastSyncTime && (
+              <Text style={[styles.syncStatusText, { fontSize: fontSizes.xs, opacity: 0.7 }]}>
+                {' • '}{syncStatus.lastSyncTime.toLocaleTimeString()}
+              </Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* Summary Cards */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.md }}>
           {renderSummaryCard({
             title: 'Chiffre d\'affaires',
             value: formatCurrency(reportData.totalRevenue),
-            subtitle: `${reportData.totalSales} ventes`,
-            icon: 'trending-up',
+            icon: 'cash',
             color: colors.success,
-            trend: 12.5
+            subtitle: user?.role === 'cashier' ? 'Mes ventes uniquement' : 'Total général',
           })}
-          
           {renderSummaryCard({
-            title: 'Total "J\'ai donné"',
-            value: formatCurrency(reportData.totalJaiDonne),
-            subtitle: 'Crédit accordé',
-            icon: 'arrow-up',
-            color: colors.error,
-            trend: -5.2
-          })}
-          
-          {renderSummaryCard({
-            title: 'Total "J\'ai pris"',
-            value: formatCurrency(reportData.totalJaiPris),
-            subtitle: 'Paiements reçus',
-            icon: 'arrow-down',
-            color: colors.warning,
-            trend: 15.7
-          })}
-          
-          {renderSummaryCard({
-            title: 'Balance Nette',
-            value: formatCurrency(reportData.debtAnalysis.netBalance),
-            subtitle: reportData.debtAnalysis.netBalance >= 0 ? 'Positif' : 'Négatif',
-            icon: 'balance',
-            color: reportData.debtAnalysis.netBalance >= 0 ? colors.success : colors.error
-          })}
-          
-          {renderSummaryCard({
-            title: 'Dettes Actuelles',
-            value: formatCurrency(reportData.totalDebts),
-            subtitle: 'Clients doivent',
-            icon: 'person',
-            color: colors.error
-          })}
-          
-          {renderSummaryCard({
-            title: 'Avances Actuelles',
-            value: formatCurrency(reportData.totalAdvances),
-            subtitle: 'Clients ont payé d\'avance',
-            icon: 'wallet',
-            color: colors.success
-          })}
-          
-          {renderSummaryCard({
-            title: 'Panier moyen',
-            value: formatCurrency(reportData.averageOrderValue),
-            subtitle: 'Par transaction',
-            icon: 'calculator',
-            color: colors.info,
-            trend: 8.3
+            title: 'Nombre de ventes',
+            value: reportData.totalSales.toString(),
+            icon: 'receipt',
+            color: colors.primary,
           })}
         </View>
 
-        {/* Section graphiques modernisée */}
-        <Animated.View style={[styles.chartSection, { opacity: animatedValue }]}>
-          <View style={styles.chartHeader}>
-            <Text style={styles.chartTitle}>Analyses Graphiques</Text>
-            <View style={styles.chartTabs}>
-              {[
-                { key: 'revenue', label: 'CA', icon: 'trending-up' },
-                { key: 'sales', label: 'Ventes', icon: 'bar-chart' },
-                { key: 'payments', label: 'Paiements', icon: 'card' },
-                { key: 'filters', label: 'Multi-Filtres', icon: 'pie-chart' }
-              ].map(tab => (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[styles.chartTab, activeChart === tab.key && styles.activeChartTab]}
-                  onPress={() => setActiveChart(tab.key as any)}
-                >
-                  <Icon 
-                    name={tab.icon} 
-                    size={14} 
-                    color={activeChart === tab.key ? colors.surface : colors.textLight} 
-                  />
-                  <Text style={[
-                    styles.chartTabText,
-                    activeChart === tab.key && styles.activeChartTabText
-                  ]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          
-          <View style={styles.chartContainer}>
-            {renderChart()}
-          </View>
-        </Animated.View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.md }}>
+          {renderSummaryCard({
+            title: 'Panier moyen',
+            value: formatCurrency(reportData.averageOrderValue),
+            icon: 'calculator',
+            color: colors.info,
+          })}
+          {user?.role !== 'cashier' && renderSummaryCard({
+            title: 'Total J\'ai donné',
+            value: formatCurrency(reportData.totalJaiDonne),
+            icon: 'arrow-up',
+            color: colors.error,
+          })}
+        </View>
 
-        {/* Performance employés épurée */}
-        {reportData.employeePerformance.length > 0 && (
-          <Animated.View style={[styles.section, { opacity: animatedValue }]}>
-            <Text style={styles.sectionTitle}>Performance Employés</Text>
-            <View style={styles.performanceGrid}>
-              {reportData.employeePerformance.slice(0, 4).map((item, index) => (
-                <View key={index} style={styles.performanceCard}>
-                  <View style={styles.performanceRank}>
-                    <Text style={styles.performanceRankText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.performanceName} numberOfLines={1}>
-                    {item.employee}
-                  </Text>
-                  <Text style={styles.performanceAmount}>
-                    {formatCurrency(item.revenue)}
-                  </Text>
-                  <Text style={styles.performanceStats}>
-                    {item.sales} ventes
-                  </Text>
-                  <View style={styles.performanceProgress}>
-                    <View 
-                      style={[
-                        styles.performanceProgressBar,
-                        { 
-                          width: `${(item.revenue / (reportData.employeePerformance[0]?.revenue || 1)) * 100}%`,
-                          backgroundColor: colors.primary 
-                        }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              ))}
-            </View>
-          </Animated.View>
+        {user?.role !== 'cashier' && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: spacing.md }}>
+            {renderSummaryCard({
+              title: 'Total J\'ai pris',
+              value: formatCurrency(reportData.totalJaiPris),
+              icon: 'arrow-down',
+              color: colors.success,
+            })}
+            {renderSummaryCard({
+              title: 'Balance nette',
+              value: formatCurrency(reportData.debtAnalysis.netBalance),
+              icon: 'balance',
+              color: reportData.debtAnalysis.netBalance >= 0 ? colors.success : colors.error,
+            })}
+          </View>
         )}
 
-        {/* Top Produits en grille */}
+        {/* Charts */}
+        {renderChart()}
+        {renderMultiFilterChart()}
+
+        {/* Top Products */}
         {reportData.topProducts.length > 0 && (
-          <Animated.View style={[styles.section, { opacity: animatedValue }]}>
-            <Text style={styles.sectionTitle}>Top Produits</Text>
-            <View style={styles.productsGrid}>
-              {reportData.topProducts.slice(0, 6).map((item, index) => (
-                <View key={item.product.id} style={styles.productCard}>
-                  <View style={styles.productRank}>
-                    <Text style={styles.productRankText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.productName} numberOfLines={2}>
+          <View style={[commonStyles.card, { margin: spacing.lg }]}>
+            <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+              Produits les plus vendus
+            </Text>
+            {reportData.topProducts.slice(0, 5).map((item, index) => (
+              <View key={item.product.id} style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: spacing.sm,
+                borderBottomWidth: index < 4 ? 1 : 0,
+                borderBottomColor: colors.border,
+              }}>
+                <View style={{
+                  width: 30,
+                  height: 30,
+                  backgroundColor: colors.primary,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: spacing.md,
+                }}>
+                  <Text style={{ color: colors.secondary, fontWeight: 'bold' }}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.text, { fontWeight: '600' }]}>
                     {item.product.name}
                   </Text>
-                  <Text style={styles.productAmount}>
-                    {formatCurrency(item.revenue)}
-                  </Text>
-                  <Text style={styles.productQuantity}>
-                    {item.quantity} unités
+                  <Text style={commonStyles.textLight}>
+                    {item.quantity} unités vendues
                   </Text>
                 </View>
-              ))}
-            </View>
-          </Animated.View>
+                <Text style={[commonStyles.text, { fontWeight: '600', color: colors.success }]}>
+                  {formatCurrency(item.revenue)}
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
 
-        {/* Performance par catégorie simplifiée */}
-        {reportData.categoryPerformance.length > 0 && (
-          <Animated.View style={[styles.section, { opacity: animatedValue }]}>
-            <Text style={styles.sectionTitle}>Performance par Catégorie</Text>
-            <View style={styles.categoryList}>
-              {reportData.categoryPerformance.slice(0, 5).map((item, index) => (
-                <View key={index} style={styles.categoryItem}>
-                  <View style={styles.categoryInfo}>
-                    <Text style={styles.categoryName} numberOfLines={1}>
-                      {item.category}
-                    </Text>
-                    <Text style={styles.categoryQuantity}>
-                      {item.quantity} unités
-                    </Text>
-                  </View>
-                  <Text style={styles.categoryAmount}>
-                    {formatCurrency(item.revenue)}
+        {/* Employee Performance (Admin/Manager only) */}
+        {(user?.role === 'admin' || user?.role === 'manager') && reportData.employeePerformance.length > 0 && (
+          <View style={[commonStyles.card, { margin: spacing.lg }]}>
+            <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
+              Performance des employés
+            </Text>
+            {reportData.employeePerformance.slice(0, 5).map((emp, index) => (
+              <View key={emp.employee} style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: spacing.sm,
+                borderBottomWidth: index < Math.min(4, reportData.employeePerformance.length - 1) ? 1 : 0,
+                borderBottomColor: colors.border,
+              }}>
+                <View style={{
+                  width: 30,
+                  height: 30,
+                  backgroundColor: colors.warning,
+                  borderRadius: 15,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: spacing.md,
+                }}>
+                  <Text style={{ color: colors.secondary, fontWeight: 'bold' }}>
+                    {index + 1}
                   </Text>
                 </View>
-              ))}
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Moyens de paiement épurés */}
-        {reportData.paymentMethodBreakdown.length > 0 && (
-          <Animated.View style={[styles.section, { opacity: animatedValue }]}>
-            <Text style={styles.sectionTitle}>Moyens de paiement</Text>
-            <View style={styles.paymentList}>
-              {reportData.paymentMethodBreakdown.map((item, index) => (
-                <View key={item.method} style={styles.paymentItem}>
-                  <View style={[styles.paymentIcon, { backgroundColor: filterColors[index % filterColors.length] + '20' }]}>
-                    <Icon 
-                      name={item.method === 'cash' ? 'cash' : item.method === 'mobile_money' ? 'phone' : 'card'} 
-                      size={16} 
-                      color={filterColors[index % filterColors.length]} 
-                    />
-                  </View>
-                  <View style={styles.paymentInfo}>
-                    <Text style={styles.paymentMethod}>
-                      {getPaymentMethodLabel(item.method)}
-                    </Text>
-                    <Text style={styles.paymentCount}>
-                      {item.count} transactions
-                    </Text>
-                  </View>
-                  <Text style={styles.paymentAmount}>
-                    {formatCurrency(item.amount)}
+                <View style={{ flex: 1 }}>
+                  <Text style={[commonStyles.text, { fontWeight: '600' }]}>
+                    {emp.employee}
+                  </Text>
+                  <Text style={commonStyles.textLight}>
+                    {emp.sales} ventes
                   </Text>
                 </View>
-              ))}
-            </View>
-          </Animated.View>
+                <Text style={[commonStyles.text, { fontWeight: '600', color: colors.success }]}>
+                  {formatCurrency(emp.revenue)}
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
 
-        <View style={styles.bottomSpacing} />
+        <View style={{ height: 100 }} />
       </ScrollView>
-
-      {/* Modal de filtres modernisé */}
-      <Modal
-        visible={showFilters}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowFilters(false)}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Filtres Avancés</Text>
-            <TouchableOpacity onPress={() => setShowFilters(false)}>
-              <Icon name="close" size={24} color={colors.text} />
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            {/* Période */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Période</Text>
-              <View style={styles.filterOptions}>
-                {[
-                  { key: 'today', label: 'Aujourd\'hui' },
-                  { key: 'week', label: 'Cette semaine' },
-                  { key: 'month', label: 'Ce mois' },
-                  { key: 'quarter', label: 'Ce trimestre' },
-                  { key: 'year', label: 'Cette année' },
-                  { key: 'custom', label: 'Personnalisée' }
-                ].map(option => (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.filterOption,
-                      filters.dateRange === option.key && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ ...prev, dateRange: option.key as any }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.dateRange === option.key && styles.activeFilterOptionText
-                    ]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              
-              {filters.dateRange === 'custom' && (
-                <View style={styles.customDateContainer}>
-                  <TouchableOpacity 
-                    style={styles.dateButton}
-                    onPress={() => setShowDatePicker('start')}
-                  >
-                    <Text style={styles.dateButtonText}>
-                      Date début: {filters.startDate?.toLocaleDateString('fr-FR') || 'Sélectionner'}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.dateButton}
-                    onPress={() => setShowDatePicker('end')}
-                  >
-                    <Text style={styles.dateButtonText}>
-                      Date fin: {filters.endDate?.toLocaleDateString('fr-FR') || 'Sélectionner'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-
-            {/* Clients */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Client</Text>
-              <View style={styles.filterOptions}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterOption,
-                    !filters.customerId && styles.activeFilterOption
-                  ]}
-                  onPress={() => setFilters(prev => ({ ...prev, customerId: undefined }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    !filters.customerId && styles.activeFilterOptionText
-                  ]}>
-                    Tous les clients
-                  </Text>
-                </TouchableOpacity>
-                {customers.slice(0, 5).map(customer => (
-                  <TouchableOpacity
-                    key={customer.id}
-                    style={[
-                      styles.filterOption,
-                      filters.customerId === customer.id && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ 
-                      ...prev, 
-                      customerId: prev.customerId === customer.id ? undefined : customer.id 
-                    }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.customerId === customer.id && styles.activeFilterOptionText
-                    ]} numberOfLines={1}>
-                      {customer.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Employés */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Employé</Text>
-              <View style={styles.filterOptions}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterOption,
-                    !filters.employeeId && styles.activeFilterOption
-                  ]}
-                  onPress={() => setFilters(prev => ({ ...prev, employeeId: undefined }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    !filters.employeeId && styles.activeFilterOptionText
-                  ]}>
-                    Tous les employés
-                  </Text>
-                </TouchableOpacity>
-                {employees.map(employee => (
-                  <TouchableOpacity
-                    key={employee.id}
-                    style={[
-                      styles.filterOption,
-                      filters.employeeId === employee.id && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ 
-                      ...prev, 
-                      employeeId: prev.employeeId === employee.id ? undefined : employee.id 
-                    }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.employeeId === employee.id && styles.activeFilterOptionText
-                    ]} numberOfLines={1}>
-                      {employee.username}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Produits */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Produit</Text>
-              <View style={styles.filterOptions}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterOption,
-                    !filters.productId && styles.activeFilterOption
-                  ]}
-                  onPress={() => setFilters(prev => ({ ...prev, productId: undefined }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    !filters.productId && styles.activeFilterOptionText
-                  ]}>
-                    Tous les produits
-                  </Text>
-                </TouchableOpacity>
-                {products.slice(0, 5).map(product => (
-                  <TouchableOpacity
-                    key={product.id}
-                    style={[
-                      styles.filterOption,
-                      filters.productId === product.id && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ 
-                      ...prev, 
-                      productId: prev.productId === product.id ? undefined : product.id 
-                    }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.productId === product.id && styles.activeFilterOptionText
-                    ]} numberOfLines={1}>
-                      {product.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Catégories */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Catégorie</Text>
-              <View style={styles.filterOptions}>
-                <TouchableOpacity
-                  style={[
-                    styles.filterOption,
-                    !filters.categoryId && styles.activeFilterOption
-                  ]}
-                  onPress={() => setFilters(prev => ({ ...prev, categoryId: undefined }))}
-                >
-                  <Text style={[
-                    styles.filterOptionText,
-                    !filters.categoryId && styles.activeFilterOptionText
-                  ]}>
-                    Toutes les catégories
-                  </Text>
-                </TouchableOpacity>
-                {categories.map(category => (
-                  <TouchableOpacity
-                    key={category.id}
-                    style={[
-                      styles.filterOption,
-                      filters.categoryId === category.id && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ 
-                      ...prev, 
-                      categoryId: prev.categoryId === category.id ? undefined : category.id 
-                    }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.categoryId === category.id && styles.activeFilterOptionText
-                    ]} numberOfLines={1}>
-                      {category.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Moyens de paiement */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Moyens de paiement</Text>
-              <View style={styles.filterOptions}>
-                {[
-                  { key: 'cash', label: 'Espèces' },
-                  { key: 'mobile_money', label: 'Mobile Money' },
-                  { key: 'credit', label: 'Crédit' },
-                  { key: 'advance', label: 'Avance' }
-                ].map(option => (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.filterOption,
-                      filters.paymentMethods.includes(option.key) && styles.activeFilterOption
-                    ]}
-                    onPress={() => {
-                      setFilters(prev => ({
-                        ...prev,
-                        paymentMethods: prev.paymentMethods.includes(option.key)
-                          ? prev.paymentMethods.filter(m => m !== option.key)
-                          : [...prev.paymentMethods, option.key]
-                      }));
-                    }}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.paymentMethods.includes(option.key) && styles.activeFilterOptionText
-                    ]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Type de dette */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Dettes et Avances</Text>
-              <View style={styles.filterOptions}>
-                {[
-                  { key: 'all', label: 'Tout' },
-                  { key: 'gave', label: 'J\'ai donné (Dettes)' },
-                  { key: 'took', label: 'J\'ai pris (Avances)' }
-                ].map(option => (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.filterOption,
-                      filters.debtType === option.key && styles.activeFilterOption
-                    ]}
-                    onPress={() => setFilters(prev => ({ ...prev, debtType: option.key as any }))}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.debtType === option.key && styles.activeFilterOptionText
-                    ]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            {/* Statut crédit */}
-            <View style={styles.filterSection}>
-              <Text style={styles.filterTitle}>Statut crédit</Text>
-              <View style={styles.filterOptions}>
-                {[
-                  { key: 'paid', label: 'Payé' },
-                  { key: 'credit', label: 'À crédit' },
-                  { key: 'partial', label: 'Partiellement payé' }
-                ].map(option => (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.filterOption,
-                      filters.creditStatus.includes(option.key) && styles.activeFilterOption
-                    ]}
-                    onPress={() => {
-                      setFilters(prev => ({
-                        ...prev,
-                        creditStatus: prev.creditStatus.includes(option.key)
-                          ? prev.creditStatus.filter(s => s !== option.key)
-                          : [...prev.creditStatus, option.key]
-                      }));
-                    }}
-                  >
-                    <Text style={[
-                      styles.filterOptionText,
-                      filters.creditStatus.includes(option.key) && styles.activeFilterOptionText
-                    ]}>
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-
-          <View style={styles.modalFooter}>
-            <TouchableOpacity
-              style={styles.resetFiltersButton}
-              onPress={() => setFilters({
-                dateRange: 'month',
-                paymentMethods: ['cash', 'mobile_money', 'credit', 'advance'],
-                creditStatus: ['paid', 'credit', 'partial'],
-                debtType: 'all',
-              })}
-            >
-              <Text style={styles.resetFiltersText}>Réinitialiser</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.applyFiltersButton}
-              onPress={() => setShowFilters(false)}
-            >
-              <Text style={styles.applyFiltersText}>Appliquer</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </Modal>
-
-      {/* Date Picker */}
-      {showDatePicker && (
-        <DateTimePicker
-          value={showDatePicker === 'start' ? filters.startDate || new Date() : filters.endDate || new Date()}
-          mode="date"
-          display="default"
-          onChange={(event, selectedDate) => {
-            setShowDatePicker(null);
-            if (selectedDate) {
-              setFilters(prev => ({
-                ...prev,
-                [showDatePicker === 'start' ? 'startDate' : 'endDate']: selectedDate
-              }));
-            }
-          }}
-        />
-      )}
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  backButton: {
-    padding: spacing.sm,
-    marginRight: spacing.md,
-    borderRadius: 8,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: fontSizes.xl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  headerSubtitle: {
-    fontSize: fontSizes.sm,
-    color: colors.textLight,
-    marginTop: 2,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  actionButton: {
-    padding: spacing.sm,
-    borderRadius: 8,
-    backgroundColor: colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  loadingText: {
-    fontSize: fontSizes.lg,
-    color: colors.textLight,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: spacing.xl,
-  },
-  summaryContainer: {
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  summaryCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    padding: spacing.lg,
-    borderLeftWidth: 3,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  summaryIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  summaryContent: {
-    flex: 1,
-  },
-  summaryTitle: {
-    fontSize: fontSizes.sm,
-    fontWeight: '500',
-    color: colors.textLight,
-    marginBottom: spacing.xs,
-  },
-  summaryValue: {
-    fontSize: fontSizes.xl,
-    fontWeight: '700',
-    marginBottom: spacing.xs,
-  },
-  summarySubtitle: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  trendContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  trendText: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-  },
-  chartSection: {
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    borderRadius: 12,
-    padding: spacing.lg,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  chartTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  chartTabs: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    flexWrap: 'wrap',
-  },
-  chartTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    gap: spacing.xs,
-  },
-  activeChartTab: {
-    backgroundColor: colors.primary,
-  },
-  chartTabText: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  activeChartTabText: {
-    color: colors.surface,
-    fontWeight: '600',
-  },
-  chartContainer: {
-    alignItems: 'center',
-  },
-  chart: {
-    borderRadius: 12,
-  },
-  multiFilterChartContainer: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  legendContainer: {
-    marginTop: spacing.md,
-    width: '100%',
-    gap: spacing.xs,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  legendText: {
-    flex: 1,
-    fontSize: fontSizes.xs,
-    color: colors.text,
-  },
-  legendValue: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  noDataContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xl,
-    gap: spacing.md,
-  },
-  noDataText: {
-    fontSize: fontSizes.md,
-    color: colors.textLight,
-  },
-  section: {
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    borderRadius: 12,
-    padding: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  performanceGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  performanceCard: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: spacing.md,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  performanceRank: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.success + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  performanceRankText: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.success,
-  },
-  performanceName: {
-    fontSize: fontSizes.sm,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  performanceAmount: {
-    fontSize: fontSizes.md,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  performanceStats: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  performanceProgress: {
-    width: '100%',
-    height: 3,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginTop: spacing.xs,
-  },
-  performanceProgressBar: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  productsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  productCard: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: spacing.md,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  productRank: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primary + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  productRankText: {
-    fontSize: fontSizes.xs,
-    fontWeight: '600',
-    color: colors.primary,
-  },
-  productName: {
-    fontSize: fontSizes.sm,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-    minHeight: 32,
-  },
-  productAmount: {
-    fontSize: fontSizes.md,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  productQuantity: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  categoryList: {
-    gap: spacing.sm,
-  },
-  categoryItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  categoryInfo: {
-    flex: 1,
-    marginRight: spacing.md,
-  },
-  categoryName: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  categoryQuantity: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  categoryAmount: {
-    fontSize: fontSizes.md,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  paymentList: {
-    gap: spacing.sm,
-  },
-  paymentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  paymentIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  paymentInfo: {
-    flex: 1,
-  },
-  paymentMethod: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  paymentCount: {
-    fontSize: fontSizes.xs,
-    color: colors.textLight,
-  },
-  paymentAmount: {
-    fontSize: fontSizes.md,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  bottomSpacing: {
-    height: spacing.xl,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  modalTitle: {
-    fontSize: fontSizes.xl,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  modalContent: {
-    flex: 1,
-    paddingHorizontal: spacing.lg,
-  },
-  filterSection: {
-    marginVertical: spacing.lg,
-  },
-  filterTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  filterOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  filterOption: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  activeFilterOption: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterOptionText: {
-    fontSize: fontSizes.sm,
-    color: colors.text,
-  },
-  activeFilterOptionText: {
-    color: colors.surface,
-    fontWeight: '600',
-  },
-  customDateContainer: {
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  dateButton: {
-    padding: spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  dateButtonText: {
-    fontSize: fontSizes.sm,
-    color: colors.text,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: spacing.md,
-  },
-  resetFiltersButton: {
-    flex: 1,
-    backgroundColor: colors.textLight,
-    paddingVertical: spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  resetFiltersText: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.surface,
-  },
-  applyFiltersButton: {
-    flex: 2,
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  applyFiltersText: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-    color: colors.surface,
-  },
-});

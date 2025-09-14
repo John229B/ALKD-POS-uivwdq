@@ -6,7 +6,19 @@ import { useAuthState } from '../../hooks/useAuth';
 import Icon from '../../components/Icon';
 
 export default function TabLayout() {
-  const { hasPermission } = useAuthState();
+  const { user, hasPermission } = useAuthState();
+
+  // Helper function to check if user can access a tab
+  const canAccessTab = (module: string, action: string = 'view'): boolean => {
+    if (!user) return false;
+    
+    // Special case for inventory role - only show inventory and products
+    if (user.role === 'inventory') {
+      return module === 'inventory' || module === 'products';
+    }
+    
+    return hasPermission(module, action);
+  };
 
   return (
     <Tabs
@@ -34,7 +46,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="grid" size={size} color={color} />
           ),
-          href: hasPermission('dashboard', 'view') ? '/(tabs)/dashboard' : null,
+          href: canAccessTab('dashboard') && user?.role !== 'inventory' ? '/(tabs)/dashboard' : null,
         }}
       />
       <Tabs.Screen
@@ -44,7 +56,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="calculator" size={size} color={color} />
           ),
-          href: hasPermission('pos', 'view') ? '/(tabs)/pos' : null,
+          href: canAccessTab('pos') && user?.role !== 'inventory' ? '/(tabs)/pos' : null,
         }}
       />
       <Tabs.Screen
@@ -54,7 +66,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="cube" size={size} color={color} />
           ),
-          href: hasPermission('products', 'view') ? '/(tabs)/products' : null,
+          href: canAccessTab('products') ? '/(tabs)/products' : null,
         }}
       />
       <Tabs.Screen
@@ -64,7 +76,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="people" size={size} color={color} />
           ),
-          href: hasPermission('customers', 'view') ? '/(tabs)/customers' : null,
+          href: canAccessTab('customers') && user?.role !== 'inventory' ? '/(tabs)/customers' : null,
         }}
       />
       <Tabs.Screen
@@ -74,7 +86,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Icon name="bar-chart" size={size} color={color} />
           ),
-          href: hasPermission('reports', 'view') ? '/(tabs)/reports' : null,
+          href: canAccessTab('reports') && user?.role !== 'inventory' ? '/(tabs)/reports' : null,
         }}
       />
       <Tabs.Screen

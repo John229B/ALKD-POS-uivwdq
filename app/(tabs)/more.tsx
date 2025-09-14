@@ -15,6 +15,7 @@ interface MenuItem {
   route: string;
   permission?: { module: string; action: string };
   adminOnly?: boolean;
+  roles?: string[]; // Specific roles that can access this item
 }
 
 export default function MoreScreen() {
@@ -51,15 +52,17 @@ export default function MoreScreen() {
       subtitle: 'Gestion complète du stock et des mouvements',
       icon: 'cube',
       route: '/inventory',
-      permission: { module: 'products', action: 'view' },
+      permission: { module: 'inventory', action: 'view' },
+      roles: ['admin', 'manager', 'inventory'], // Only these roles can access inventory
     },
     {
       id: 'reports',
       title: 'Rapports détaillés',
-      subtitle: 'Analyses et statistiques avancées',
+      subtitle: user?.role === 'cashier' ? 'Mes rapports de vente personnels' : 'Analyses et statistiques avancées',
       icon: 'analytics',
       route: '/reports',
       permission: { module: 'reports', action: 'view' },
+      roles: ['admin', 'manager', 'cashier'], // Inventory role cannot access reports
     },
     {
       id: 'activity-logs',
@@ -88,12 +91,19 @@ export default function MoreScreen() {
   ];
 
   const handleMenuPress = (item: MenuItem) => {
-    // Check permissions
+    // Check admin only access
     if (item.adminOnly && user?.role !== 'admin') {
       Alert.alert('Accès refusé', 'Cette fonctionnalité est réservée aux administrateurs.');
       return;
     }
 
+    // Check role-specific access
+    if (item.roles && !item.roles.includes(user?.role || '')) {
+      Alert.alert('Accès refusé', 'Vous n\'avez pas les permissions nécessaires pour accéder à cette section.');
+      return;
+    }
+
+    // Check permissions
     if (item.permission && !hasPermission(item.permission.module, item.permission.action)) {
       Alert.alert('Accès refusé', 'Vous n\'avez pas les permissions nécessaires pour accéder à cette section.');
       return;
@@ -130,9 +140,36 @@ export default function MoreScreen() {
   };
 
   const isMenuItemVisible = (item: MenuItem): boolean => {
+    // Check admin only access
     if (item.adminOnly && user?.role !== 'admin') return false;
+    
+    // Check role-specific access
+    if (item.roles && !item.roles.includes(user?.role || '')) return false;
+    
+    // Check permissions
     if (item.permission && !hasPermission(item.permission.module, item.permission.action)) return false;
+    
     return true;
+  };
+
+  const getRoleDisplayName = (role: string): string => {
+    switch (role) {
+      case 'admin': return 'Administrateur';
+      case 'manager': return 'Gestionnaire';
+      case 'cashier': return 'Caissier';
+      case 'inventory': return 'Inventaire';
+      default: return 'Employé';
+    }
+  };
+
+  const getRoleColor = (role: string): string => {
+    switch (role) {
+      case 'admin': return colors.error;
+      case 'manager': return colors.success;
+      case 'cashier': return colors.warning;
+      case 'inventory': return colors.info;
+      default: return colors.primary;
+    }
   };
 
   return (
@@ -144,7 +181,7 @@ export default function MoreScreen() {
             <View style={{
               width: 60,
               height: 60,
-              backgroundColor: colors.primary,
+              backgroundColor: getRoleColor(user?.role || ''),
               borderRadius: 30,
               alignItems: 'center',
               justifyContent: 'center',
@@ -160,17 +197,14 @@ export default function MoreScreen() {
                 {user?.email || ''}
               </Text>
               <View style={{
-                backgroundColor: user?.role === 'admin' ? colors.error : colors.primary,
+                backgroundColor: getRoleColor(user?.role || ''),
                 paddingHorizontal: spacing.sm,
                 paddingVertical: 2,
                 borderRadius: 12,
                 alignSelf: 'flex-start',
               }}>
                 <Text style={{ color: colors.secondary, fontSize: fontSizes.xs, fontWeight: '600' }}>
-                  {user?.role === 'admin' ? 'Administrateur' : 
-                   user?.role === 'manager' ? 'Gestionnaire' :
-                   user?.role === 'cashier' ? 'Caissier' :
-                   user?.role === 'inventory' ? 'Inventaire' : 'Employé'}
+                  {getRoleDisplayName(user?.role || '')}
                 </Text>
               </View>
             </View>
@@ -195,10 +229,33 @@ export default function MoreScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Role-specific message */}
+        {user?.role === 'inventory' && (
+          <View style={[commonStyles.card, { margin: spacing.lg, backgroundColor: colors.info + '20' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="information-circle" size={20} color={colors.info} />
+              <Text style={[commonStyles.text, { marginLeft: spacing.sm, color: colors.info, flex: 1 }]}>
+                Accès limité à la gestion de l'inventaire et des produits uniquement.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {user?.role === 'cashier' && (
+          <View style={[commonStyles.card, { margin: spacing.lg, backgroundColor: colors.warning + '20' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="information-circle" size={20} color={colors.warning} />
+              <Text style={[commonStyles.text, { marginLeft: spacing.sm, color: colors.warning, flex: 1 }]}>
+                Vous avez accès uniquement à vos propres rapports de vente.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Menu Items */}
         <View style={{ paddingHorizontal: spacing.lg }}>
           <Text style={[commonStyles.subtitle, { marginBottom: spacing.md }]}>
-            Fonctionnalités
+            Fonctionnalités disponibles
           </Text>
           
           {menuItems.filter(isMenuItemVisible).map((item) => (

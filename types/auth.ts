@@ -18,7 +18,7 @@ export interface Permission {
   id: string;
   name: string;
   description: string;
-  module: 'dashboard' | 'pos' | 'products' | 'customers' | 'reports' | 'settings' | 'employees' | 'printers' | 'tickets';
+  module: 'dashboard' | 'pos' | 'products' | 'customers' | 'reports' | 'settings' | 'employees' | 'printers' | 'tickets' | 'inventory';
   actions: ('view' | 'create' | 'edit' | 'delete')[];
 }
 
@@ -65,15 +65,17 @@ export const DEFAULT_PERMISSIONS: { [key: string]: Permission[] } = {
     { id: 'products_all', name: 'Gestion produits', description: 'Gestion complète des produits', module: 'products', actions: ['view', 'create', 'edit', 'delete'] },
     { id: 'customers_all', name: 'Gestion clients', description: 'Gestion complète des clients', module: 'customers', actions: ['view', 'create', 'edit', 'delete'] },
     { id: 'reports_view', name: 'Voir rapports', description: 'Accès aux rapports', module: 'reports', actions: ['view'] },
+    { id: 'inventory_view', name: 'Voir inventaire', description: 'Accès à l\'inventaire', module: 'inventory', actions: ['view'] },
     { id: 'tickets_all', name: 'Gestion tickets', description: 'Gestion des tickets', module: 'tickets', actions: ['view', 'create', 'edit'] },
   ],
   cashier: [
     { id: 'pos_basic', name: 'Point de vente', description: 'Utilisation du POS', module: 'pos', actions: ['view', 'create'] },
     { id: 'customers_basic', name: 'Clients de base', description: 'Voir et ajouter des clients', module: 'customers', actions: ['view', 'create'] },
     { id: 'tickets_basic', name: 'Tickets de base', description: 'Créer et imprimer des tickets', module: 'tickets', actions: ['view', 'create'] },
+    { id: 'reports_own', name: 'Mes rapports', description: 'Voir uniquement ses propres rapports de vente', module: 'reports', actions: ['view'] },
   ],
   inventory: [
+    { id: 'inventory_all', name: 'Gestion inventaire', description: 'Gestion complète de l\'inventaire', module: 'inventory', actions: ['view', 'create', 'edit', 'delete'] },
     { id: 'products_all', name: 'Gestion produits', description: 'Gestion complète des produits', module: 'products', actions: ['view', 'create', 'edit', 'delete'] },
-    { id: 'dashboard_view', name: 'Voir tableau de bord', description: 'Accès au tableau de bord', module: 'dashboard', actions: ['view'] },
   ],
 };

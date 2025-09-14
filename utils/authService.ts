@@ -356,6 +356,9 @@ export class AuthService {
       // Hash password
       const hashedPassword = await this.hashPassword(data.password);
 
+      // Get default permissions for role
+      const defaultPermissions = DEFAULT_PERMISSIONS[data.role] || [];
+
       // Create employee user
       const employee: AuthUser = {
         id: `emp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -363,7 +366,7 @@ export class AuthService {
         email: data.email,
         password: hashedPassword,
         role: data.role,
-        permissions: data.permissions.length > 0 ? data.permissions : DEFAULT_PERMISSIONS[data.role] || [],
+        permissions: data.permissions.length > 0 ? data.permissions : defaultPermissions,
         isActive: true,
         isFirstLogin: true,
         createdAt: new Date(),
@@ -427,6 +430,11 @@ export class AuthService {
       // Hash password if provided
       if (updates.password) {
         updates.password = await this.hashPassword(updates.password);
+      }
+
+      // Update permissions based on role if role is changed
+      if (updates.role && updates.role !== employee.role) {
+        updates.permissions = DEFAULT_PERMISSIONS[updates.role] || employee.permissions;
       }
 
       // Update employee
@@ -631,6 +639,19 @@ export class AuthService {
     // Admin has all permissions
     if (user.role === 'admin') return true;
     
+    // Special handling for cashier reports - they can only view their own
+    if (user.role === 'cashier' && module === 'reports' && action === 'view') {
+      return user.permissions.some(permission => 
+        permission.id === 'reports_own' && permission.actions.includes('view')
+      );
+    }
+    
+    // Special handling for inventory role - strict access control
+    if (user.role === 'inventory') {
+      const allowedModules = ['inventory', 'products'];
+      if (!allowedModules.includes(module)) return false;
+    }
+    
     // Check specific permissions
     return user.permissions.some(permission => 
       permission.module === module && permission.actions.includes(action as any)
@@ -642,7 +663,12 @@ export class AuthService {
     if (!user || !user.isActive) return [];
     
     if (user.role === 'admin') {
-      return ['dashboard', 'pos', 'products', 'customers', 'reports', 'settings', 'employees', 'printers', 'tickets'];
+      return ['dashboard', 'pos', 'products', 'customers', 'reports', 'settings', 'employees', 'printers', 'tickets', 'inventory'];
+    }
+    
+    // Special handling for inventory role
+    if (user.role === 'inventory') {
+      return ['inventory', 'products'];
     }
     
     const modules = new Set<string>();

@@ -198,7 +198,7 @@ export default function POSScreen() {
     } else {
       setCustomerAdvanceBalance(0);
     }
-  }, [selectedCustomer, paymentMethod]);
+  }, [selectedCustomer, paymentMethod, customerAdvanceBalance]);
 
   // Calculate cart totals
   const cartTotals = useMemo(() => {
